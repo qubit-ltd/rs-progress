@@ -48,3 +48,27 @@ fn test_progress_event_constructors_cover_terminal_phases() {
     assert_eq!(failed.phase(), ProgressPhase::Failed);
     assert_eq!(canceled.phase(), ProgressPhase::Canceled);
 }
+
+#[test]
+fn test_progress_event_builder_and_new_constructor() {
+    let built = ProgressEvent::builder()
+        .phase(ProgressPhase::Finished)
+        .total(2)
+        .completed(2)
+        .elapsed(Duration::from_millis(250))
+        .build();
+    assert_eq!(built.phase(), ProgressPhase::Finished);
+    assert_eq!(built.counters().total_count(), Some(2));
+    assert_eq!(built.counters().completed_count(), 2);
+    assert_eq!(built.elapsed(), Duration::from_millis(250));
+
+    let rebuilt = ProgressEvent::new(
+        ProgressEvent::builder()
+            .phase(ProgressPhase::Failed)
+            .completed(1)
+            .failed_count(1),
+    );
+    assert_eq!(rebuilt.phase(), ProgressPhase::Failed);
+    assert_eq!(rebuilt.counters().completed_count(), 1);
+    assert_eq!(rebuilt.counters().failed_count(), 1);
+}

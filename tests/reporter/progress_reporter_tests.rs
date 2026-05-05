@@ -23,9 +23,7 @@ use qubit_progress::{
         ProgressCounters,
         ProgressEvent,
     },
-    reporter::{
-        ProgressReporter,
-    },
+    reporter::ProgressReporter,
 };
 
 struct CountingReporter {

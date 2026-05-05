@@ -9,6 +9,7 @@
  ******************************************************************************/
 //! Tests for reporter abstractions and built-in implementations.
 
+mod format_duration_tests;
 mod logger_progress_reporter_tests;
 mod no_op_progress_reporter_tests;
 mod progress_reporter_tests;

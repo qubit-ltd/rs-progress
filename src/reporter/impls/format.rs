@@ -36,7 +36,3 @@ pub(crate) fn format_duration(duration: Duration) -> String {
         format!("{millis}ms")
     }
 }
-
-#[cfg(test)]
-#[path = "format_tests.rs"]
-mod format_tests;

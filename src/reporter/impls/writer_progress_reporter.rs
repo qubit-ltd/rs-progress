@@ -15,11 +15,11 @@ use std::{
     },
 };
 
+use super::format::format_duration;
 use crate::{
     model::ProgressEvent,
     reporter::ProgressReporter,
 };
-use super::format::format_duration;
 
 /// Progress reporter that writes human-readable events to a writer.
 ///
