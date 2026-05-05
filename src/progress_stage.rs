@@ -33,6 +33,7 @@ impl ProgressStage {
     /// # Returns
     ///
     /// A stage with no index, total stage count, or weight.
+    #[inline]
     pub fn new(id: &str, name: &str) -> Self {
         Self {
             id: id.to_owned(),
@@ -52,6 +53,7 @@ impl ProgressStage {
     /// # Returns
     ///
     /// This stage with `index` recorded.
+    #[inline]
     pub const fn with_index(mut self, index: usize) -> Self {
         self.index = Some(index);
         self
@@ -66,6 +68,7 @@ impl ProgressStage {
     /// # Returns
     ///
     /// This stage with `total_stages` recorded.
+    #[inline]
     pub const fn with_total_stages(mut self, total_stages: usize) -> Self {
         self.total_stages = Some(total_stages);
         self
@@ -81,6 +84,7 @@ impl ProgressStage {
     /// # Returns
     ///
     /// This stage with `weight` recorded.
+    #[inline]
     pub const fn with_weight(mut self, weight: f64) -> Self {
         self.weight = Some(weight);
         self
@@ -91,6 +95,7 @@ impl ProgressStage {
     /// # Returns
     ///
     /// The machine-readable stage id.
+    #[inline]
     pub fn id(&self) -> &str {
         self.id.as_str()
     }
@@ -100,6 +105,7 @@ impl ProgressStage {
     /// # Returns
     ///
     /// The display name for this stage.
+    #[inline]
     pub fn name(&self) -> &str {
         self.name.as_str()
     }
@@ -110,6 +116,7 @@ impl ProgressStage {
     ///
     /// `Some(index)` when a zero-based stage index was supplied, otherwise
     /// `None`.
+    #[inline]
     pub const fn index(&self) -> Option<usize> {
         self.index
     }
@@ -119,6 +126,7 @@ impl ProgressStage {
     /// # Returns
     ///
     /// `Some(total)` when a total stage count was supplied, otherwise `None`.
+    #[inline]
     pub const fn total_stages(&self) -> Option<usize> {
         self.total_stages
     }
@@ -128,6 +136,7 @@ impl ProgressStage {
     /// # Returns
     ///
     /// `Some(weight)` when a weight was supplied, otherwise `None`.
+    #[inline]
     pub const fn weight(&self) -> Option<f64> {
         self.weight
     }

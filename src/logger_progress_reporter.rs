@@ -31,6 +31,7 @@ impl LoggerProgressReporter {
     /// # Returns
     ///
     /// A logger-backed progress reporter.
+    #[inline]
     pub fn new(target: &str) -> Self {
         Self {
             target: target.to_owned(),
@@ -47,6 +48,7 @@ impl LoggerProgressReporter {
     /// # Returns
     ///
     /// This reporter configured with `level`.
+    #[inline]
     pub const fn with_level(mut self, level: log::Level) -> Self {
         self.level = level;
         self
@@ -57,6 +59,7 @@ impl LoggerProgressReporter {
     /// # Returns
     ///
     /// The target used for emitted log records.
+    #[inline]
     pub fn target(&self) -> &str {
         self.target.as_str()
     }
@@ -66,6 +69,7 @@ impl LoggerProgressReporter {
     /// # Returns
     ///
     /// The level used for emitted log records.
+    #[inline]
     pub const fn level(&self) -> log::Level {
         self.level
     }
@@ -75,6 +79,7 @@ impl LoggerProgressReporter {
     /// # Parameters
     ///
     /// * `message` - Preformatted progress message.
+    #[inline]
     fn log_line(&self, message: &str) {
         log::log!(target: self.target.as_str(), self.level, "{message}");
     }
@@ -86,6 +91,7 @@ impl Default for LoggerProgressReporter {
     /// # Returns
     ///
     /// A logger-backed reporter at [`log::Level::Info`].
+    #[inline]
     fn default() -> Self {
         Self::new("qubit_progress")
     }
@@ -97,6 +103,7 @@ impl ProgressReporter for LoggerProgressReporter {
     /// # Parameters
     ///
     /// * `event` - Progress event to log.
+    #[inline]
     fn report(&self, event: &ProgressEvent) {
         self.log_line(&format_event(event));
     }

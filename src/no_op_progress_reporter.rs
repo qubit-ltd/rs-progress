@@ -22,5 +22,6 @@ impl ProgressReporter for NoOpProgressReporter {
     /// # Parameters
     ///
     /// * `event` - Event accepted and ignored.
+    #[inline]
     fn report(&self, _event: &ProgressEvent) {}
 }

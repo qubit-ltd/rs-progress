@@ -188,27 +188,12 @@ fn test_progress_event_builder_accepts_prebuilt_counters_and_named_stage() {
 }
 
 #[test]
-fn test_progress_event_phase_builders_initialize_expected_phase() {
-    assert_eq!(
-        ProgressEvent::started_builder().build().phase(),
-        ProgressPhase::Started
-    );
-    assert_eq!(
-        ProgressEvent::running_builder().build().phase(),
-        ProgressPhase::Running
-    );
-    assert_eq!(
-        ProgressEvent::finished_builder().build().phase(),
-        ProgressPhase::Finished
-    );
-    assert_eq!(
-        ProgressEvent::failed_builder().build().phase(),
-        ProgressPhase::Failed
-    );
-    assert_eq!(
-        ProgressEvent::canceled_builder().build().phase(),
-        ProgressPhase::Canceled
-    );
+fn test_progress_event_builder_phase_helpers_initialize_expected_phase() {
+    assert_eq!(ProgressEvent::builder().started().build().phase(), ProgressPhase::Started);
+    assert_eq!(ProgressEvent::builder().running().build().phase(), ProgressPhase::Running);
+    assert_eq!(ProgressEvent::builder().finished().build().phase(), ProgressPhase::Finished);
+    assert_eq!(ProgressEvent::builder().failed().build().phase(), ProgressPhase::Failed);
+    assert_eq!(ProgressEvent::builder().canceled().build().phase(), ProgressPhase::Canceled);
     assert_eq!(
         ProgressEvent::builder()
             .phase(ProgressPhase::Canceled)

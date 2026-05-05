@@ -42,6 +42,7 @@ impl<W> WriterProgressReporter<W> {
     /// # Returns
     ///
     /// A writer-backed progress reporter.
+    #[inline]
     pub fn new(writer: Arc<Mutex<W>>) -> Self {
         Self { writer }
     }
@@ -55,6 +56,7 @@ impl<W> WriterProgressReporter<W> {
     /// # Returns
     ///
     /// A writer-backed progress reporter.
+    #[inline]
     pub fn from_writer(writer: W) -> Self {
         Self::new(Arc::new(Mutex::new(writer)))
     }
@@ -64,6 +66,7 @@ impl<W> WriterProgressReporter<W> {
     /// # Returns
     ///
     /// A shared reference to the writer mutex.
+    #[inline]
     pub const fn writer(&self) -> &Arc<Mutex<W>> {
         &self.writer
     }

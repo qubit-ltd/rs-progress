@@ -30,6 +30,7 @@ impl ProgressPhase {
     /// # Returns
     ///
     /// A static string suitable for logs and human-readable reporter output.
+    #[inline]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Started => "started",
@@ -51,6 +52,7 @@ impl fmt::Display for ProgressPhase {
     /// # Returns
     ///
     /// The formatter result.
+    #[inline]
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }

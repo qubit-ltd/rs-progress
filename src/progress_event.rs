@@ -36,72 +36,27 @@ impl ProgressEvent {
     ///
     /// A builder initialized as running, unknown-total progress with zeroed
     /// counters and zero elapsed time.
+    #[inline]
     pub const fn builder() -> ProgressEventBuilder {
         ProgressEventBuilder::new()
-    }
-
-    /// Creates a started progress event builder.
-    ///
-    /// # Returns
-    ///
-    /// A builder initialized with [`ProgressPhase::Started`].
-    pub const fn started_builder() -> ProgressEventBuilder {
-        ProgressEventBuilder::new().started()
-    }
-
-    /// Creates a running progress event builder.
-    ///
-    /// # Returns
-    ///
-    /// A builder initialized with [`ProgressPhase::Running`].
-    pub const fn running_builder() -> ProgressEventBuilder {
-        ProgressEventBuilder::new().running()
-    }
-
-    /// Creates a finished progress event builder.
-    ///
-    /// # Returns
-    ///
-    /// A builder initialized with [`ProgressPhase::Finished`].
-    pub const fn finished_builder() -> ProgressEventBuilder {
-        ProgressEventBuilder::new().finished()
-    }
-
-    /// Creates a failed progress event builder.
-    ///
-    /// # Returns
-    ///
-    /// A builder initialized with [`ProgressPhase::Failed`].
-    pub const fn failed_builder() -> ProgressEventBuilder {
-        ProgressEventBuilder::new().failed()
-    }
-
-    /// Creates a canceled progress event builder.
-    ///
-    /// # Returns
-    ///
-    /// A builder initialized with [`ProgressPhase::Canceled`].
-    pub const fn canceled_builder() -> ProgressEventBuilder {
-        ProgressEventBuilder::new().canceled()
     }
 
     /// Creates a progress event.
     ///
     /// # Parameters
     ///
-    /// * `phase` - Lifecycle phase of the operation.
-    /// * `counters` - Generic progress counters.
-    /// * `elapsed` - Monotonic elapsed duration.
+    /// * `builder` - Builder containing configured event fields.
     ///
     /// # Returns
     ///
-    /// A progress event with no stage.
-    pub const fn new(phase: ProgressPhase, counters: ProgressCounters, elapsed: Duration) -> Self {
+    /// A progress event built from `builder`.
+    #[inline]
+    pub fn new(builder: ProgressEventBuilder) -> Self {
         Self {
-            phase,
-            stage: None,
-            counters,
-            elapsed,
+            phase: builder.phase,
+            stage: builder.stage,
+            counters: builder.counters,
+            elapsed: builder.elapsed,
         }
     }
 
@@ -115,8 +70,14 @@ impl ProgressEvent {
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Started`].
+    #[inline]
     pub const fn started(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self::new(ProgressPhase::Started, counters, elapsed)
+        Self {
+            phase: ProgressPhase::Started,
+            stage: None,
+            counters,
+            elapsed,
+        }
     }
 
     /// Creates a running progress event.
@@ -129,8 +90,14 @@ impl ProgressEvent {
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Running`].
+    #[inline]
     pub const fn running(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self::new(ProgressPhase::Running, counters, elapsed)
+        Self {
+            phase: ProgressPhase::Running,
+            stage: None,
+            counters,
+            elapsed,
+        }
     }
 
     /// Creates a finished progress event.
@@ -143,8 +110,14 @@ impl ProgressEvent {
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Finished`].
+    #[inline]
     pub const fn finished(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self::new(ProgressPhase::Finished, counters, elapsed)
+        Self {
+            phase: ProgressPhase::Finished,
+            stage: None,
+            counters,
+            elapsed,
+        }
     }
 
     /// Creates a failed progress event.
@@ -157,8 +130,14 @@ impl ProgressEvent {
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Failed`].
+    #[inline]
     pub const fn failed(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self::new(ProgressPhase::Failed, counters, elapsed)
+        Self {
+            phase: ProgressPhase::Failed,
+            stage: None,
+            counters,
+            elapsed,
+        }
     }
 
     /// Creates a canceled progress event.
@@ -171,8 +150,14 @@ impl ProgressEvent {
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Canceled`].
+    #[inline]
     pub const fn canceled(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self::new(ProgressPhase::Canceled, counters, elapsed)
+        Self {
+            phase: ProgressPhase::Canceled,
+            stage: None,
+            counters,
+            elapsed,
+        }
     }
 
     /// Returns a copy configured with the current stage.
@@ -184,6 +169,7 @@ impl ProgressEvent {
     /// # Returns
     ///
     /// This event with `stage` recorded.
+    #[inline]
     pub fn with_stage(mut self, stage: ProgressStage) -> Self {
         self.stage = Some(stage);
         self
@@ -194,6 +180,7 @@ impl ProgressEvent {
     /// # Returns
     ///
     /// The lifecycle phase carried by this event.
+    #[inline]
     pub const fn phase(&self) -> ProgressPhase {
         self.phase
     }
@@ -204,6 +191,7 @@ impl ProgressEvent {
     ///
     /// `Some(stage)` when this event carries stage information, otherwise
     /// `None`.
+    #[inline]
     pub const fn stage(&self) -> Option<&ProgressStage> {
         self.stage.as_ref()
     }
@@ -213,6 +201,7 @@ impl ProgressEvent {
     /// # Returns
     ///
     /// The counters carried by this event.
+    #[inline]
     pub const fn counters(&self) -> ProgressCounters {
         self.counters
     }
@@ -222,6 +211,7 @@ impl ProgressEvent {
     /// # Returns
     ///
     /// The monotonic elapsed duration carried by this event.
+    #[inline]
     pub const fn elapsed(&self) -> Duration {
         self.elapsed
     }
