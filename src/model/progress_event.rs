@@ -9,11 +9,11 @@
  ******************************************************************************/
 use std::time::Duration;
 
-use crate::{
+use super::{
     ProgressCounters,
+    ProgressEventBuilder,
     ProgressPhase,
     ProgressStage,
-    progress_event_builder::ProgressEventBuilder,
 };
 
 /// Immutable progress event delivered to reporters.

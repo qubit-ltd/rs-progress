@@ -16,10 +16,10 @@ use std::{
 };
 
 use crate::{
-    ProgressEvent,
-    ProgressReporter,
-    progress_format::format_duration,
+    model::ProgressEvent,
+    reporter::ProgressReporter,
 };
+use super::format::format_duration;
 
 /// Progress reporter that writes human-readable events to a writer.
 ///

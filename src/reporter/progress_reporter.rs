@@ -7,7 +7,7 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-use crate::ProgressEvent;
+use crate::model::ProgressEvent;
 
 /// Receives immutable progress events.
 pub trait ProgressReporter: Send + Sync {

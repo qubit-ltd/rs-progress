@@ -8,8 +8,8 @@
  *
  ******************************************************************************/
 use crate::{
-    ProgressEvent,
-    ProgressReporter,
+    model::ProgressEvent,
+    reporter::ProgressReporter,
 };
 
 /// Progress reporter that emits progress events through the `log` crate.

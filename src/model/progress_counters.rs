@@ -43,14 +43,19 @@ impl ProgressCounters {
         }
     }
 
-    /// Updates the known or unknown total count in place.
+    /// Returns a copy configured with the known or unknown total count.
     ///
     /// # Parameters
     ///
     /// * `total_count` - Total work-unit count, or `None` when unknown.
+    ///
+    /// # Returns
+    ///
+    /// This counter set with `total_count` recorded.
     #[inline]
-    pub(crate) const fn set_total_count(&mut self, total_count: Option<usize>) {
+    pub const fn with_total_count(mut self, total_count: Option<usize>) -> Self {
         self.total_count = total_count;
+        self
     }
 
     /// Returns a copy configured with the completed count.
@@ -68,16 +73,6 @@ impl ProgressCounters {
         self
     }
 
-    /// Updates the completed count in place.
-    ///
-    /// # Parameters
-    ///
-    /// * `completed_count` - Number of completed work units.
-    #[inline]
-    pub(crate) const fn set_completed_count(&mut self, completed_count: usize) {
-        self.completed_count = completed_count;
-    }
-
     /// Returns a copy configured with the active count.
     ///
     /// # Parameters
@@ -91,16 +86,6 @@ impl ProgressCounters {
     pub const fn with_active_count(mut self, active_count: usize) -> Self {
         self.active_count = active_count;
         self
-    }
-
-    /// Updates the active count in place.
-    ///
-    /// # Parameters
-    ///
-    /// * `active_count` - Number of currently active work units.
-    #[inline]
-    pub(crate) const fn set_active_count(&mut self, active_count: usize) {
-        self.active_count = active_count;
     }
 
     /// Returns a copy configured with the succeeded count.
@@ -118,16 +103,6 @@ impl ProgressCounters {
         self
     }
 
-    /// Updates the succeeded count in place.
-    ///
-    /// # Parameters
-    ///
-    /// * `succeeded_count` - Number of successful work units.
-    #[inline]
-    pub(crate) const fn set_succeeded_count(&mut self, succeeded_count: usize) {
-        self.succeeded_count = succeeded_count;
-    }
-
     /// Returns a copy configured with the failed count.
     ///
     /// # Parameters
@@ -141,16 +116,6 @@ impl ProgressCounters {
     pub const fn with_failed_count(mut self, failed_count: usize) -> Self {
         self.failed_count = failed_count;
         self
-    }
-
-    /// Updates the failed count in place.
-    ///
-    /// # Parameters
-    ///
-    /// * `failed_count` - Number of failed work units.
-    #[inline]
-    pub(crate) const fn set_failed_count(&mut self, failed_count: usize) {
-        self.failed_count = failed_count;
     }
 
     /// Returns the total work-unit count when known.

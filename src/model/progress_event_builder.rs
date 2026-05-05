@@ -9,11 +9,11 @@
  ******************************************************************************/
 use std::time::Duration;
 
-use crate::{
+use super::{
     ProgressCounters,
+    ProgressEvent,
     ProgressPhase,
     ProgressStage,
-    progress_event::ProgressEvent,
 };
 
 /// Builder for [`ProgressEvent`].
@@ -141,7 +141,7 @@ impl ProgressEventBuilder {
     /// This builder with a known total count.
     #[inline]
     pub const fn total(mut self, total_count: usize) -> Self {
-        self.counters.set_total_count(Some(total_count));
+        self.counters = self.counters.with_total_count(Some(total_count));
         self
     }
 
@@ -152,7 +152,7 @@ impl ProgressEventBuilder {
     /// This builder with no total count.
     #[inline]
     pub const fn unknown_total(mut self) -> Self {
-        self.counters.set_total_count(None);
+        self.counters = self.counters.with_total_count(None);
         self
     }
 
@@ -167,7 +167,7 @@ impl ProgressEventBuilder {
     /// This builder with `completed_count` recorded.
     #[inline]
     pub const fn completed(mut self, completed_count: usize) -> Self {
-        self.counters.set_completed_count(completed_count);
+        self.counters = self.counters.with_completed_count(completed_count);
         self
     }
 
@@ -182,7 +182,7 @@ impl ProgressEventBuilder {
     /// This builder with `active_count` recorded.
     #[inline]
     pub const fn active(mut self, active_count: usize) -> Self {
-        self.counters.set_active_count(active_count);
+        self.counters = self.counters.with_active_count(active_count);
         self
     }
 
@@ -197,7 +197,7 @@ impl ProgressEventBuilder {
     /// This builder with `succeeded_count` recorded.
     #[inline]
     pub const fn succeeded(mut self, succeeded_count: usize) -> Self {
-        self.counters.set_succeeded_count(succeeded_count);
+        self.counters = self.counters.with_succeeded_count(succeeded_count);
         self
     }
 
@@ -212,7 +212,7 @@ impl ProgressEventBuilder {
     /// This builder with `failed_count` recorded.
     #[inline]
     pub const fn failed_count(mut self, failed_count: usize) -> Self {
-        self.counters.set_failed_count(failed_count);
+        self.counters = self.counters.with_failed_count(failed_count);
         self
     }
 

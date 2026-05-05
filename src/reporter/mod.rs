@@ -7,13 +7,14 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Generic progress reporting data model and reporter abstractions.
-//!
-//! This crate models progress as immutable events carrying lifecycle phase,
-//! optional stage information, counters, and timing.
+//! Progress reporter trait and built-in implementations.
 
-#![deny(missing_docs)]
-#![deny(unsafe_op_in_unsafe_fn)]
+mod impls;
+mod progress_reporter;
 
-pub mod model;
-pub mod reporter;
+pub use impls::{
+    LoggerProgressReporter,
+    NoOpProgressReporter,
+    WriterProgressReporter,
+};
+pub use progress_reporter::ProgressReporter;

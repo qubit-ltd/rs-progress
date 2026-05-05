@@ -10,4 +10,5 @@
 //! Integration tests for `qubit-progress`.
 
 mod docs;
-mod progress;
+mod model;
+mod reporter;
