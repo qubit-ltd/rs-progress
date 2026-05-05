@@ -10,11 +10,7 @@
 use crate::ProgressEvent;
 
 /// Receives immutable progress events.
-///
-/// # Type Parameters
-///
-/// * `C` - Caller-defined event context type.
-pub trait ProgressReporter<C>: Send + Sync {
+pub trait ProgressReporter: Send + Sync {
     /// Reports one progress event.
     ///
     /// # Parameters
@@ -25,5 +21,5 @@ pub trait ProgressReporter<C>: Send + Sync {
     ///
     /// Reporter implementations may panic if their output sink fails. Callers
     /// decide whether reporter panics are propagated or isolated.
-    fn report(&self, event: &ProgressEvent<C>);
+    fn report(&self, event: &ProgressEvent);
 }

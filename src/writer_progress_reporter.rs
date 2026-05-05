@@ -69,7 +69,7 @@ impl<W> WriterProgressReporter<W> {
     }
 }
 
-impl<C, W> ProgressReporter<C> for WriterProgressReporter<W>
+impl<W> ProgressReporter for WriterProgressReporter<W>
 where
     W: Write + Send,
 {
@@ -83,7 +83,7 @@ where
     ///
     /// Panics when the writer mutex is poisoned or writing to the configured
     /// writer fails.
-    fn report(&self, event: &ProgressEvent<C>) {
+    fn report(&self, event: &ProgressEvent) {
         let mut writer = self
             .writer
             .lock()
@@ -101,7 +101,7 @@ where
 /// # Returns
 ///
 /// A compact human-readable line.
-fn format_event<C>(event: &ProgressEvent<C>) -> String {
+fn format_event(event: &ProgressEvent) -> String {
     let counters = event.counters();
     let progress = match (counters.completed_count(), counters.total_count()) {
         (completed, Some(total)) => format!(

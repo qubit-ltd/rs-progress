@@ -16,11 +16,11 @@ use crate::{
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct NoOpProgressReporter;
 
-impl<C> ProgressReporter<C> for NoOpProgressReporter {
+impl ProgressReporter for NoOpProgressReporter {
     /// Ignores one progress event.
     ///
     /// # Parameters
     ///
     /// * `event` - Event accepted and ignored.
-    fn report(&self, _event: &ProgressEvent<C>) {}
+    fn report(&self, _event: &ProgressEvent) {}
 }

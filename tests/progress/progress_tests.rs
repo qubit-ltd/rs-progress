@@ -23,6 +23,7 @@ use qubit_progress::{
     NoOpProgressReporter,
     ProgressCounters,
     ProgressEvent,
+    ProgressEventBuilder,
     ProgressPhase,
     ProgressReporter,
     ProgressStage,
@@ -91,28 +92,27 @@ fn test_progress_stage_accessors_return_configured_values() {
 }
 
 #[test]
-fn test_progress_event_carries_phase_stage_timing_and_context() {
+fn test_progress_event_carries_phase_stage_counters_and_timing() {
     let stage = ProgressStage::new("copy", "Copy files")
         .with_index(1)
         .with_total_stages(4)
         .with_weight(0.5);
     let counters = ProgressCounters::new(Some(8)).with_completed_count(2);
-    let event = ProgressEvent::running(counters, Duration::from_secs(3), "copying")
-        .with_stage(stage.clone());
+    let event = ProgressEvent::running(counters, Duration::from_secs(3)).with_stage(stage.clone());
 
     assert_eq!(event.phase(), ProgressPhase::Running);
     assert_eq!(event.stage(), Some(&stage));
+    assert_eq!(event.counters(), counters);
     assert_eq!(event.elapsed(), Duration::from_secs(3));
-    assert_eq!(event.context(), &"copying");
 }
 
 #[test]
 fn test_progress_event_constructors_cover_terminal_phases() {
     let counters = ProgressCounters::new(None).with_completed_count(5);
-    let started = ProgressEvent::started(counters, Duration::ZERO, "started");
-    let finished = ProgressEvent::finished(counters, Duration::from_secs(1), "finished");
-    let failed = ProgressEvent::failed(counters, Duration::from_secs(2), "failed");
-    let canceled = ProgressEvent::canceled(counters, Duration::from_secs(3), "canceled");
+    let started = ProgressEvent::started(counters, Duration::ZERO);
+    let finished = ProgressEvent::finished(counters, Duration::from_secs(1));
+    let failed = ProgressEvent::failed(counters, Duration::from_secs(2));
+    let canceled = ProgressEvent::canceled(counters, Duration::from_secs(3));
 
     assert_eq!(started.phase(), ProgressPhase::Started);
     assert_eq!(started.stage(), None);
@@ -120,13 +120,108 @@ fn test_progress_event_constructors_cover_terminal_phases() {
     assert_eq!(finished.phase(), ProgressPhase::Finished);
     assert_eq!(failed.phase(), ProgressPhase::Failed);
     assert_eq!(canceled.phase(), ProgressPhase::Canceled);
-    assert_eq!(canceled.into_context(), "canceled");
+}
+
+#[test]
+fn test_progress_event_builder_uses_running_unknown_total_defaults() {
+    let event = ProgressEvent::builder().build();
+
+    assert_eq!(event.phase(), ProgressPhase::Running);
+    assert_eq!(event.stage(), None);
+    assert_eq!(event.counters(), ProgressCounters::new(None));
+    assert_eq!(event.elapsed(), Duration::ZERO);
+}
+
+#[test]
+fn test_progress_event_builder_default_matches_new() {
+    assert_eq!(ProgressEventBuilder::default(), ProgressEventBuilder::new());
+}
+
+#[test]
+fn test_progress_event_builder_configures_counts_stage_and_elapsed() {
+    let stage = ProgressStage::new("copy", "Copy files")
+        .with_index(1)
+        .with_total_stages(4)
+        .with_weight(0.5);
+    let event = ProgressEvent::builder()
+        .started()
+        .running()
+        .total(10)
+        .completed(4)
+        .active(1)
+        .succeeded(3)
+        .failed_count(1)
+        .stage(stage.clone())
+        .elapsed(Duration::from_secs(5))
+        .build();
+
+    assert_eq!(event.phase(), ProgressPhase::Running);
+    assert_eq!(event.stage(), Some(&stage));
+    assert_eq!(event.counters().total_count(), Some(10));
+    assert_eq!(event.counters().completed_count(), 4);
+    assert_eq!(event.counters().active_count(), 1);
+    assert_eq!(event.counters().succeeded_count(), 3);
+    assert_eq!(event.counters().failed_count(), 1);
+    assert_eq!(event.elapsed(), Duration::from_secs(5));
+}
+
+#[test]
+fn test_progress_event_builder_accepts_prebuilt_counters_and_named_stage() {
+    let counters = ProgressCounters::new(Some(8))
+        .with_completed_count(6)
+        .with_failed_count(2);
+    let event = ProgressEventBuilder::new()
+        .finished()
+        .counters(counters)
+        .unknown_total()
+        .stage_named("verify", "Verify installation")
+        .build();
+
+    assert_eq!(event.phase(), ProgressPhase::Finished);
+    assert_eq!(event.counters().total_count(), None);
+    assert_eq!(event.counters().completed_count(), 6);
+    assert_eq!(event.counters().failed_count(), 2);
+
+    let stage = event.stage().expect("builder should configure named stage");
+    assert_eq!(stage.id(), "verify");
+    assert_eq!(stage.name(), "Verify installation");
+}
+
+#[test]
+fn test_progress_event_phase_builders_initialize_expected_phase() {
+    assert_eq!(
+        ProgressEvent::started_builder().build().phase(),
+        ProgressPhase::Started
+    );
+    assert_eq!(
+        ProgressEvent::running_builder().build().phase(),
+        ProgressPhase::Running
+    );
+    assert_eq!(
+        ProgressEvent::finished_builder().build().phase(),
+        ProgressPhase::Finished
+    );
+    assert_eq!(
+        ProgressEvent::failed_builder().build().phase(),
+        ProgressPhase::Failed
+    );
+    assert_eq!(
+        ProgressEvent::canceled_builder().build().phase(),
+        ProgressPhase::Canceled
+    );
+    assert_eq!(
+        ProgressEvent::builder()
+            .phase(ProgressPhase::Canceled)
+            .build()
+            .phase(),
+        ProgressPhase::Canceled
+    );
 }
 
 #[test]
 fn test_no_op_progress_reporter_accepts_events() {
     let reporter = NoOpProgressReporter;
-    let event = ProgressEvent::started(ProgressCounters::new(Some(1)), Duration::ZERO, ());
+    let event = ProgressEvent::started(ProgressCounters::new(Some(1)), Duration::ZERO);
 
     reporter.report(&event);
 }
@@ -140,7 +235,6 @@ fn test_writer_progress_reporter_writes_human_readable_event() {
             .with_active_count(1)
             .with_completed_count(2),
         Duration::from_millis(1500),
-        (),
     )
     .with_stage(ProgressStage::new("install", "Install package"));
 
@@ -167,17 +261,14 @@ fn test_writer_progress_reporter_handles_unknown_total_and_duration_formats() {
     reporter.report(&ProgressEvent::running(
         ProgressCounters::new(None).with_completed_count(7),
         Duration::from_millis(0),
-        (),
     ));
     reporter.report(&ProgressEvent::finished(
         ProgressCounters::new(Some(7)).with_completed_count(7),
         Duration::from_secs(61),
-        (),
     ));
     reporter.report(&ProgressEvent::failed(
         ProgressCounters::new(Some(7)).with_completed_count(6),
         Duration::from_secs(3_661),
-        (),
     ));
 
     let bytes = output
@@ -195,7 +286,6 @@ fn test_writer_progress_reporter_handles_unknown_total_and_duration_formats() {
     owned_reporter.report(&ProgressEvent::canceled(
         ProgressCounters::new(Some(1)),
         Duration::from_millis(5),
-        (),
     ));
 }
 
@@ -212,13 +302,11 @@ fn test_logger_progress_reporter_accessors_and_report_paths() {
     reporter.report(&ProgressEvent::running(
         ProgressCounters::new(None).with_completed_count(3),
         Duration::from_secs(1),
-        (),
     ));
     reporter.report(
         &ProgressEvent::finished(
             ProgressCounters::new(Some(3)).with_completed_count(3),
             Duration::from_secs(2),
-            (),
         )
         .with_stage(ProgressStage::new("cleanup", "Cleanup")),
     );

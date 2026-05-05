@@ -13,15 +13,12 @@ use crate::{
     ProgressCounters,
     ProgressPhase,
     ProgressStage,
+    progress_event_builder::ProgressEventBuilder,
 };
 
 /// Immutable progress event delivered to reporters.
-///
-/// # Type Parameters
-///
-/// * `C` - Caller-defined context attached to the progress event.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ProgressEvent<C> {
+pub struct ProgressEvent {
     /// Lifecycle phase of the reported operation.
     phase: ProgressPhase,
     /// Optional current stage.
@@ -30,11 +27,64 @@ pub struct ProgressEvent<C> {
     counters: ProgressCounters,
     /// Monotonic elapsed duration.
     elapsed: Duration,
-    /// Caller-defined context.
-    context: C,
 }
 
-impl<C> ProgressEvent<C> {
+impl ProgressEvent {
+    /// Creates a progress event builder.
+    ///
+    /// # Returns
+    ///
+    /// A builder initialized as running, unknown-total progress with zeroed
+    /// counters and zero elapsed time.
+    pub const fn builder() -> ProgressEventBuilder {
+        ProgressEventBuilder::new()
+    }
+
+    /// Creates a started progress event builder.
+    ///
+    /// # Returns
+    ///
+    /// A builder initialized with [`ProgressPhase::Started`].
+    pub const fn started_builder() -> ProgressEventBuilder {
+        ProgressEventBuilder::new().started()
+    }
+
+    /// Creates a running progress event builder.
+    ///
+    /// # Returns
+    ///
+    /// A builder initialized with [`ProgressPhase::Running`].
+    pub const fn running_builder() -> ProgressEventBuilder {
+        ProgressEventBuilder::new().running()
+    }
+
+    /// Creates a finished progress event builder.
+    ///
+    /// # Returns
+    ///
+    /// A builder initialized with [`ProgressPhase::Finished`].
+    pub const fn finished_builder() -> ProgressEventBuilder {
+        ProgressEventBuilder::new().finished()
+    }
+
+    /// Creates a failed progress event builder.
+    ///
+    /// # Returns
+    ///
+    /// A builder initialized with [`ProgressPhase::Failed`].
+    pub const fn failed_builder() -> ProgressEventBuilder {
+        ProgressEventBuilder::new().failed()
+    }
+
+    /// Creates a canceled progress event builder.
+    ///
+    /// # Returns
+    ///
+    /// A builder initialized with [`ProgressPhase::Canceled`].
+    pub const fn canceled_builder() -> ProgressEventBuilder {
+        ProgressEventBuilder::new().canceled()
+    }
+
     /// Creates a progress event.
     ///
     /// # Parameters
@@ -42,23 +92,16 @@ impl<C> ProgressEvent<C> {
     /// * `phase` - Lifecycle phase of the operation.
     /// * `counters` - Generic progress counters.
     /// * `elapsed` - Monotonic elapsed duration.
-    /// * `context` - Caller-defined context carried by the event.
     ///
     /// # Returns
     ///
     /// A progress event with no stage.
-    pub const fn new(
-        phase: ProgressPhase,
-        counters: ProgressCounters,
-        elapsed: Duration,
-        context: C,
-    ) -> Self {
+    pub const fn new(phase: ProgressPhase, counters: ProgressCounters, elapsed: Duration) -> Self {
         Self {
             phase,
             stage: None,
             counters,
             elapsed,
-            context,
         }
     }
 
@@ -68,13 +111,12 @@ impl<C> ProgressEvent<C> {
     ///
     /// * `counters` - Initial progress counters.
     /// * `elapsed` - Elapsed duration at start, usually zero.
-    /// * `context` - Caller-defined context.
     ///
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Started`].
-    pub const fn started(counters: ProgressCounters, elapsed: Duration, context: C) -> Self {
-        Self::new(ProgressPhase::Started, counters, elapsed, context)
+    pub const fn started(counters: ProgressCounters, elapsed: Duration) -> Self {
+        Self::new(ProgressPhase::Started, counters, elapsed)
     }
 
     /// Creates a running progress event.
@@ -83,13 +125,12 @@ impl<C> ProgressEvent<C> {
     ///
     /// * `counters` - Current progress counters.
     /// * `elapsed` - Elapsed duration since operation start.
-    /// * `context` - Caller-defined context.
     ///
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Running`].
-    pub const fn running(counters: ProgressCounters, elapsed: Duration, context: C) -> Self {
-        Self::new(ProgressPhase::Running, counters, elapsed, context)
+    pub const fn running(counters: ProgressCounters, elapsed: Duration) -> Self {
+        Self::new(ProgressPhase::Running, counters, elapsed)
     }
 
     /// Creates a finished progress event.
@@ -98,13 +139,12 @@ impl<C> ProgressEvent<C> {
     ///
     /// * `counters` - Final progress counters.
     /// * `elapsed` - Total elapsed duration.
-    /// * `context` - Caller-defined context.
     ///
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Finished`].
-    pub const fn finished(counters: ProgressCounters, elapsed: Duration, context: C) -> Self {
-        Self::new(ProgressPhase::Finished, counters, elapsed, context)
+    pub const fn finished(counters: ProgressCounters, elapsed: Duration) -> Self {
+        Self::new(ProgressPhase::Finished, counters, elapsed)
     }
 
     /// Creates a failed progress event.
@@ -113,13 +153,12 @@ impl<C> ProgressEvent<C> {
     ///
     /// * `counters` - Final or current progress counters.
     /// * `elapsed` - Elapsed duration at failure.
-    /// * `context` - Caller-defined context.
     ///
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Failed`].
-    pub const fn failed(counters: ProgressCounters, elapsed: Duration, context: C) -> Self {
-        Self::new(ProgressPhase::Failed, counters, elapsed, context)
+    pub const fn failed(counters: ProgressCounters, elapsed: Duration) -> Self {
+        Self::new(ProgressPhase::Failed, counters, elapsed)
     }
 
     /// Creates a canceled progress event.
@@ -128,13 +167,12 @@ impl<C> ProgressEvent<C> {
     ///
     /// * `counters` - Final or current progress counters.
     /// * `elapsed` - Elapsed duration at cancellation.
-    /// * `context` - Caller-defined context.
     ///
     /// # Returns
     ///
     /// A progress event with [`ProgressPhase::Canceled`].
-    pub const fn canceled(counters: ProgressCounters, elapsed: Duration, context: C) -> Self {
-        Self::new(ProgressPhase::Canceled, counters, elapsed, context)
+    pub const fn canceled(counters: ProgressCounters, elapsed: Duration) -> Self {
+        Self::new(ProgressPhase::Canceled, counters, elapsed)
     }
 
     /// Returns a copy configured with the current stage.
@@ -186,23 +224,5 @@ impl<C> ProgressEvent<C> {
     /// The monotonic elapsed duration carried by this event.
     pub const fn elapsed(&self) -> Duration {
         self.elapsed
-    }
-
-    /// Returns the caller-defined context.
-    ///
-    /// # Returns
-    ///
-    /// A shared reference to this event's context.
-    pub const fn context(&self) -> &C {
-        &self.context
-    }
-
-    /// Consumes this event and returns its context.
-    ///
-    /// # Returns
-    ///
-    /// The caller-defined context carried by this event.
-    pub fn into_context(self) -> C {
-        self.context
     }
 }

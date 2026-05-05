@@ -91,13 +91,13 @@ impl Default for LoggerProgressReporter {
     }
 }
 
-impl<C> ProgressReporter<C> for LoggerProgressReporter {
+impl ProgressReporter for LoggerProgressReporter {
     /// Logs one progress event.
     ///
     /// # Parameters
     ///
     /// * `event` - Progress event to log.
-    fn report(&self, event: &ProgressEvent<C>) {
+    fn report(&self, event: &ProgressEvent) {
         self.log_line(&format_event(event));
     }
 }
@@ -111,7 +111,7 @@ impl<C> ProgressReporter<C> for LoggerProgressReporter {
 /// # Returns
 ///
 /// A single-line log message.
-fn format_event<C>(event: &ProgressEvent<C>) -> String {
+fn format_event(event: &ProgressEvent) -> String {
     let counters = event.counters();
     let progress = match counters.progress_percent() {
         Some(percent) => format!("{percent:.2}%"),

@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
 
-Generic progress reporting abstractions for the Qubit Rust libraries.
+Generic progress reporting abstractions for the Rust ecosystem.
 
 ## When to use this crate
 
@@ -34,15 +34,16 @@ Qubit Progress models progress as immutable events. A progress event carries:
 - `ProgressCounters`: generic total, completed, active, succeeded, and failed
   counters.
 - elapsed time as `std::time::Duration`.
-- caller-defined context for domain-specific details.
-- `ProgressReporter<C>`: trait for receiving typed progress events.
+- `ProgressEventBuilder`: fluent builder for constructing progress events
+  without manually assembling counters and stage metadata first.
+- `ProgressReporter`: trait for receiving progress events.
 - `NoOpProgressReporter`, `WriterProgressReporter`, and
   `LoggerProgressReporter`: reusable reporter implementations.
 
 Domain crates should keep their own domain state and expose progress by
-converting it into `ProgressEvent<C>` snapshots. For example, `qubit-batch` can
-attach a batch progress snapshot as the event context while still reusing the
-generic progress lifecycle and reporter plumbing.
+converting their state into `ProgressEvent` values. Domain-specific errors,
+logs, metrics, and traces should stay in their own mechanisms instead of being
+attached to progress events.
 
 ## Installation
 
@@ -57,22 +58,27 @@ qubit-progress = "0.1"
 use std::time::Duration;
 
 use qubit_progress::{
-    ProgressCounters,
     ProgressEvent,
     ProgressReporter,
-    ProgressStage,
     WriterProgressReporter,
 };
 
 let reporter = WriterProgressReporter::from_writer(Vec::<u8>::new());
-let counters = ProgressCounters::new(Some(4))
-    .with_completed_count(2)
-    .with_active_count(1);
-let event = ProgressEvent::running(counters, Duration::from_secs(2), ())
-    .with_stage(ProgressStage::new("copy", "Copy files"));
+let event = ProgressEvent::builder()
+    .running()
+    .total(4)
+    .completed(2)
+    .active(1)
+    .stage_named("copy", "Copy files")
+    .elapsed(Duration::from_secs(2))
+    .build();
 
 reporter.report(&event);
 ```
+
+The lower-level constructors remain available when a caller already has
+prebuilt counters or stage metadata, but the builder is the preferred entry
+point for ordinary reporting code.
 
 ## Multi-stage progress
 
@@ -84,7 +90,6 @@ or canceled depending on the event.
 use std::time::Duration;
 
 use qubit_progress::{
-    ProgressCounters,
     ProgressEvent,
     ProgressPhase,
     ProgressStage,
@@ -95,16 +100,16 @@ let stage = ProgressStage::new("verify", "Verify installation")
     .with_total_stages(5)
     .with_weight(0.2);
 
-let event = ProgressEvent::new(
-    ProgressPhase::Running,
-    ProgressCounters::new(Some(10)).with_completed_count(7),
-    Duration::from_secs(12),
-    "checking files",
-)
-.with_stage(stage);
+let event = ProgressEvent::builder()
+    .phase(ProgressPhase::Running)
+    .total(10)
+    .completed(7)
+    .elapsed(Duration::from_secs(12))
+    .stage(stage)
+    .build();
 
 assert_eq!(event.phase(), ProgressPhase::Running);
-assert_eq!(event.context(), &"checking files");
+assert_eq!(event.counters().completed_count(), 7);
 ```
 
 ## Counter semantics
@@ -135,8 +140,7 @@ terminal, append to a file, emit logs, update a UI bridge, or record events for
 tests. If a reporter panics, the caller decides whether to propagate or isolate
 that panic.
 
-`WriterProgressReporter` writes a compact human-readable line. It ignores the
-event context, so it can report any `ProgressEvent<C>`.
+`WriterProgressReporter` writes a compact human-readable line.
 
 `LoggerProgressReporter` emits through the `log` crate and can be configured
 with a target and level.
@@ -148,9 +152,10 @@ with a target and level.
   weight.
 - `ProgressCounters`: generic counters with remaining-count and percentage
   helpers.
-- `ProgressEvent<C>`: immutable event carrying phase, stage, counters, elapsed
-  time, and caller context.
-- `ProgressReporter<C>`: trait for receiving progress events.
+- `ProgressEvent`: immutable event carrying phase, stage, counters, and elapsed
+  time.
+- `ProgressEventBuilder`: fluent builder for event construction.
+- `ProgressReporter`: trait for receiving progress events.
 - `NoOpProgressReporter`: reporter that ignores events.
 - `WriterProgressReporter<W>`: writer-backed human-readable reporter.
 - `LoggerProgressReporter`: `log` crate-backed reporter.
@@ -161,6 +166,7 @@ with a target and level.
 - `src/progress_stage.rs`: multi-stage metadata.
 - `src/progress_counters.rs`: generic counter model.
 - `src/progress_event.rs`: immutable event type.
+- `src/progress_event_builder.rs`: fluent event builder.
 - `src/progress_reporter.rs`: reporter trait.
 - `src/writer_progress_reporter.rs`: writer-backed reporter.
 - `src/logger_progress_reporter.rs`: logger-backed reporter.
