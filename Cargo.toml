@@ -1,0 +1,28 @@
+[package]
+name = "qubit-progress"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+authors = ["Haixing Hu <starfish.hu@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/qubit-ltd/rs-progress"
+description = "Generic progress reporting abstractions for Qubit Rust libraries"
+homepage = "https://github.com/qubit-ltd/rs-progress"
+documentation = "https://docs.rs/qubit-progress"
+readme = "README.md"
+keywords = ["progress", "reporting", "status", "stage"]
+categories = ["development-tools"]
+exclude = [
+    "coverage.sh",
+    "check-coverage-thresholds.sh",
+    ".circleci/*",
+    "align-ci.sh",
+    "ci-check.sh",
+]
+
+[lib]
+name = "qubit_progress"
+doctest = true
+
+[dependencies]
+log = "0.4"
