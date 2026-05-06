@@ -7,11 +7,7 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for reporter abstractions and built-in implementations.
+//! Tests for concrete built-in reporter implementations.
 
-mod format_duration_tests;
-mod impls;
-mod logger_progress_reporter_tests;
-mod no_op_progress_reporter_tests;
-mod progress_reporter_tests;
-mod writer_progress_reporter_tests;
+mod stderr_progress_reporter_tests;
+mod stdout_progress_reporter_tests;
