@@ -44,7 +44,7 @@ Qubit Progress 将进度建模为不可变事件。一个进度事件包含：
 
 ```toml
 [dependencies]
-qubit-progress = "0.1"
+qubit-progress = "0.2"
 ```
 
 ## 快速开始

@@ -50,6 +50,27 @@ fn test_progress_event_constructors_cover_terminal_phases() {
 }
 
 #[test]
+fn test_progress_event_from_phase_creates_matching_event() {
+    let counters = ProgressCounters::new(Some(3)).with_completed_count(1);
+    let elapsed = Duration::from_millis(125);
+
+    for phase in [
+        ProgressPhase::Started,
+        ProgressPhase::Running,
+        ProgressPhase::Finished,
+        ProgressPhase::Failed,
+        ProgressPhase::Canceled,
+    ] {
+        let event = ProgressEvent::from_phase(phase, counters, elapsed);
+
+        assert_eq!(event.phase(), phase);
+        assert_eq!(event.stage(), None);
+        assert_eq!(event.counters(), counters);
+        assert_eq!(event.elapsed(), elapsed);
+    }
+}
+
+#[test]
 fn test_progress_event_builder_and_new_constructor() {
     let built = ProgressEvent::builder()
         .phase(ProgressPhase::Finished)

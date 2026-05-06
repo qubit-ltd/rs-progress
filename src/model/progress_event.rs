@@ -160,6 +160,32 @@ impl ProgressEvent {
         }
     }
 
+    /// Creates a progress event for the supplied lifecycle phase.
+    ///
+    /// # Parameters
+    ///
+    /// * `phase` - Lifecycle phase for the event.
+    /// * `counters` - Progress counters carried by the event.
+    /// * `elapsed` - Elapsed duration carried by the event.
+    ///
+    /// # Returns
+    ///
+    /// A progress event with `phase`, `counters`, and `elapsed`.
+    #[inline]
+    pub const fn from_phase(
+        phase: ProgressPhase,
+        counters: ProgressCounters,
+        elapsed: Duration,
+    ) -> Self {
+        match phase {
+            ProgressPhase::Started => Self::started(counters, elapsed),
+            ProgressPhase::Running => Self::running(counters, elapsed),
+            ProgressPhase::Finished => Self::finished(counters, elapsed),
+            ProgressPhase::Failed => Self::failed(counters, elapsed),
+            ProgressPhase::Canceled => Self::canceled(counters, elapsed),
+        }
+    }
+
     /// Returns a copy configured with the current stage.
     ///
     /// # Parameters
