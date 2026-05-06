@@ -105,10 +105,13 @@ let mut progress = Progress::new(&reporter, Duration::from_secs(5));
 
 progress.report_started(ProgressCounters::new(Some(3)));
 
-let counters = ProgressCounters::new(Some(3))
-    .with_completed_count(1)
-    .with_active_count(1);
-progress.report_running_if_due(counters);
+let mut completed = 0;
+for _task in 0..3 {
+    // ... execute one unit of work ...
+    completed += 1;
+    let counters = ProgressCounters::new(Some(3)).with_completed_count(completed);
+    progress.report_running_if_due(counters);
+}
 
 let final_counters = ProgressCounters::new(Some(3))
     .with_completed_count(3)
@@ -120,6 +123,9 @@ progress.report_finished(final_counters);
 method does not block waiting for the next interval: it returns `false`
 immediately when not due, and when due it synchronously calls the reporter and
 returns `true` (so blocking behavior depends on the reporter implementation).
+A practical pattern is calling it once after each completed unit of work:
+reporting happens automatically when the interval is due, and otherwise the
+call is effectively a no-op.
 Use `report_running` when an external scheduler or background thread already
 controls the reporting interval.
 

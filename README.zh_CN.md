@@ -94,10 +94,13 @@ let mut progress = Progress::new(&reporter, Duration::from_secs(5));
 
 progress.report_started(ProgressCounters::new(Some(3)));
 
-let counters = ProgressCounters::new(Some(3))
-    .with_completed_count(1)
-    .with_active_count(1);
-progress.report_running_if_due(counters);
+let mut completed = 0;
+for _task in 0..3 {
+    // ... 执行一个工作单元 ...
+    completed += 1;
+    let counters = ProgressCounters::new(Some(3)).with_completed_count(completed);
+    progress.report_running_if_due(counters);
+}
 
 let final_counters = ProgressCounters::new(Some(3))
     .with_completed_count(3)
@@ -107,8 +110,9 @@ progress.report_finished(final_counters);
 
 `report_running_if_due` 只有在真正发出事件时才返回 `true`。该方法不会阻塞等待下一次
 汇报周期：未到期时会立即返回 `false`，到期时会同步调用 reporter 并返回 `true`（因此
-是否阻塞取决于 reporter 本身的实现）。如果外部调度器或后台线程已经控制了汇报间隔，
-可以直接调用 `report_running`。
+是否阻塞取决于 reporter 本身的实现）。实战中常见写法是：每完成一个工作单元就调用
+一次；到汇报间隔时会自动发出事件，未到间隔时这次调用基本没有效果。如果外部调度器
+或后台线程已经控制了汇报间隔，可以直接调用 `report_running`。
 
 ## 阶段化进度
 
