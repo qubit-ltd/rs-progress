@@ -26,7 +26,7 @@ the event model and basic reporter implementations.
 
 ## Overview
 
-Qubit Progress models progress as immutable events. A progress event carries:
+Qubit Progress models progress as immutable events. A progress event itself carries:
 
 - `ProgressPhase`: lifecycle state such as started, running, finished, failed,
   or canceled.
@@ -34,12 +34,15 @@ Qubit Progress models progress as immutable events. A progress event carries:
 - `ProgressCounters`: generic total, completed, active, succeeded, and failed
   counters.
 - elapsed time as `std::time::Duration`.
+In addition, this crate provides:
+
 - `ProgressEventBuilder`: fluent builder for constructing progress events
   without manually assembling counters and stage metadata first.
 - `ProgressReporter`: trait for receiving progress events.
-- `ProgressRun`: helper for reporting a single operation's lifecycle with
+- `Progress`: helper for reporting a single operation's lifecycle with
   elapsed time and interval-based running updates.
-- `NoOpProgressReporter`, `WriterProgressReporter`, and
+- `NoOpProgressReporter`, `StdoutProgressReporter`,
+  `StderrProgressReporter`, `WriterProgressReporter`, and
   `LoggerProgressReporter`: reusable reporter implementations.
 
 Domain crates should keep their own domain state and expose progress by
@@ -51,7 +54,7 @@ attached to progress events.
 
 ```toml
 [dependencies]
-qubit-progress = "0.2"
+qubit-progress = "0.3"
 ```
 
 ## Quick Start
@@ -65,7 +68,7 @@ use qubit_progress::{
     WriterProgressReporter,
 };
 
-let reporter = WriterProgressReporter::from_writer(Vec::<u8>::new());
+let reporter = WriterProgressReporter::from_writer(std::io::stdout());
 let event = ProgressEvent::builder()
     .running()
     .total(4)
@@ -84,7 +87,7 @@ point for ordinary reporting code.
 
 ## Reporting an operation lifecycle
 
-Use `ProgressRun` when one operation needs a started event, periodic running
+Use `Progress` when one operation needs a started event, periodic running
 events, and a terminal event. The run tracks elapsed time and throttles
 `running` callbacks, while your domain code owns the counters.
 
@@ -92,13 +95,13 @@ events, and a terminal event. The run tracks elapsed time and throttles
 use std::time::Duration;
 
 use qubit_progress::{
-    NoOpProgressReporter,
     ProgressCounters,
-    ProgressRun,
+    Progress,
+    WriterProgressReporter,
 };
 
-let reporter = NoOpProgressReporter;
-let mut progress = ProgressRun::new(&reporter, Duration::from_secs(5));
+let reporter = WriterProgressReporter::from_writer(std::io::stdout());
+let mut progress = Progress::new(&reporter, Duration::from_secs(5));
 
 progress.report_started(ProgressCounters::new(Some(3)));
 
@@ -113,8 +116,11 @@ let final_counters = ProgressCounters::new(Some(3))
 progress.report_finished(final_counters);
 ```
 
-`report_running_if_due` returns `true` only when it emitted an event. Use
-`report_running` when an external scheduler or background thread already
+`report_running_if_due` returns `true` only when it emitted an event. The
+method does not block waiting for the next interval: it returns `false`
+immediately when not due, and when due it synchronously calls the reporter and
+returns `true` (so blocking behavior depends on the reporter implementation).
+Use `report_running` when an external scheduler or background thread already
 controls the reporting interval.
 
 ## Multi-stage progress
@@ -179,6 +185,10 @@ that panic.
 
 `WriterProgressReporter` writes a compact human-readable line.
 
+`StdoutProgressReporter` and `StderrProgressReporter` are convenience
+reporters built on top of `WriterProgressReporter` for standard output and
+standard error.
+
 `LoggerProgressReporter` emits through the `log` crate and can be configured
 with a target and level.
 
@@ -193,8 +203,10 @@ with a target and level.
   time.
 - `ProgressEventBuilder`: fluent builder for event construction.
 - `ProgressReporter`: trait for receiving progress events.
-- `ProgressRun`: lifecycle helper for one progress-producing operation.
+- `Progress`: lifecycle helper for one progress-producing operation.
 - `NoOpProgressReporter`: reporter that ignores events.
+- `StdoutProgressReporter`: stdout convenience reporter.
+- `StderrProgressReporter`: stderr convenience reporter.
 - `WriterProgressReporter<W>`: writer-backed human-readable reporter.
 - `LoggerProgressReporter`: `log` crate-backed reporter.
 

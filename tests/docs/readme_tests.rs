@@ -18,14 +18,14 @@ const README_ZH: &str = include_str!("../../README.zh_CN.md");
 fn test_readmes_describe_qubit_progress() {
     assert!(README_EN.contains("Qubit Progress"));
     assert!(README_EN.contains("ProgressEvent"));
-    assert!(README_EN.contains("ProgressRun"));
+    assert!(README_EN.contains("Progress"));
     assert!(README_EN.contains("ProgressStage"));
     assert!(README_EN.contains("qubit-progress"));
     assert!(!README_EN.contains("Project Layout"));
 
     assert!(README_ZH.contains("Qubit Progress"));
     assert!(README_ZH.contains("ProgressEvent"));
-    assert!(README_ZH.contains("ProgressRun"));
+    assert!(README_ZH.contains("Progress"));
     assert!(README_ZH.contains("ProgressStage"));
     assert!(README_ZH.contains("qubit-progress"));
     assert!(!README_ZH.contains("项目结构"));
