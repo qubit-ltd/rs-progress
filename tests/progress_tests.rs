@@ -7,7 +7,7 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for `ProgressRun`.
+//! Tests for `Progress`.
 
 use std::{
     sync::Mutex,
@@ -18,7 +18,7 @@ use std::{
 };
 
 use qubit_progress::{
-    ProgressRun,
+    Progress,
     model::{
         ProgressCounters,
         ProgressEvent,
@@ -52,10 +52,10 @@ impl ProgressReporter for RecordingReporter {
 }
 
 #[test]
-fn test_progress_run_reports_lifecycle_events() {
+fn test_progress_reports_lifecycle_events() {
     let reporter = RecordingReporter::default();
     let started_at = Instant::now() - Duration::from_millis(25);
-    let run = ProgressRun::from_start(&reporter, Duration::from_secs(5), started_at);
+    let run = Progress::from_start(&reporter, Duration::from_secs(5), started_at);
     let counters = ProgressCounters::new(Some(4));
 
     run.report_started(counters);
@@ -77,16 +77,16 @@ fn test_progress_run_reports_lifecycle_events() {
 }
 
 #[test]
-fn test_progress_run_report_running_if_due_respects_interval() {
+fn test_progress_report_running_if_due_respects_interval() {
     let reporter = RecordingReporter::default();
     let not_due_start = Instant::now();
-    let mut not_due = ProgressRun::from_start(&reporter, Duration::from_secs(60), not_due_start);
+    let mut not_due = Progress::from_start(&reporter, Duration::from_secs(60), not_due_start);
 
     assert!(!not_due.report_running_if_due(ProgressCounters::new(Some(2))));
     assert!(reporter.events().is_empty());
 
     let due_start = Instant::now() - Duration::from_millis(10);
-    let mut due = ProgressRun::from_start(&reporter, Duration::from_millis(1), due_start);
+    let mut due = Progress::from_start(&reporter, Duration::from_millis(1), due_start);
 
     assert!(due.report_running_if_due(ProgressCounters::new(Some(2)).with_completed_count(1)));
     let events = reporter.events();
@@ -96,10 +96,10 @@ fn test_progress_run_report_running_if_due_respects_interval() {
 }
 
 #[test]
-fn test_progress_run_attaches_stage_to_reported_events() {
+fn test_progress_attaches_stage_to_reported_events() {
     let reporter = RecordingReporter::default();
     let stage = ProgressStage::new("copy", "Copy files");
-    let run = ProgressRun::new(&reporter, Duration::from_secs(5)).with_stage(stage.clone());
+    let run = Progress::new(&reporter, Duration::from_secs(5)).with_stage(stage.clone());
 
     run.report_failed(ProgressCounters::new(Some(1)).with_failed_count(1));
 
@@ -110,11 +110,11 @@ fn test_progress_run_attaches_stage_to_reported_events() {
 }
 
 #[test]
-fn test_progress_run_accessors_and_stage_removal() {
+fn test_progress_accessors_and_stage_removal() {
     let reporter = RecordingReporter::default();
     let started_at = Instant::now() - Duration::from_millis(5);
     let stage = ProgressStage::new("load", "Load data");
-    let run = ProgressRun::from_start(&reporter, Duration::from_millis(250), started_at)
+    let run = Progress::from_start(&reporter, Duration::from_millis(250), started_at)
         .with_stage(stage)
         .without_stage();
 
@@ -133,9 +133,9 @@ fn test_progress_run_accessors_and_stage_removal() {
 }
 
 #[test]
-fn test_progress_run_handles_overflowed_next_running_deadline() {
+fn test_progress_handles_overflowed_next_running_deadline() {
     let reporter = RecordingReporter::default();
-    let mut run = ProgressRun::from_start(&reporter, Duration::MAX, Instant::now());
+    let mut run = Progress::from_start(&reporter, Duration::MAX, Instant::now());
 
     assert!(run.report_running_if_due(ProgressCounters::new(Some(1))));
 
@@ -145,9 +145,9 @@ fn test_progress_run_handles_overflowed_next_running_deadline() {
 }
 
 #[test]
-fn test_progress_run_is_reexported_from_crate_root() {
+fn test_progress_is_reexported_from_crate_root() {
     let reporter = RecordingReporter::default();
-    let run: qubit_progress::ProgressRun<'_> = ProgressRun::new(&reporter, Duration::from_secs(1));
+    let run: qubit_progress::Progress<'_> = Progress::new(&reporter, Duration::from_secs(1));
 
     assert_eq!(run.report_interval(), Duration::from_secs(1));
 }

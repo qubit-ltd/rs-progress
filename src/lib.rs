@@ -16,8 +16,9 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod model;
+/// Lifecycle helper for one progress-producing operation.
+pub mod progress;
 pub mod reporter;
-pub mod runtime;
 
 pub use model::{
     ProgressCounters,
@@ -26,10 +27,12 @@ pub use model::{
     ProgressPhase,
     ProgressStage,
 };
+pub use progress::Progress;
 pub use reporter::{
     LoggerProgressReporter,
     NoOpProgressReporter,
     ProgressReporter,
+    StderrProgressReporter,
+    StdoutProgressReporter,
     WriterProgressReporter,
 };
-pub use runtime::ProgressRun;

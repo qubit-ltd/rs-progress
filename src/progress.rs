@@ -24,7 +24,7 @@ use crate::{
 
 /// Tracks one progress-producing operation and reports lifecycle events.
 ///
-/// `ProgressRun` owns no operation-specific counters. Callers keep their own
+/// `Progress` owns no operation-specific counters. Callers keep their own
 /// domain state and pass freshly built [`ProgressCounters`] when reporting.
 /// The run only manages elapsed time, periodic running-event throttling,
 /// optional stage metadata, and forwarding immutable events to a reporter.
@@ -35,13 +35,13 @@ use crate::{
 /// use std::time::Duration;
 ///
 /// use qubit_progress::{
-///     NoOpProgressReporter,
 ///     ProgressCounters,
-///     ProgressRun,
+///     Progress,
+///     WriterProgressReporter,
 /// };
 ///
-/// let reporter = NoOpProgressReporter;
-/// let mut progress = ProgressRun::new(&reporter, Duration::from_secs(5));
+/// let reporter = WriterProgressReporter::from_writer(std::io::stdout());
+/// let mut progress = Progress::new(&reporter, Duration::from_secs(5));
 ///
 /// progress.report_started(ProgressCounters::new(Some(2)));
 ///
@@ -55,7 +55,7 @@ use crate::{
 ///     .with_succeeded_count(2);
 /// progress.report_finished(finished);
 /// ```
-pub struct ProgressRun<'a> {
+pub struct Progress<'a> {
     /// Reporter receiving lifecycle callbacks for this run.
     reporter: &'a dyn ProgressReporter,
     /// Monotonic start time used to compute elapsed durations.
@@ -68,7 +68,7 @@ pub struct ProgressRun<'a> {
     stage: Option<ProgressStage>,
 }
 
-impl<'a> ProgressRun<'a> {
+impl<'a> Progress<'a> {
     /// Creates a progress run starting at the current instant.
     ///
     /// # Parameters
@@ -174,6 +174,11 @@ impl<'a> ProgressRun<'a> {
     ///
     /// `true` when a running event was emitted, or `false` when the next
     /// running-event deadline has not been reached.
+    ///
+    /// This method does not block waiting for the next deadline. It returns
+    /// immediately when not due, and when due it synchronously calls the
+    /// configured reporter. Any blocking behavior therefore comes from the
+    /// reporter implementation.
     ///
     /// # Panics
     ///
