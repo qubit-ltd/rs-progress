@@ -15,6 +15,8 @@ mod progress_reporter;
 pub use impls::{
     LoggerProgressReporter,
     NoOpProgressReporter,
+    StderrProgressReporter,
+    StdoutProgressReporter,
     WriterProgressReporter,
 };
 pub use progress_reporter::ProgressReporter;

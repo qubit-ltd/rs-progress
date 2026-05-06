@@ -12,8 +12,12 @@
 mod format;
 mod logger_progress_reporter;
 mod no_op_progress_reporter;
+mod stderr_progress_reporter;
+mod stdout_progress_reporter;
 mod writer_progress_reporter;
 
 pub use logger_progress_reporter::LoggerProgressReporter;
 pub use no_op_progress_reporter::NoOpProgressReporter;
+pub use stderr_progress_reporter::StderrProgressReporter;
+pub use stdout_progress_reporter::StdoutProgressReporter;
 pub use writer_progress_reporter::WriterProgressReporter;
