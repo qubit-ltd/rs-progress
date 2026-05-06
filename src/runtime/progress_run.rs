@@ -28,6 +28,33 @@ use crate::{
 /// domain state and pass freshly built [`ProgressCounters`] when reporting.
 /// The run only manages elapsed time, periodic running-event throttling,
 /// optional stage metadata, and forwarding immutable events to a reporter.
+///
+/// # Examples
+///
+/// ```
+/// use std::time::Duration;
+///
+/// use qubit_progress::{
+///     NoOpProgressReporter,
+///     ProgressCounters,
+///     ProgressRun,
+/// };
+///
+/// let reporter = NoOpProgressReporter;
+/// let mut progress = ProgressRun::new(&reporter, Duration::from_secs(5));
+///
+/// progress.report_started(ProgressCounters::new(Some(2)));
+///
+/// let running = ProgressCounters::new(Some(2))
+///     .with_completed_count(1)
+///     .with_active_count(1);
+/// let _reported = progress.report_running_if_due(running);
+///
+/// let finished = ProgressCounters::new(Some(2))
+///     .with_completed_count(2)
+///     .with_succeeded_count(2);
+/// progress.report_finished(finished);
+/// ```
 pub struct ProgressRun<'a> {
     /// Reporter receiving lifecycle callbacks for this run.
     reporter: &'a dyn ProgressReporter,

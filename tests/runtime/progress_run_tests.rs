@@ -18,6 +18,7 @@ use std::{
 };
 
 use qubit_progress::{
+    ProgressRun,
     model::{
         ProgressCounters,
         ProgressEvent,
@@ -25,7 +26,6 @@ use qubit_progress::{
         ProgressStage,
     },
     reporter::ProgressReporter,
-    runtime::ProgressRun,
 };
 
 #[derive(Debug, Default)]
@@ -142,4 +142,12 @@ fn test_progress_run_handles_overflowed_next_running_deadline() {
     let events = reporter.events();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].phase(), ProgressPhase::Running);
+}
+
+#[test]
+fn test_progress_run_is_reexported_from_crate_root() {
+    let reporter = RecordingReporter::default();
+    let run: qubit_progress::ProgressRun<'_> = ProgressRun::new(&reporter, Duration::from_secs(1));
+
+    assert_eq!(run.report_interval(), Duration::from_secs(1));
 }

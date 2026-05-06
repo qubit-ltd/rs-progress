@@ -21,6 +21,30 @@ use super::{
 /// The builder keeps the common path compact by letting callers configure
 /// phase, counters, optional stage information, and elapsed time in a single
 /// chain.
+///
+/// # Examples
+///
+/// ```
+/// use std::time::Duration;
+///
+/// use qubit_progress::{
+///     ProgressEvent,
+///     ProgressPhase,
+/// };
+///
+/// let event = ProgressEvent::builder()
+///     .running()
+///     .total(8)
+///     .completed(3)
+///     .active(1)
+///     .stage_named("copy", "Copy files")
+///     .elapsed(Duration::from_secs(2))
+///     .build();
+///
+/// assert_eq!(event.phase(), ProgressPhase::Running);
+/// assert_eq!(event.counters().completed_count(), 3);
+/// assert_eq!(event.stage().map(|stage| stage.id()), Some("copy"));
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProgressEventBuilder {
     /// Lifecycle phase of the event being built.

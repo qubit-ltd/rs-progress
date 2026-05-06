@@ -93,3 +93,14 @@ fn test_progress_event_builder_and_new_constructor() {
     assert_eq!(rebuilt.counters().completed_count(), 1);
     assert_eq!(rebuilt.counters().failed_count(), 1);
 }
+
+#[test]
+fn test_progress_types_are_reexported_from_crate_root() {
+    let event: qubit_progress::ProgressEvent = ProgressEvent::running(
+        qubit_progress::ProgressCounters::new(Some(1)),
+        Duration::ZERO,
+    );
+    let phase: qubit_progress::ProgressPhase = event.phase();
+
+    assert_eq!(phase, ProgressPhase::Running);
+}

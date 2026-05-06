@@ -26,6 +26,36 @@ use crate::{
 /// # Type Parameters
 ///
 /// * `W` - Writer receiving formatted progress events.
+///
+/// # Examples
+///
+/// ```
+/// use std::io::Cursor;
+/// use std::sync::{
+///     Arc,
+///     Mutex,
+/// };
+/// use std::time::Duration;
+///
+/// use qubit_progress::{
+///     ProgressCounters,
+///     ProgressEvent,
+///     ProgressReporter,
+///     WriterProgressReporter,
+/// };
+///
+/// let output = Arc::new(Mutex::new(Cursor::new(Vec::new())));
+/// let reporter = WriterProgressReporter::new(output.clone());
+/// reporter.report(&ProgressEvent::running(
+///     ProgressCounters::new(Some(4)).with_completed_count(2),
+///     Duration::from_secs(1),
+/// ));
+///
+/// let bytes = output.lock().expect("output should lock").get_ref().clone();
+/// let text = String::from_utf8(bytes).expect("progress output should be UTF-8");
+/// assert!(text.contains("running"));
+/// assert!(text.contains("2/4"));
+/// ```
 #[derive(Debug)]
 pub struct WriterProgressReporter<W> {
     /// Shared writer receiving progress lines.

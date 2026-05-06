@@ -37,6 +37,8 @@ Qubit Progress models progress as immutable events. A progress event carries:
 - `ProgressEventBuilder`: fluent builder for constructing progress events
   without manually assembling counters and stage metadata first.
 - `ProgressReporter`: trait for receiving progress events.
+- `ProgressRun`: helper for reporting a single operation's lifecycle with
+  elapsed time and interval-based running updates.
 - `NoOpProgressReporter`, `WriterProgressReporter`, and
   `LoggerProgressReporter`: reusable reporter implementations.
 
@@ -79,6 +81,41 @@ reporter.report(&event);
 The lower-level constructors remain available when a caller already has
 prebuilt counters or stage metadata, but the builder is the preferred entry
 point for ordinary reporting code.
+
+## Reporting an operation lifecycle
+
+Use `ProgressRun` when one operation needs a started event, periodic running
+events, and a terminal event. The run tracks elapsed time and throttles
+`running` callbacks, while your domain code owns the counters.
+
+```rust
+use std::time::Duration;
+
+use qubit_progress::{
+    NoOpProgressReporter,
+    ProgressCounters,
+    ProgressRun,
+};
+
+let reporter = NoOpProgressReporter;
+let mut progress = ProgressRun::new(&reporter, Duration::from_secs(5));
+
+progress.report_started(ProgressCounters::new(Some(3)));
+
+let counters = ProgressCounters::new(Some(3))
+    .with_completed_count(1)
+    .with_active_count(1);
+progress.report_running_if_due(counters);
+
+let final_counters = ProgressCounters::new(Some(3))
+    .with_completed_count(3)
+    .with_succeeded_count(3);
+progress.report_finished(final_counters);
+```
+
+`report_running_if_due` returns `true` only when it emitted an event. Use
+`report_running` when an external scheduler or background thread already
+controls the reporting interval.
 
 ## Multi-stage progress
 
@@ -156,21 +193,10 @@ with a target and level.
   time.
 - `ProgressEventBuilder`: fluent builder for event construction.
 - `ProgressReporter`: trait for receiving progress events.
+- `ProgressRun`: lifecycle helper for one progress-producing operation.
 - `NoOpProgressReporter`: reporter that ignores events.
 - `WriterProgressReporter<W>`: writer-backed human-readable reporter.
 - `LoggerProgressReporter`: `log` crate-backed reporter.
-
-## Project Layout
-
-- `src/progress_phase.rs`: lifecycle phase enum.
-- `src/progress_stage.rs`: multi-stage metadata.
-- `src/progress_counters.rs`: generic counter model.
-- `src/progress_event.rs`: immutable event type.
-- `src/progress_event_builder.rs`: fluent event builder.
-- `src/progress_reporter.rs`: reporter trait.
-- `src/writer_progress_reporter.rs`: writer-backed reporter.
-- `src/logger_progress_reporter.rs`: logger-backed reporter.
-- `tests/progress`: behavior tests for counters, events, and reporters.
 
 ## Documentation
 
