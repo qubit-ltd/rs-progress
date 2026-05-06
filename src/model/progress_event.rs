@@ -17,6 +17,31 @@ use super::{
 };
 
 /// Immutable progress event delivered to reporters.
+///
+/// # Examples
+///
+/// ```
+/// use std::time::Duration;
+///
+/// use qubit_progress::{
+///     ProgressCounters,
+///     ProgressEvent,
+///     ProgressPhase,
+///     ProgressStage,
+/// };
+///
+/// let counters = ProgressCounters::new(Some(5)).with_completed_count(2);
+/// let event = ProgressEvent::from_phase(
+///     ProgressPhase::Running,
+///     counters,
+///     Duration::from_millis(500),
+/// )
+/// .with_stage(ProgressStage::new("load", "Load records"));
+///
+/// assert_eq!(event.phase(), ProgressPhase::Running);
+/// assert_eq!(event.counters().completed_count(), 2);
+/// assert_eq!(event.stage().map(|stage| stage.name()), Some("Load records"));
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProgressEvent {
     /// Lifecycle phase of the reported operation.

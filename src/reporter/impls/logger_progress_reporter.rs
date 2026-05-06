@@ -13,6 +13,19 @@ use crate::{
 };
 
 /// Progress reporter that emits progress events through the `log` crate.
+///
+/// # Examples
+///
+/// ```
+/// use log::Level;
+/// use qubit_progress::LoggerProgressReporter;
+///
+/// let reporter = LoggerProgressReporter::new("my_app::progress")
+///     .with_level(Level::Debug);
+///
+/// assert_eq!(reporter.target(), "my_app::progress");
+/// assert_eq!(reporter.level(), Level::Debug);
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoggerProgressReporter {
     /// Log target used for emitted records.

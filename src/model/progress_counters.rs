@@ -8,6 +8,21 @@
  *
  ******************************************************************************/
 /// Generic progress counters for a running operation.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::ProgressCounters;
+///
+/// let counters = ProgressCounters::new(Some(10))
+///     .with_completed_count(4)
+///     .with_active_count(2)
+///     .with_succeeded_count(3);
+///
+/// assert_eq!(counters.total_count(), Some(10));
+/// assert_eq!(counters.remaining_count(), Some(4));
+/// assert_eq!(counters.progress_percent(), Some(40.0));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProgressCounters {
     /// Total work-unit count when known.

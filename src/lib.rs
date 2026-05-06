@@ -18,3 +18,18 @@
 pub mod model;
 pub mod reporter;
 pub mod runtime;
+
+pub use model::{
+    ProgressCounters,
+    ProgressEvent,
+    ProgressEventBuilder,
+    ProgressPhase,
+    ProgressStage,
+};
+pub use reporter::{
+    LoggerProgressReporter,
+    NoOpProgressReporter,
+    ProgressReporter,
+    WriterProgressReporter,
+};
+pub use runtime::ProgressRun;

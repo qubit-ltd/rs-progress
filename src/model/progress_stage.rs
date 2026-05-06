@@ -8,6 +8,21 @@
  *
  ******************************************************************************/
 /// Describes the current stage of a multi-stage operation.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::ProgressStage;
+///
+/// let stage = ProgressStage::new("verify", "Verify files")
+///     .with_index(2)
+///     .with_total_stages(4)
+///     .with_weight(0.25);
+///
+/// assert_eq!(stage.id(), "verify");
+/// assert_eq!(stage.name(), "Verify files");
+/// assert_eq!(stage.index(), Some(2));
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProgressStage {
     /// Stable machine-readable stage identifier.
