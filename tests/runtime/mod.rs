@@ -7,9 +7,6 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Integration tests for `qubit-progress`.
+//! Tests for progress runtime helpers.
 
-mod docs;
-mod model;
-mod reporter;
-mod runtime;
+mod progress_run_tests;
