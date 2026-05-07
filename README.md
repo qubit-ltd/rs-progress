@@ -48,6 +48,12 @@ In addition, this crate provides:
   `StderrProgressReporter`, `WriterProgressReporter`, and
   `LoggerProgressReporter`: reusable reporter implementations.
 
+`ProgressReporter` is intentionally small: when the stock reporters are not
+enough, your application can provide its own implementation—for example, to
+drive a graphical progress bar, refresh a status region in a desktop UI, or
+forward updates to a web client. This crate stays UI-agnostic; wiring events to
+a particular toolkit or transport is your integration layer.
+
 Domain crates should keep their own domain state and expose progress by
 converting their state into `ProgressEvent` values. Domain-specific errors,
 logs, metrics, and traces should stay in their own mechanisms instead of being
@@ -68,10 +74,10 @@ use std::time::Duration;
 use qubit_progress::{
     ProgressEvent,
     ProgressReporter,
-    WriterProgressReporter,
+    StdoutProgressReporter,
 };
 
-let reporter = WriterProgressReporter::from_writer(std::io::stdout());
+let reporter = StdoutProgressReporter::default();
 let event = ProgressEvent::builder()
     .running()
     .total(4)
@@ -100,10 +106,10 @@ use std::time::Duration;
 use qubit_progress::{
     ProgressCounters,
     Progress,
-    WriterProgressReporter,
+    StdoutProgressReporter,
 };
 
-let reporter = WriterProgressReporter::from_writer(std::io::stdout());
+let reporter = StdoutProgressReporter::default();
 let mut progress = Progress::new(&reporter, Duration::from_secs(5));
 
 progress.report_started(ProgressCounters::new(Some(3)));
@@ -144,28 +150,32 @@ This is useful for parallel executors: reporter callbacks stay out of worker
 hot paths for positive intervals, while `Duration::ZERO` can still report after
 each worker progress point without busy waiting.
 
+The example below uses [`qubit-atomic`](https://crates.io/crates/qubit-atomic)’s
+[`AtomicCount`](https://docs.rs/qubit-atomic/latest/qubit_atomic/struct.AtomicCount.html)
+for the shared completion counter. Add it to your manifest only when you adopt
+this pattern:
+
+```toml
+qubit-atomic = "0.10"
+```
+
 ```rust
 use std::{
-    sync::{
-        Arc,
-        atomic::{
-            AtomicUsize,
-            Ordering,
-        },
-    },
+    sync::Arc,
     thread,
     time::Duration,
 };
 
+use qubit_atomic::AtomicCount;
 use qubit_progress::{
     Progress,
     ProgressCounters,
     RunningProgressLoop,
-    WriterProgressReporter,
+    StdoutProgressReporter,
 };
 
-let reporter = WriterProgressReporter::from_writer(std::io::stdout());
-let completed = Arc::new(AtomicUsize::new(0));
+let reporter = StdoutProgressReporter::default();
+let completed = Arc::new(AtomicCount::zero());
 let (progress_loop, notifier) = RunningProgressLoop::channel();
 
 thread::scope(|scope| {
@@ -175,12 +185,12 @@ thread::scope(|scope| {
         let progress = Progress::new(reporter_ref, Duration::ZERO);
         progress_loop.run(progress, || {
             ProgressCounters::new(Some(3))
-                .with_completed_count(loop_completed.load(Ordering::Acquire))
+                .with_completed_count(loop_completed.get())
         });
     });
 
     for _ in 0..3 {
-        completed.fetch_add(1, Ordering::AcqRel);
+        completed.inc();
         notifier.running_point();
     }
 
