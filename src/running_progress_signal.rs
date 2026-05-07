@@ -7,12 +7,11 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Integration tests for `qubit-progress`.
 
-mod docs;
-mod model;
-mod progress_tests;
-mod reporter;
-mod running_progress_loop_tests;
-mod running_progress_notifier_tests;
-mod running_progress_signal_tests;
+/// Signal sent to a running progress loop.
+pub(crate) enum RunningProgressSignal {
+    /// A worker reached an implementation-defined running progress point.
+    RunningPoint,
+    /// The operation is complete and the loop should stop.
+    Stop,
+}
