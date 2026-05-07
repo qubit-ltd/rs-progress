@@ -19,6 +19,9 @@ use std::{
 use crate::{
     Progress,
     model::ProgressCounters,
+};
+
+use super::{
     running_progress_notifier::RunningProgressNotifier,
     running_progress_signal::RunningProgressSignal,
 };
@@ -40,6 +43,13 @@ use crate::{
 ///
 /// ```
 /// use std::{
+///     sync::{
+///         Arc,
+///         atomic::{
+///             AtomicUsize,
+///             Ordering,
+///         },
+///     },
 ///     thread,
 ///     time::Duration,
 /// };
@@ -52,17 +62,34 @@ use crate::{
 /// };
 ///
 /// let reporter = NoOpProgressReporter;
+/// let completed = Arc::new(AtomicUsize::new(0));
 /// let (progress_loop, notifier) = RunningProgressLoop::channel();
 ///
 /// thread::scope(|scope| {
-///     let handle = scope.spawn(|| {
-///         let progress = Progress::new(&reporter, Duration::ZERO);
-///         progress_loop.run(progress, || ProgressCounters::new(Some(1)));
+///     let loop_completed = Arc::clone(&completed);
+///     let reporter_ref = &reporter;
+///     let progress_thread = scope.spawn(move || {
+///         // This background reporter thread owns the loop. It does not own
+///         // the operation state; it only reads a fresh counter snapshot when
+///         // the interval is due or a worker sends a running point.
+///         let progress = Progress::new(reporter_ref, Duration::ZERO);
+///         progress_loop.run(progress, || {
+///             ProgressCounters::new(Some(3))
+///                 .with_completed_count(loop_completed.load(Ordering::Acquire))
+///         });
 ///     });
 ///
-///     assert!(notifier.running_point());
+///     // Worker code updates domain state first, then wakes the loop. With a
+///     // zero interval, each running point may emit a `running` event.
+///     for _ in 0..3 {
+///         completed.fetch_add(1, Ordering::AcqRel);
+///         assert!(notifier.running_point());
+///     }
+///
+///     // Stop the loop before leaving the scope so reporter panics can be
+///     // propagated through the join handle.
 ///     assert!(notifier.stop());
-///     handle.join().expect("progress loop should stop");
+///     progress_thread.join().expect("progress loop should stop");
 /// });
 /// ```
 ///
