@@ -9,7 +9,7 @@
  ******************************************************************************/
 use std::sync::mpsc::Sender;
 
-use crate::running_progress_signal::RunningProgressSignal;
+use super::running_progress_signal::RunningProgressSignal;
 
 /// Notifies a [`RunningProgressLoop`](crate::RunningProgressLoop) about progress
 /// points and completion.

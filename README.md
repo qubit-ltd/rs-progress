@@ -41,6 +41,9 @@ In addition, this crate provides:
 - `ProgressReporter`: trait for receiving progress events.
 - `Progress`: helper for reporting a single operation's lifecycle with
   elapsed time and interval-based running updates.
+- `RunningProgressLoop` and `RunningProgressNotifier`: helper pair for
+  reporting `running` progress from a background reporter thread while workers
+  update shared domain state.
 - `NoOpProgressReporter`, `StdoutProgressReporter`,
   `StderrProgressReporter`, `WriterProgressReporter`, and
   `LoggerProgressReporter`: reusable reporter implementations.
@@ -129,6 +132,70 @@ call is effectively a no-op.
 Use `report_running` when an external scheduler or background thread already
 controls the reporting interval.
 
+## Reporting from a background thread
+
+Use `RunningProgressLoop` when work happens on one or more worker threads but
+the reporter should run on a separate background reporter thread. The workers
+keep updating domain state. The loop only waits for either a timeout or a
+`RunningProgressNotifier::running_point` signal, then calls your snapshot
+closure to build fresh `ProgressCounters`.
+
+This is useful for parallel executors: reporter callbacks stay out of worker
+hot paths for positive intervals, while `Duration::ZERO` can still report after
+each worker progress point without busy waiting.
+
+```rust
+use std::{
+    sync::{
+        Arc,
+        atomic::{
+            AtomicUsize,
+            Ordering,
+        },
+    },
+    thread,
+    time::Duration,
+};
+
+use qubit_progress::{
+    Progress,
+    ProgressCounters,
+    RunningProgressLoop,
+    WriterProgressReporter,
+};
+
+let reporter = WriterProgressReporter::from_writer(std::io::stdout());
+let completed = Arc::new(AtomicUsize::new(0));
+let (progress_loop, notifier) = RunningProgressLoop::channel();
+
+thread::scope(|scope| {
+    let loop_completed = Arc::clone(&completed);
+    let reporter_ref = &reporter;
+    let progress_thread = scope.spawn(move || {
+        let progress = Progress::new(reporter_ref, Duration::ZERO);
+        progress_loop.run(progress, || {
+            ProgressCounters::new(Some(3))
+                .with_completed_count(loop_completed.load(Ordering::Acquire))
+        });
+    });
+
+    for _ in 0..3 {
+        completed.fetch_add(1, Ordering::AcqRel);
+        notifier.running_point();
+    }
+
+    notifier.stop();
+    progress_thread
+        .join()
+        .expect("progress loop should stop cleanly");
+});
+```
+
+For positive intervals, workers normally do not need to call
+`running_point`; the loop wakes itself with `recv_timeout`. A stop signal should
+still be sent when the operation completes so the background thread can join
+before terminal `finished`, `failed`, or `canceled` events are reported.
+
 ## Multi-stage progress
 
 Stages describe where an operation is inside a larger workflow. They are
@@ -210,6 +277,10 @@ with a target and level.
 - `ProgressEventBuilder`: fluent builder for event construction.
 - `ProgressReporter`: trait for receiving progress events.
 - `Progress`: lifecycle helper for one progress-producing operation.
+- `RunningProgressLoop`: background running-event loop driven by timeouts or
+  worker signals.
+- `RunningProgressNotifier`: cloneable handle for waking or stopping a
+  `RunningProgressLoop`.
 - `NoOpProgressReporter`: reporter that ignores events.
 - `StdoutProgressReporter`: stdout convenience reporter.
 - `StderrProgressReporter`: stderr convenience reporter.

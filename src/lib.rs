@@ -19,9 +19,8 @@ pub mod model;
 /// Lifecycle helper for one progress-producing operation.
 pub mod progress;
 pub mod reporter;
-mod running_progress_loop;
-mod running_progress_notifier;
-mod running_progress_signal;
+/// Helpers for running progress reporting loops.
+pub mod running;
 
 pub use model::{
     ProgressCounters,
@@ -39,5 +38,7 @@ pub use reporter::{
     StdoutProgressReporter,
     WriterProgressReporter,
 };
-pub use running_progress_loop::RunningProgressLoop;
-pub use running_progress_notifier::RunningProgressNotifier;
+pub use running::{
+    RunningProgressLoop,
+    RunningProgressNotifier,
+};
