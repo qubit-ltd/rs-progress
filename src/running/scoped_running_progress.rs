@@ -14,14 +14,14 @@ use std::{
 
 use super::{
     running_progress_notifier::RunningProgressNotifier,
-    running_progress_points::RunningProgressPoints,
+    running_progress_point_handle::RunningProgressPointHandle,
 };
 
 /// Owns a scoped running progress reporter thread.
 ///
 /// `ScopedRunningProgress` is a lifecycle guard for a reporter thread created
 /// by [`crate::RunningProgressLoop::spawn_scoped`]. Keep this guard on the
-/// coordinating thread, pass [`RunningProgressPoints`] clones to workers, and
+/// coordinating thread, pass [`RunningProgressPointHandle`] clones to workers, and
 /// call [`Self::stop_and_join`] after worker execution completes.
 ///
 /// # Examples
@@ -57,10 +57,10 @@ use super::{
 ///             ProgressCounters::new(Some(1))
 ///                 .with_completed_count(loop_completed.load(Ordering::Acquire))
 ///         });
-///     let progress_points = running_progress.points();
+///     let progress_point_handle = running_progress.point_handle();
 ///
 ///     completed.store(1, Ordering::Release);
-///     assert!(progress_points.running_point());
+///     assert!(progress_point_handle.report());
 ///
 ///     running_progress.stop_and_join();
 /// });
@@ -110,8 +110,8 @@ impl<'scope> ScopedRunningProgress<'scope> {
     /// A cloneable handle that wakes the reporter loop for zero intervals and
     /// becomes a no-op for positive intervals.
     #[inline]
-    pub fn points(&self) -> RunningProgressPoints {
-        RunningProgressPoints::new(self.report_points.then(|| self.notifier.clone()))
+    pub fn point_handle(&self) -> RunningProgressPointHandle {
+        RunningProgressPointHandle::new(self.report_points.then(|| self.notifier.clone()))
     }
 
     /// Stops the reporter loop and joins the scoped reporter thread.

@@ -33,7 +33,7 @@ use qubit_progress::{
     ProgressPhase,
     ProgressReporter,
     RunningProgressLoop,
-    RunningProgressPoints,
+    RunningProgressPointHandle,
     ScopedRunningProgress,
 };
 
@@ -82,10 +82,10 @@ fn test_scoped_running_progress_reports_zero_interval_running_points() {
                 ProgressCounters::new(Some(2))
                     .with_completed_count(loop_completed_count.load(Ordering::Acquire))
             });
-        let progress_points: RunningProgressPoints = running_progress.points();
+        let progress_point_handle: RunningProgressPointHandle = running_progress.point_handle();
 
         completed_count.store(1, Ordering::Release);
-        assert!(progress_points.running_point());
+        assert!(progress_point_handle.report());
         running_progress.stop_and_join();
     });
 
@@ -107,9 +107,9 @@ fn test_scoped_running_progress_stop_and_join_propagates_reporter_panic() {
             let running_progress = RunningProgressLoop::spawn_scoped(scope, progress, || {
                 ProgressCounters::new(Some(1))
             });
-            let progress_points = running_progress.points();
+            let progress_point_handle = running_progress.point_handle();
 
-            assert!(progress_points.running_point());
+            assert!(progress_point_handle.report());
             running_progress.stop_and_join();
         });
     }));

@@ -7,7 +7,7 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for `RunningProgressPoints`.
+//! Tests for `RunningProgressPointHandle`.
 
 use std::{
     sync::Mutex,
@@ -51,7 +51,7 @@ impl ProgressReporter for RecordingReporter {
 }
 
 #[test]
-fn test_running_progress_points_are_noop_for_positive_interval() {
+fn test_running_progress_point_handle_is_noop_for_positive_interval() {
     let reporter = RecordingReporter::default();
 
     thread::scope(|scope| {
@@ -60,12 +60,12 @@ fn test_running_progress_points_are_noop_for_positive_interval() {
         let running_progress = RunningProgressLoop::spawn_scoped(scope, progress, || {
             ProgressCounters::new(Some(1)).with_active_count(1)
         });
-        let progress_points = running_progress.points();
+        let progress_point_handle = running_progress.point_handle();
 
-        assert!(progress_points.running_point());
+        assert!(progress_point_handle.report());
         thread::sleep(Duration::from_millis(20));
         running_progress.stop_and_join();
-        assert!(progress_points.running_point());
+        assert!(progress_point_handle.report());
     });
 
     let events = reporter.events();
