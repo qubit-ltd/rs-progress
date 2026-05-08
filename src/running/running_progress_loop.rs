@@ -38,7 +38,7 @@ use super::{
 ///
 /// Use [`Self::spawn_scoped`] when the reporter thread can be scoped to the
 /// operation call. It returns a [`ScopedRunningProgress`] guard and cloneable
-/// [`crate::RunningProgressPoints`] handles for workers. Use [`Self::channel`]
+/// [`crate::RunningProgressPointHandle`] handles for workers. Use [`Self::channel`]
 /// only when callers need to own the lower-level loop and notifier directly.
 ///
 /// # Examples
@@ -77,13 +77,13 @@ use super::{
 ///             ProgressCounters::new(Some(3))
 ///                 .with_completed_count(loop_completed.load(Ordering::Acquire))
 ///         });
-///     let progress_points = running_progress.points();
+///     let progress_point_handle = running_progress.point_handle();
 ///
 ///     // Worker code updates domain state first, then wakes the loop. With a
 ///     // zero interval, each running point may emit a `running` event.
 ///     for _ in 0..3 {
 ///         completed.fetch_add(1, Ordering::AcqRel);
-///         assert!(progress_points.running_point());
+///         assert!(progress_point_handle.report());
 ///     }
 ///
 ///     // Stop the loop before leaving the scope. Reporter panics are
@@ -110,22 +110,23 @@ enum RunningProgressWait {
     Disconnected,
 }
 
-impl RunningProgressLoop {
-    /// Creates a paired running progress loop and notifier.
-    ///
-    /// # Returns
-    ///
-    /// A loop that owns the signal receiver and a notifier that sends wakeup or
-    /// stop signals to that loop.
+impl RunningProgressWait {
+    /// Returns `true` when the running progress loop should call
+    /// [`Progress::report_running_if_due`] after this wait result.
     #[inline]
-    pub fn channel() -> (Self, RunningProgressNotifier) {
-        let (signal_sender, signal_receiver) = mpsc::channel();
-        (
-            Self { signal_receiver },
-            RunningProgressNotifier { signal_sender },
-        )
+    fn should_report(self) -> bool {
+        match self {
+            Self::Timeout => true,
+            Self::Disconnected => false,
+            Self::Signal(signal) => match signal {
+                RunningProgressSignal::RunningPoint => true,
+                RunningProgressSignal::Stop => false,
+            },
+        }
     }
+}
 
+impl RunningProgressLoop {
     /// Spawns a scoped reporter thread for running progress events.
     ///
     /// # Parameters
@@ -139,7 +140,6 @@ impl RunningProgressLoop {
     ///
     /// A guard that can create worker point handles and stop the scoped
     /// reporter thread.
-    #[inline]
     pub fn spawn_scoped<'scope, 'env, 'progress, F>(
         scope: &'scope thread::Scope<'scope, 'env>,
         progress: Progress<'progress>,
@@ -155,6 +155,20 @@ impl RunningProgressLoop {
             progress_loop.run(progress, snapshot);
         });
         ScopedRunningProgress::new(notifier, progress_thread, report_points)
+    }
+
+    /// Creates a paired running progress loop and notifier.
+    ///
+    /// # Returns
+    ///
+    /// A loop that owns the signal receiver and a notifier that sends wakeup or
+    /// stop signals to that loop.
+    pub fn channel() -> (Self, RunningProgressNotifier) {
+        let (signal_sender, signal_receiver) = mpsc::channel();
+        (
+            Self { signal_receiver },
+            RunningProgressNotifier { signal_sender },
+        )
     }
 
     /// Runs until a stop signal is received or every notifier is dropped.
@@ -174,39 +188,47 @@ impl RunningProgressLoop {
         F: FnMut() -> ProgressCounters,
     {
         let report_interval = progress.report_interval();
-        while let RunningProgressWait::Signal(RunningProgressSignal::RunningPoint)
-        | RunningProgressWait::Timeout =
-            receive_running_progress_signal(&self.signal_receiver, report_interval)
-        {
+        while self.receive_wait(report_interval).should_report() {
             progress.report_running_if_due(snapshot());
         }
     }
-}
 
-/// Receives one running progress loop signal.
-///
-/// # Parameters
-///
-/// * `signal_receiver` - Signal receiver shared with notifiers.
-/// * `report_interval` - Configured progress-report interval.
-///
-/// # Returns
-///
-/// A worker or stop signal, a timeout marker for positive intervals, or a
-/// disconnected marker when all notifiers have disconnected.
-fn receive_running_progress_signal(
-    signal_receiver: &Receiver<RunningProgressSignal>,
-    report_interval: Duration,
-) -> RunningProgressWait {
-    if report_interval.is_zero() {
-        return match signal_receiver.recv() {
+    /// Waits once on the signal channel and maps the outcome to [`RunningProgressWait`].
+    ///
+    /// The calling thread blocks until this wait completes.
+    ///
+    /// When `report_interval` is [`Duration::ZERO`], uses [`Receiver::recv`]: the call returns when a
+    /// [`RunningProgressSignal`] is received or when every notifier sender has been dropped. In this
+    /// mode no [`RunningProgressWait::Timeout`] is produced.
+    ///
+    /// When `report_interval` is positive, uses [`Receiver::recv_timeout`]: if no message arrives
+    /// before the deadline, returns [`RunningProgressWait::Timeout`] so [`Self::run`] can drive periodic
+    /// `running` progress; if a message arrives first, returns that signal wrapped in
+    /// [`RunningProgressWait::Signal`], or [`RunningProgressWait::Disconnected`] if the channel closes.
+    ///
+    /// # Parameters
+    ///
+    /// * `report_interval` - Configured report interval from the [`Progress`] run passed to [`Self::run`];
+    ///   [`Duration::ZERO`] selects unbounded waits (event-driven only), otherwise each wait is capped
+    ///   by this duration and may time out.
+    ///
+    /// # Returns
+    ///
+    /// * [`RunningProgressWait::Signal`] - The next [`RunningProgressSignal`] from a notifier.
+    /// * [`RunningProgressWait::Timeout`] - Only when `report_interval` is positive and the wait reached
+    ///   the deadline without a message.
+    /// * [`RunningProgressWait::Disconnected`] - The MPSC channel has no senders left.
+    fn receive_wait(&self, report_interval: Duration) -> RunningProgressWait {
+        if report_interval.is_zero() {
+            return match self.signal_receiver.recv() {
+                Ok(signal) => RunningProgressWait::Signal(signal),
+                Err(_) => RunningProgressWait::Disconnected,
+            };
+        }
+        match self.signal_receiver.recv_timeout(report_interval) {
             Ok(signal) => RunningProgressWait::Signal(signal),
-            Err(_) => RunningProgressWait::Disconnected,
-        };
-    }
-    match signal_receiver.recv_timeout(report_interval) {
-        Ok(signal) => RunningProgressWait::Signal(signal),
-        Err(RecvTimeoutError::Timeout) => RunningProgressWait::Timeout,
-        Err(RecvTimeoutError::Disconnected) => RunningProgressWait::Disconnected,
+            Err(RecvTimeoutError::Timeout) => RunningProgressWait::Timeout,
+            Err(RecvTimeoutError::Disconnected) => RunningProgressWait::Disconnected,
+        }
     }
 }
