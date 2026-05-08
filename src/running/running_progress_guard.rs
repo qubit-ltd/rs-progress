@@ -54,13 +54,23 @@ use super::{
 ///     let progress = Progress::new(&reporter, Duration::ZERO);
 ///     let running_progress =
 ///         progress.spawn_running_reporter(scope, move || {
-///             ProgressCounters::new(Some(1))
+///             ProgressCounters::new(Some(3))
 ///                 .with_completed_count(loop_completed.load(Ordering::Acquire))
 ///         });
 ///     let progress_point_handle = running_progress.point_handle();
 ///
-///     completed.store(1, Ordering::Release);
-///     assert!(progress_point_handle.report());
+///     let mut handles = Vec::new();
+///     for _ in 0..3 {
+///         let c = Arc::clone(&completed);
+///         let p = progress_point_handle.clone();
+///         handles.push(scope.spawn(move || {
+///             c.fetch_add(1, Ordering::AcqRel);
+///             assert!(p.report());
+///         }));
+///     }
+///     for h in handles {
+///         h.join().unwrap();
+///     }
 ///
 ///     running_progress.stop_and_join();
 /// });

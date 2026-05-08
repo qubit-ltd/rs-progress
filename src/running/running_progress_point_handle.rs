@@ -40,7 +40,13 @@ use super::running_progress_notifier::RunningProgressNotifier;
 ///         });
 ///     let progress_point_handle = running_progress.point_handle();
 ///
-///     assert!(progress_point_handle.report());
+///     let worker = scope.spawn({
+///         let progress_point_handle = progress_point_handle.clone();
+///         move || {
+///             assert!(progress_point_handle.report());
+///         }
+///     });
+///     worker.join().unwrap();
 ///
 ///     running_progress.stop_and_join();
 /// });
