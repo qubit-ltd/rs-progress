@@ -13,6 +13,7 @@ use std::{
         Receiver,
         RecvTimeoutError,
     },
+    thread,
     time::Duration,
 };
 
@@ -24,6 +25,7 @@ use crate::{
 use super::{
     running_progress_notifier::RunningProgressNotifier,
     running_progress_signal::RunningProgressSignal,
+    scoped_running_progress::ScopedRunningProgress,
 };
 
 /// Runs periodic `running` progress reports for work tracked elsewhere.
@@ -34,10 +36,10 @@ use super::{
 /// and a snapshot closure that converts their domain state into
 /// [`ProgressCounters`].
 ///
-/// Use [`Self::channel`] to create a loop and its matching
-/// [`RunningProgressNotifier`]. Move the loop into a reporter thread, clone the
-/// notifier into workers when zero-interval wakeups are needed, and send
-/// [`RunningProgressNotifier::stop`] when the operation is complete.
+/// Use [`Self::spawn_scoped`] when the reporter thread can be scoped to the
+/// operation call. It returns a [`ScopedRunningProgress`] guard and cloneable
+/// [`crate::RunningProgressPoints`] handles for workers. Use [`Self::channel`]
+/// only when callers need to own the lower-level loop and notifier directly.
 ///
 /// # Examples
 ///
@@ -63,33 +65,30 @@ use super::{
 ///
 /// let reporter = NoOpProgressReporter;
 /// let completed = Arc::new(AtomicUsize::new(0));
-/// let (progress_loop, notifier) = RunningProgressLoop::channel();
 ///
 /// thread::scope(|scope| {
 ///     let loop_completed = Arc::clone(&completed);
-///     let reporter_ref = &reporter;
-///     let progress_thread = scope.spawn(move || {
-///         // This background reporter thread owns the loop. It does not own
-///         // the operation state; it only reads a fresh counter snapshot when
-///         // the interval is due or a worker sends a running point.
-///         let progress = Progress::new(reporter_ref, Duration::ZERO);
-///         progress_loop.run(progress, || {
+///     let progress = Progress::new(&reporter, Duration::ZERO);
+///     let running_progress =
+///         RunningProgressLoop::spawn_scoped(scope, progress, move || {
+///             // The background reporter thread does not own the operation
+///             // state. It only reads a fresh counter snapshot when the
+///             // interval is due or a worker sends a running point.
 ///             ProgressCounters::new(Some(3))
 ///                 .with_completed_count(loop_completed.load(Ordering::Acquire))
 ///         });
-///     });
+///     let progress_points = running_progress.points();
 ///
 ///     // Worker code updates domain state first, then wakes the loop. With a
 ///     // zero interval, each running point may emit a `running` event.
 ///     for _ in 0..3 {
 ///         completed.fetch_add(1, Ordering::AcqRel);
-///         assert!(notifier.running_point());
+///         assert!(progress_points.running_point());
 ///     }
 ///
-///     // Stop the loop before leaving the scope so reporter panics can be
-///     // propagated through the join handle.
-///     assert!(notifier.stop());
-///     progress_thread.join().expect("progress loop should stop");
+///     // Stop the loop before leaving the scope. Reporter panics are
+///     // propagated by `stop_and_join`.
+///     running_progress.stop_and_join();
 /// });
 /// ```
 ///
@@ -125,6 +124,37 @@ impl RunningProgressLoop {
             Self { signal_receiver },
             RunningProgressNotifier { signal_sender },
         )
+    }
+
+    /// Spawns a scoped reporter thread for running progress events.
+    ///
+    /// # Parameters
+    ///
+    /// * `scope` - Thread scope that owns the reporter thread.
+    /// * `progress` - Progress run used by the reporter thread.
+    /// * `snapshot` - Closure that returns current counters whenever a
+    ///   `running` event may be due.
+    ///
+    /// # Returns
+    ///
+    /// A guard that can create worker point handles and stop the scoped
+    /// reporter thread.
+    #[inline]
+    pub fn spawn_scoped<'scope, 'env, 'progress, F>(
+        scope: &'scope thread::Scope<'scope, 'env>,
+        progress: Progress<'progress>,
+        snapshot: F,
+    ) -> ScopedRunningProgress<'scope>
+    where
+        'progress: 'scope,
+        F: FnMut() -> ProgressCounters + Send + 'scope,
+    {
+        let report_points = progress.report_interval().is_zero();
+        let (progress_loop, notifier) = Self::channel();
+        let progress_thread = scope.spawn(move || {
+            progress_loop.run(progress, snapshot);
+        });
+        ScopedRunningProgress::new(notifier, progress_thread, report_points)
     }
 
     /// Runs until a stop signal is received or every notifier is dropped.

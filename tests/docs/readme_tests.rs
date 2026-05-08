@@ -22,6 +22,8 @@ fn test_readmes_describe_qubit_progress() {
     assert!(README_EN.contains("ProgressStage"));
     assert!(README_EN.contains("RunningProgressLoop"));
     assert!(README_EN.contains("RunningProgressNotifier"));
+    assert!(README_EN.contains("ScopedRunningProgress"));
+    assert!(README_EN.contains("RunningProgressPoints"));
     assert!(README_EN.contains("background reporter thread"));
     assert!(README_EN.contains("qubit-progress"));
     assert!(!README_EN.contains("Project Layout"));
@@ -32,6 +34,8 @@ fn test_readmes_describe_qubit_progress() {
     assert!(README_ZH.contains("ProgressStage"));
     assert!(README_ZH.contains("RunningProgressLoop"));
     assert!(README_ZH.contains("RunningProgressNotifier"));
+    assert!(README_ZH.contains("ScopedRunningProgress"));
+    assert!(README_ZH.contains("RunningProgressPoints"));
     assert!(README_ZH.contains("后台汇报线程"));
     assert!(README_ZH.contains("qubit-progress"));
     assert!(!README_ZH.contains("项目结构"));
