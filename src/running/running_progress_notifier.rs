@@ -11,8 +11,7 @@ use std::sync::mpsc::Sender;
 
 use super::running_progress_signal::RunningProgressSignal;
 
-/// Notifies a [`RunningProgressLoop`](crate::RunningProgressLoop) about progress
-/// points and completion.
+/// Notifies a running progress loop about progress points and completion.
 ///
 /// The notifier is cloneable so workers can share it cheaply. Sending a signal
 /// returns `false` when the loop has already stopped or its receiver was
@@ -20,20 +19,13 @@ use super::running_progress_signal::RunningProgressSignal;
 ///
 /// # Examples
 ///
-/// ```
-/// use qubit_progress::RunningProgressLoop;
-///
-/// let (_progress_loop, notifier) = RunningProgressLoop::channel();
-///
-/// assert!(notifier.running_point());
-/// assert!(notifier.stop());
-/// ```
+/// This is an internal helper used by [`RunningProgressGuard`](crate::RunningProgressGuard).
 ///
 /// # Author
 ///
 /// Haixing Hu
 #[derive(Clone)]
-pub struct RunningProgressNotifier {
+pub(crate) struct RunningProgressNotifier {
     /// Signal sender shared by callers and workers.
     pub(crate) signal_sender: Sender<RunningProgressSignal>,
 }
@@ -46,7 +38,7 @@ impl RunningProgressNotifier {
     /// `true` when the signal was sent, or `false` when the matching loop has
     /// already stopped.
     #[inline]
-    pub fn running_point(&self) -> bool {
+    pub(crate) fn running_point(&self) -> bool {
         self.signal_sender
             .send(RunningProgressSignal::RunningPoint)
             .is_ok()
@@ -59,7 +51,7 @@ impl RunningProgressNotifier {
     /// `true` when the signal was sent, or `false` when the matching loop has
     /// already stopped.
     #[inline]
-    pub fn stop(&self) -> bool {
+    pub(crate) fn stop(&self) -> bool {
         self.signal_sender.send(RunningProgressSignal::Stop).is_ok()
     }
 }

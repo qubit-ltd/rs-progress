@@ -7,24 +7,47 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for `RunningProgressNotifier`.
+//! Tests for running progress notification through public point handles.
 
-use qubit_progress::RunningProgressLoop;
+use std::{
+    sync::Mutex,
+    thread,
+    time::Duration,
+};
 
-#[test]
-fn test_running_progress_notifier_reports_send_failure_after_loop_is_dropped() {
-    let (progress_loop, notifier) = RunningProgressLoop::channel();
-    drop(progress_loop);
+use qubit_progress::{
+    Progress,
+    ProgressCounters,
+    ProgressEvent,
+    ProgressReporter,
+};
 
-    assert!(!notifier.running_point());
-    assert!(!notifier.stop());
+#[derive(Debug, Default)]
+struct RecordingReporter {
+    events: Mutex<Vec<ProgressEvent>>,
+}
+
+impl ProgressReporter for RecordingReporter {
+    fn report(&self, event: &ProgressEvent) {
+        self.events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(event.clone());
+    }
 }
 
 #[test]
-fn test_running_progress_notifier_is_cloneable() {
-    let (_progress_loop, notifier) = RunningProgressLoop::channel();
-    let cloned = notifier.clone();
+fn test_running_progress_point_handle_reports_send_failure_after_stop() {
+    let reporter = RecordingReporter::default();
+    let progress = Progress::new(&reporter, Duration::ZERO);
 
-    assert!(cloned.running_point());
-    assert!(notifier.stop());
+    thread::scope(|scope| {
+        let running_progress =
+            progress.spawn_running_reporter(scope, || ProgressCounters::new(Some(1)));
+        let point_handle = running_progress.point_handle();
+
+        assert!(point_handle.report());
+        running_progress.stop_and_join();
+        assert!(!point_handle.report());
+    });
 }

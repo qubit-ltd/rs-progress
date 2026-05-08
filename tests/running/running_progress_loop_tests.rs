@@ -7,22 +7,12 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for `RunningProgressLoop`.
+//! Tests for the running progress loop through the public `Progress` API.
 
 use std::{
-    sync::{
-        Arc,
-        Mutex,
-        atomic::{
-            AtomicUsize,
-            Ordering,
-        },
-    },
+    sync::Mutex,
     thread,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::Duration,
 };
 
 use qubit_progress::{
@@ -31,7 +21,6 @@ use qubit_progress::{
     ProgressEvent,
     ProgressPhase,
     ProgressReporter,
-    RunningProgressLoop,
 };
 
 #[derive(Debug, Default)]
@@ -58,59 +47,17 @@ impl ProgressReporter for RecordingReporter {
 }
 
 #[test]
-fn test_running_progress_loop_reports_zero_interval_running_points() {
-    let reporter = RecordingReporter::default();
-    let completed_count = Arc::new(AtomicUsize::new(0));
-    let (progress_loop, notifier) = RunningProgressLoop::channel();
-
-    thread::scope(|scope| {
-        let loop_completed_count = Arc::clone(&completed_count);
-        let reporter_ref = &reporter;
-        let handle = scope.spawn(move || {
-            let progress = Progress::new(reporter_ref, Duration::ZERO);
-            progress_loop.run(progress, || {
-                ProgressCounters::new(Some(2))
-                    .with_completed_count(loop_completed_count.load(Ordering::Acquire))
-            });
-        });
-
-        completed_count.store(1, Ordering::Release);
-        assert!(notifier.running_point());
-        assert!(notifier.stop());
-        handle
-            .join()
-            .expect("running progress loop should stop cleanly");
-    });
-
-    let events = reporter.events();
-    assert!(
-        events
-            .iter()
-            .any(|event| event.phase() == ProgressPhase::Running
-                && event.counters().completed_count() == 1)
-    );
-}
-
-#[test]
 fn test_running_progress_loop_reports_positive_interval_timeouts() {
     let reporter = RecordingReporter::default();
-    let (progress_loop, notifier) = RunningProgressLoop::channel();
+    let progress = Progress::new(&reporter, Duration::from_millis(5));
 
     thread::scope(|scope| {
-        let reporter_ref = &reporter;
-        let handle = scope.spawn(move || {
-            let started_at = Instant::now() - Duration::from_millis(10);
-            let progress = Progress::from_start(reporter_ref, Duration::from_millis(5), started_at);
-            progress_loop.run(progress, || {
-                ProgressCounters::new(Some(1)).with_active_count(1)
-            });
+        let running_progress = progress.spawn_running_reporter(scope, || {
+            ProgressCounters::new(Some(1)).with_active_count(1)
         });
 
         thread::sleep(Duration::from_millis(20));
-        assert!(notifier.stop());
-        handle
-            .join()
-            .expect("running progress loop should stop cleanly");
+        running_progress.stop_and_join();
     });
 
     let events = reporter.events();

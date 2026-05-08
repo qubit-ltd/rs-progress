@@ -15,13 +15,12 @@
 //!
 //! Haixing Hu
 
+mod running_progress_guard;
 mod running_progress_loop;
 mod running_progress_notifier;
 mod running_progress_point_handle;
 mod running_progress_signal;
-mod scoped_running_progress;
 
-pub use running_progress_loop::RunningProgressLoop;
-pub use running_progress_notifier::RunningProgressNotifier;
+pub use running_progress_guard::RunningProgressGuard;
+pub(crate) use running_progress_loop::RunningProgressLoop;
 pub use running_progress_point_handle::RunningProgressPointHandle;
-pub use scoped_running_progress::ScopedRunningProgress;

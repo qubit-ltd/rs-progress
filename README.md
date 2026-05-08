@@ -41,9 +41,9 @@ In addition, this crate provides:
 - `ProgressReporter`: trait for receiving progress events.
 - `Progress`: helper for reporting a single operation's lifecycle with
   elapsed time and interval-based running updates.
-- `RunningProgressLoop`, `ScopedRunningProgress`, and
-  `RunningProgressPointHandle`: helpers for reporting `running` progress from
-  a background reporter thread while workers update shared domain state.
+- `RunningProgressGuard` and `RunningProgressPointHandle`: helpers returned by
+  `Progress::spawn_running_reporter` for background `running` reports while
+  workers update shared domain state.
 - `NoOpProgressReporter`, `StdoutProgressReporter`,
   `StderrProgressReporter`, `WriterProgressReporter`, and
   `LoggerProgressReporter`: reusable reporter implementations.
@@ -63,7 +63,7 @@ attached to progress events.
 
 ```toml
 [dependencies]
-qubit-progress = "0.3"
+qubit-progress = "0.4"
 ```
 
 ## Quick Start
@@ -112,26 +112,28 @@ use qubit_progress::{
 let reporter = StdoutProgressReporter::default();
 let mut progress = Progress::new(&reporter, Duration::from_secs(5));
 
-progress.report_started(ProgressCounters::new(Some(3)));
+let started = progress.report_started(ProgressCounters::new(Some(3)));
+assert!(started.elapsed().is_zero());
 
 let mut completed = 0;
 for _task in 0..3 {
     // ... execute one unit of work ...
     completed += 1;
     let counters = ProgressCounters::new(Some(3)).with_completed_count(completed);
-    progress.report_running_if_due(counters);
+    let _running_event = progress.report_running_if_due(counters);
 }
 
 let final_counters = ProgressCounters::new(Some(3))
     .with_completed_count(3)
     .with_succeeded_count(3);
-progress.report_finished(final_counters);
+let finished = progress.report_finished(final_counters);
+assert!(finished.elapsed() >= started.elapsed());
 ```
 
-`report_running_if_due` returns `true` only when it emitted an event. The
-method does not block waiting for the next interval: it returns `false`
+`report_running_if_due` returns `Some(event)` only when it emitted an event. The
+method does not block waiting for the next interval: it returns `None`
 immediately when not due, and when due it synchronously calls the reporter and
-returns `true` (so blocking behavior depends on the reporter implementation).
+returns the emitted event (so blocking behavior depends on the reporter implementation).
 A practical pattern is calling it once after each completed unit of work:
 reporting happens automatically when the interval is due, and otherwise the
 call is effectively a no-op.
@@ -140,16 +142,16 @@ controls the reporting interval.
 
 ## Reporting from a background thread
 
-Use `RunningProgressLoop::spawn_scoped` when work happens on one or more worker
-threads but the reporter should run on a separate background reporter thread.
-The workers keep updating domain state. The scoped loop only waits for either a
-timeout or a `RunningProgressPointHandle::report` signal, then calls your
-snapshot closure to build fresh `ProgressCounters`.
+Use `Progress::spawn_running_reporter` when work happens on one or more worker
+threads but `running` events should be reported from a separate background
+thread. Workers keep updating domain state. The background reporter waits for
+either a timeout or a `RunningProgressPointHandle::report` signal, then calls
+your snapshot closure to build fresh `ProgressCounters`.
 
 This is useful for parallel executors: reporter callbacks stay out of worker
 hot paths for positive intervals, while `Duration::ZERO` can still report
 after each worker progress point without busy waiting. Keep the
-`ScopedRunningProgress` guard on the coordinating thread, pass
+`RunningProgressGuard` on the coordinating thread, pass
 `RunningProgressPointHandle` clones to workers, and call `stop_and_join` before
 terminal `finished`, `failed`, or `canceled` events are reported.
 
@@ -173,7 +175,6 @@ use qubit_atomic::AtomicCount;
 use qubit_progress::{
     Progress,
     ProgressCounters,
-    RunningProgressLoop,
     StdoutProgressReporter,
 };
 
@@ -184,7 +185,7 @@ thread::scope(|scope| {
     let loop_completed = Arc::clone(&completed);
     let progress = Progress::new(&reporter, Duration::ZERO);
     let running_progress =
-        RunningProgressLoop::spawn_scoped(scope, progress, move || {
+        progress.spawn_running_reporter(scope, move || {
             ProgressCounters::new(Some(3))
                 .with_completed_count(loop_completed.get())
         });
@@ -200,7 +201,7 @@ thread::scope(|scope| {
 ```
 
 For positive intervals, `RunningProgressPointHandle::report` is a no-op; the
-loop wakes itself with `recv_timeout`. This lets worker code call it
+background reporter wakes itself with a timeout. This lets worker code call it
 unconditionally while the guard keeps stop/join ownership on the coordinating
 thread.
 
@@ -285,13 +286,9 @@ with a target and level.
 - `ProgressEventBuilder`: fluent builder for event construction.
 - `ProgressReporter`: trait for receiving progress events.
 - `Progress`: lifecycle helper for one progress-producing operation.
-- `RunningProgressLoop`: background running-event loop driven by timeouts or
-  worker signals.
-- `ScopedRunningProgress`: guard that owns a scoped background reporter thread.
+- `RunningProgressGuard`: guard that owns a scoped background reporter thread.
 - `RunningProgressPointHandle`: cloneable worker-side handle for running
   points.
-- `RunningProgressNotifier`: cloneable handle for waking or stopping a
-  `RunningProgressLoop`.
 - `NoOpProgressReporter`: reporter that ignores events.
 - `StdoutProgressReporter`: stdout convenience reporter.
 - `StderrProgressReporter`: stderr convenience reporter.

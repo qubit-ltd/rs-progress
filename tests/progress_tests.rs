@@ -54,45 +54,61 @@ impl ProgressReporter for RecordingReporter {
 #[test]
 fn test_progress_reports_lifecycle_events() {
     let reporter = RecordingReporter::default();
-    let started_at = Instant::now() - Duration::from_millis(25);
-    let run = Progress::from_start(&reporter, Duration::from_secs(5), started_at);
+    let mut run = Progress::new(&reporter, Duration::from_secs(5));
     let counters = ProgressCounters::new(Some(4));
 
-    run.report_started(counters);
-    run.report_running(counters.with_active_count(2));
-    run.report_finished(counters.with_completed_count(4));
+    let started = run.report_started(counters);
+    let running = run.report_running(counters.with_active_count(2));
+    let finished = run.report_finished(counters.with_completed_count(4));
 
     let events = reporter.events();
     assert_eq!(events.len(), 3);
+    assert_eq!(events[0], started);
+    assert_eq!(events[1], running);
+    assert_eq!(events[2], finished);
     assert_eq!(events[0].phase(), ProgressPhase::Started);
+    assert_eq!(events[0].elapsed(), Duration::ZERO);
     assert_eq!(events[1].phase(), ProgressPhase::Running);
     assert_eq!(events[1].counters().active_count(), 2);
     assert_eq!(events[2].phase(), ProgressPhase::Finished);
     assert_eq!(events[2].counters().completed_count(), 4);
-    assert!(
-        events
-            .iter()
-            .all(|event| event.elapsed() >= Duration::from_millis(25))
-    );
+    assert!(events[1].elapsed() <= events[2].elapsed());
 }
 
 #[test]
 fn test_progress_report_running_if_due_respects_interval() {
     let reporter = RecordingReporter::default();
-    let not_due_start = Instant::now();
-    let mut not_due = Progress::from_start(&reporter, Duration::from_secs(60), not_due_start);
+    let mut not_due = Progress::new(&reporter, Duration::from_secs(60));
 
-    assert!(!not_due.report_running_if_due(ProgressCounters::new(Some(2))));
+    assert_eq!(
+        not_due.report_running_if_due(ProgressCounters::new(Some(2))),
+        None
+    );
     assert!(reporter.events().is_empty());
 
-    let due_start = Instant::now() - Duration::from_millis(10);
-    let mut due = Progress::from_start(&reporter, Duration::from_millis(1), due_start);
+    let mut due = Progress::new(&reporter, Duration::ZERO);
 
-    assert!(due.report_running_if_due(ProgressCounters::new(Some(2)).with_completed_count(1)));
+    let reported =
+        due.report_running_if_due(ProgressCounters::new(Some(2)).with_completed_count(1));
+    assert!(reported.is_some());
     let events = reporter.events();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].phase(), ProgressPhase::Running);
     assert_eq!(events[0].counters().completed_count(), 1);
+}
+
+#[test]
+fn test_progress_report_running_resets_due_deadline() {
+    let reporter = RecordingReporter::default();
+    let mut progress = Progress::new(&reporter, Duration::from_secs(60));
+
+    let running = progress.report_running(ProgressCounters::new(Some(2)).with_completed_count(1));
+    let not_due =
+        progress.report_running_if_due(ProgressCounters::new(Some(2)).with_completed_count(2));
+
+    assert_eq!(not_due, None);
+    let events = reporter.events();
+    assert_eq!(events, vec![running]);
 }
 
 #[test]
@@ -101,10 +117,11 @@ fn test_progress_attaches_stage_to_reported_events() {
     let stage = ProgressStage::new("copy", "Copy files");
     let run = Progress::new(&reporter, Duration::from_secs(5)).with_stage(stage.clone());
 
-    run.report_failed(ProgressCounters::new(Some(1)).with_failed_count(1));
+    let failed = run.report_failed(ProgressCounters::new(Some(1)).with_failed_count(1));
 
     let events = reporter.events();
     assert_eq!(events.len(), 1);
+    assert_eq!(events[0], failed);
     assert_eq!(events[0].phase(), ProgressPhase::Failed);
     assert_eq!(events[0].stage(), Some(&stage));
 }
@@ -112,36 +129,48 @@ fn test_progress_attaches_stage_to_reported_events() {
 #[test]
 fn test_progress_accessors_and_stage_removal() {
     let reporter = RecordingReporter::default();
-    let started_at = Instant::now() - Duration::from_millis(5);
+    let before_start = Instant::now();
     let stage = ProgressStage::new("load", "Load data");
-    let run = Progress::from_start(&reporter, Duration::from_millis(250), started_at)
+    let run = Progress::new(&reporter, Duration::from_millis(250))
         .with_stage(stage)
         .without_stage();
 
-    assert_eq!(run.started_at(), started_at);
+    assert!(run.started_at() >= before_start);
     assert_eq!(run.report_interval(), Duration::from_millis(250));
     assert_eq!(run.stage(), None);
-    assert!(run.elapsed() >= Duration::from_millis(5));
+    assert!(run.elapsed() >= Duration::ZERO);
 
-    run.report_canceled(ProgressCounters::new(Some(9)).with_completed_count(3));
+    let canceled = run.report_canceled(ProgressCounters::new(Some(9)).with_completed_count(3));
 
     let events = reporter.events();
     assert_eq!(events.len(), 1);
+    assert_eq!(events[0], canceled);
     assert_eq!(events[0].phase(), ProgressPhase::Canceled);
     assert_eq!(events[0].stage(), None);
     assert_eq!(events[0].counters().completed_count(), 3);
 }
 
 #[test]
-fn test_progress_handles_overflowed_next_running_deadline() {
+fn test_progress_zero_interval_running_is_always_due() {
     let reporter = RecordingReporter::default();
-    let mut run = Progress::from_start(&reporter, Duration::MAX, Instant::now());
+    let mut run = Progress::new(&reporter, Duration::ZERO);
 
-    assert!(run.report_running_if_due(ProgressCounters::new(Some(1))));
+    assert!(
+        run.report_running_if_due(ProgressCounters::new(Some(1)))
+            .is_some()
+    );
+    assert!(
+        run.report_running_if_due(ProgressCounters::new(Some(1)))
+            .is_some()
+    );
 
     let events = reporter.events();
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0].phase(), ProgressPhase::Running);
+    assert_eq!(events.len(), 2);
+    assert!(
+        events
+            .iter()
+            .all(|event| event.phase() == ProgressPhase::Running)
+    );
 }
 
 #[test]
