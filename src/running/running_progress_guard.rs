@@ -19,10 +19,11 @@ use super::{
 
 /// Owns a scoped running progress reporter thread.
 ///
-/// `ScopedRunningProgress` is a lifecycle guard for a reporter thread created
-/// by [`crate::RunningProgressLoop::spawn_scoped`]. Keep this guard on the
-/// coordinating thread, pass [`RunningProgressPointHandle`] clones to workers, and
-/// call [`Self::stop_and_join`] after worker execution completes.
+/// `RunningProgressGuard` is created by
+/// [`Progress::spawn_running_reporter`](crate::Progress::spawn_running_reporter).
+/// Keep this guard on the coordinating thread, pass
+/// [`RunningProgressPointHandle`] clones to workers, and call
+/// [`Self::stop_and_join`] after worker execution completes.
 ///
 /// # Examples
 ///
@@ -43,7 +44,6 @@ use super::{
 ///     NoOpProgressReporter,
 ///     Progress,
 ///     ProgressCounters,
-///     RunningProgressLoop,
 /// };
 ///
 /// let reporter = NoOpProgressReporter;
@@ -53,7 +53,7 @@ use super::{
 ///     let loop_completed = Arc::clone(&completed);
 ///     let progress = Progress::new(&reporter, Duration::ZERO);
 ///     let running_progress =
-///         RunningProgressLoop::spawn_scoped(scope, progress, move || {
+///         progress.spawn_running_reporter(scope, move || {
 ///             ProgressCounters::new(Some(1))
 ///                 .with_completed_count(loop_completed.load(Ordering::Acquire))
 ///         });
@@ -69,7 +69,7 @@ use super::{
 /// # Author
 ///
 /// Haixing Hu
-pub struct ScopedRunningProgress<'scope> {
+pub struct RunningProgressGuard<'scope> {
     /// Notifier used to stop the reporter thread.
     notifier: RunningProgressNotifier,
     /// Scoped reporter thread handle.
@@ -78,7 +78,7 @@ pub struct ScopedRunningProgress<'scope> {
     report_points: bool,
 }
 
-impl<'scope> ScopedRunningProgress<'scope> {
+impl<'scope> RunningProgressGuard<'scope> {
     /// Creates a scoped running progress guard.
     ///
     /// # Parameters

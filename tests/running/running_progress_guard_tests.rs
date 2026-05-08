@@ -7,7 +7,7 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for `ScopedRunningProgress`.
+//! Tests for `RunningProgressGuard`.
 
 use std::{
     panic::{
@@ -32,9 +32,8 @@ use qubit_progress::{
     ProgressEvent,
     ProgressPhase,
     ProgressReporter,
-    RunningProgressLoop,
+    RunningProgressGuard,
     RunningProgressPointHandle,
-    ScopedRunningProgress,
 };
 
 #[derive(Debug, Default)]
@@ -70,15 +69,15 @@ impl ProgressReporter for PanickingReporter {
 }
 
 #[test]
-fn test_scoped_running_progress_reports_zero_interval_running_points() {
+fn test_running_progress_guard_reports_zero_interval_running_points() {
     let reporter = RecordingReporter::default();
     let completed_count = Arc::new(AtomicUsize::new(0));
 
     thread::scope(|scope| {
         let loop_completed_count = Arc::clone(&completed_count);
         let progress = Progress::new(&reporter, Duration::ZERO);
-        let running_progress: ScopedRunningProgress<'_> =
-            RunningProgressLoop::spawn_scoped(scope, progress, move || {
+        let running_progress: RunningProgressGuard<'_> =
+            progress.spawn_running_reporter(scope, move || {
                 ProgressCounters::new(Some(2))
                     .with_completed_count(loop_completed_count.load(Ordering::Acquire))
             });
@@ -99,14 +98,13 @@ fn test_scoped_running_progress_reports_zero_interval_running_points() {
 }
 
 #[test]
-fn test_scoped_running_progress_stop_and_join_propagates_reporter_panic() {
+fn test_running_progress_guard_stop_and_join_propagates_reporter_panic() {
     let reporter = PanickingReporter;
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         thread::scope(|scope| {
             let progress = Progress::new(&reporter, Duration::ZERO);
-            let running_progress = RunningProgressLoop::spawn_scoped(scope, progress, || {
-                ProgressCounters::new(Some(1))
-            });
+            let running_progress =
+                progress.spawn_running_reporter(scope, || ProgressCounters::new(Some(1)));
             let progress_point_handle = running_progress.point_handle();
 
             assert!(progress_point_handle.report());

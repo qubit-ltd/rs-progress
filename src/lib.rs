@@ -39,8 +39,6 @@ pub use reporter::{
     WriterProgressReporter,
 };
 pub use running::{
-    RunningProgressLoop,
-    RunningProgressNotifier,
+    RunningProgressGuard,
     RunningProgressPointHandle,
-    ScopedRunningProgress,
 };

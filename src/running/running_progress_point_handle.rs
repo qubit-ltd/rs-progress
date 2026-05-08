@@ -28,7 +28,6 @@ use super::running_progress_notifier::RunningProgressNotifier;
 ///     NoOpProgressReporter,
 ///     Progress,
 ///     ProgressCounters,
-///     RunningProgressLoop,
 /// };
 ///
 /// let reporter = NoOpProgressReporter;
@@ -36,7 +35,7 @@ use super::running_progress_notifier::RunningProgressNotifier;
 /// thread::scope(|scope| {
 ///     let progress = Progress::new(&reporter, Duration::ZERO);
 ///     let running_progress =
-///         RunningProgressLoop::spawn_scoped(scope, progress, || {
+///         progress.spawn_running_reporter(scope, || {
 ///             ProgressCounters::new(Some(1)).with_completed_count(1)
 ///         });
 ///     let progress_point_handle = running_progress.point_handle();

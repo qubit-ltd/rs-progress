@@ -23,9 +23,9 @@ use crate::{
 };
 
 use super::{
+    running_progress_guard::RunningProgressGuard,
     running_progress_notifier::RunningProgressNotifier,
     running_progress_signal::RunningProgressSignal,
-    scoped_running_progress::ScopedRunningProgress,
 };
 
 /// Runs periodic `running` progress reports for work tracked elsewhere.
@@ -36,10 +36,8 @@ use super::{
 /// and a snapshot closure that converts their domain state into
 /// [`ProgressCounters`].
 ///
-/// Use [`Self::spawn_scoped`] when the reporter thread can be scoped to the
-/// operation call. It returns a [`ScopedRunningProgress`] guard and cloneable
-/// [`crate::RunningProgressPointHandle`] handles for workers. Use [`Self::channel`]
-/// only when callers need to own the lower-level loop and notifier directly.
+/// `RunningProgressLoop` is an internal helper. Public callers should use
+/// [`Progress::spawn_running_reporter`](crate::Progress::spawn_running_reporter).
 ///
 /// # Examples
 ///
@@ -60,7 +58,6 @@ use super::{
 ///     NoOpProgressReporter,
 ///     Progress,
 ///     ProgressCounters,
-///     RunningProgressLoop,
 /// };
 ///
 /// let reporter = NoOpProgressReporter;
@@ -70,7 +67,7 @@ use super::{
 ///     let loop_completed = Arc::clone(&completed);
 ///     let progress = Progress::new(&reporter, Duration::ZERO);
 ///     let running_progress =
-///         RunningProgressLoop::spawn_scoped(scope, progress, move || {
+///         progress.spawn_running_reporter(scope, move || {
 ///             // The background reporter thread does not own the operation
 ///             // state. It only reads a fresh counter snapshot when the
 ///             // interval is due or a worker sends a running point.
@@ -95,7 +92,7 @@ use super::{
 /// # Author
 ///
 /// Haixing Hu
-pub struct RunningProgressLoop {
+pub(crate) struct RunningProgressLoop {
     /// Signal receiver owned by the reporter loop.
     signal_receiver: Receiver<RunningProgressSignal>,
 }
@@ -140,11 +137,11 @@ impl RunningProgressLoop {
     ///
     /// A guard that can create worker point handles and stop the scoped
     /// reporter thread.
-    pub fn spawn_scoped<'scope, 'env, 'progress, F>(
+    pub(crate) fn spawn_scoped<'scope, 'env, 'progress, F>(
         scope: &'scope thread::Scope<'scope, 'env>,
         progress: Progress<'progress>,
         snapshot: F,
-    ) -> ScopedRunningProgress<'scope>
+    ) -> RunningProgressGuard<'scope>
     where
         'progress: 'scope,
         F: FnMut() -> ProgressCounters + Send + 'scope,
@@ -154,7 +151,7 @@ impl RunningProgressLoop {
         let progress_thread = scope.spawn(move || {
             progress_loop.run(progress, snapshot);
         });
-        ScopedRunningProgress::new(notifier, progress_thread, report_points)
+        RunningProgressGuard::new(notifier, progress_thread, report_points)
     }
 
     /// Creates a paired running progress loop and notifier.
@@ -163,7 +160,7 @@ impl RunningProgressLoop {
     ///
     /// A loop that owns the signal receiver and a notifier that sends wakeup or
     /// stop signals to that loop.
-    pub fn channel() -> (Self, RunningProgressNotifier) {
+    pub(crate) fn channel() -> (Self, RunningProgressNotifier) {
         let (signal_sender, signal_receiver) = mpsc::channel();
         (
             Self { signal_receiver },
@@ -183,7 +180,7 @@ impl RunningProgressLoop {
     ///
     /// Propagates panics from the configured reporter when a `running` event is
     /// due.
-    pub fn run<F>(self, mut progress: Progress<'_>, mut snapshot: F)
+    pub(crate) fn run<F>(self, mut progress: Progress<'_>, mut snapshot: F)
     where
         F: FnMut() -> ProgressCounters,
     {

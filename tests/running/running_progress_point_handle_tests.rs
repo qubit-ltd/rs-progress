@@ -12,10 +12,7 @@
 use std::{
     sync::Mutex,
     thread,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::Duration,
 };
 
 use qubit_progress::{
@@ -24,7 +21,6 @@ use qubit_progress::{
     ProgressEvent,
     ProgressPhase,
     ProgressReporter,
-    RunningProgressLoop,
 };
 
 #[derive(Debug, Default)]
@@ -55,9 +51,8 @@ fn test_running_progress_point_handle_is_noop_for_positive_interval() {
     let reporter = RecordingReporter::default();
 
     thread::scope(|scope| {
-        let started_at = Instant::now() - Duration::from_millis(10);
-        let progress = Progress::from_start(&reporter, Duration::from_millis(5), started_at);
-        let running_progress = RunningProgressLoop::spawn_scoped(scope, progress, || {
+        let progress = Progress::new(&reporter, Duration::from_millis(5));
+        let running_progress = progress.spawn_running_reporter(scope, || {
             ProgressCounters::new(Some(1)).with_active_count(1)
         });
         let progress_point_handle = running_progress.point_handle();
