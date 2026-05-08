@@ -168,9 +168,17 @@ thread::scope(|scope| {
         });
     let progress_point_handle = running_progress.point_handle();
 
+    let mut handles = Vec::new();
     for _ in 0..3 {
-        completed.inc();
-        progress_point_handle.report();
+        let completed_worker = Arc::clone(&completed);
+        let point = progress_point_handle.clone();
+        handles.push(scope.spawn(move || {
+            completed_worker.inc();
+            point.report();
+        }));
+    }
+    for handle in handles {
+        handle.join().unwrap();
     }
 
     running_progress.stop_and_join();

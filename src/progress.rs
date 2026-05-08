@@ -307,13 +307,23 @@ impl<'a> Progress<'a> {
     /// thread::scope(|scope| {
     ///     let loop_completed = Arc::clone(&completed);
     ///     let running = progress.spawn_running_reporter(scope, move || {
-    ///         ProgressCounters::new(Some(1))
+    ///         ProgressCounters::new(Some(3))
     ///             .with_completed_count(loop_completed.load(Ordering::Acquire))
     ///     });
     ///     let point = running.point_handle();
     ///
-    ///     completed.store(1, Ordering::Release);
-    ///     assert!(point.report());
+    ///     let mut handles = Vec::new();
+    ///     for _ in 0..3 {
+    ///         let c = Arc::clone(&completed);
+    ///         let p = point.clone();
+    ///         handles.push(scope.spawn(move || {
+    ///             c.fetch_add(1, Ordering::AcqRel);
+    ///             assert!(p.report());
+    ///         }));
+    ///     }
+    ///     for h in handles {
+    ///         h.join().unwrap();
+    ///     }
     ///
     ///     running.stop_and_join();
     /// });

@@ -76,11 +76,19 @@ use super::{
 ///         });
 ///     let progress_point_handle = running_progress.point_handle();
 ///
-///     // Worker code updates domain state first, then wakes the loop. With a
-///     // zero interval, each running point may emit a `running` event.
+///     // Workers update domain state, then wake the loop. With a zero
+///     // interval, each running point may emit a `running` event.
+///     let mut handles = Vec::new();
 ///     for _ in 0..3 {
-///         completed.fetch_add(1, Ordering::AcqRel);
-///         assert!(progress_point_handle.report());
+///         let c = Arc::clone(&completed);
+///         let p = progress_point_handle.clone();
+///         handles.push(scope.spawn(move || {
+///             c.fetch_add(1, Ordering::AcqRel);
+///             assert!(p.report());
+///         }));
+///     }
+///     for h in handles {
+///         h.join().unwrap();
 ///     }
 ///
 ///     // Stop the loop before leaving the scope. Reporter panics are
