@@ -17,7 +17,11 @@
 
 mod running_progress_loop;
 mod running_progress_notifier;
+mod running_progress_points;
 mod running_progress_signal;
+mod scoped_running_progress;
 
 pub use running_progress_loop::RunningProgressLoop;
 pub use running_progress_notifier::RunningProgressNotifier;
+pub use running_progress_points::RunningProgressPoints;
+pub use scoped_running_progress::ScopedRunningProgress;

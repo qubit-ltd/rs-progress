@@ -41,4 +41,6 @@ pub use reporter::{
 pub use running::{
     RunningProgressLoop,
     RunningProgressNotifier,
+    RunningProgressPoints,
+    ScopedRunningProgress,
 };

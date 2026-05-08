@@ -41,9 +41,9 @@ In addition, this crate provides:
 - `ProgressReporter`: trait for receiving progress events.
 - `Progress`: helper for reporting a single operation's lifecycle with
   elapsed time and interval-based running updates.
-- `RunningProgressLoop` and `RunningProgressNotifier`: helper pair for
-  reporting `running` progress from a background reporter thread while workers
-  update shared domain state.
+- `RunningProgressLoop`, `ScopedRunningProgress`, and
+  `RunningProgressPoints`: helpers for reporting `running` progress from a
+  background reporter thread while workers update shared domain state.
 - `NoOpProgressReporter`, `StdoutProgressReporter`,
   `StderrProgressReporter`, `WriterProgressReporter`, and
   `LoggerProgressReporter`: reusable reporter implementations.
@@ -140,15 +140,18 @@ controls the reporting interval.
 
 ## Reporting from a background thread
 
-Use `RunningProgressLoop` when work happens on one or more worker threads but
-the reporter should run on a separate background reporter thread. The workers
-keep updating domain state. The loop only waits for either a timeout or a
-`RunningProgressNotifier::running_point` signal, then calls your snapshot
-closure to build fresh `ProgressCounters`.
+Use `RunningProgressLoop::spawn_scoped` when work happens on one or more worker
+threads but the reporter should run on a separate background reporter thread.
+The workers keep updating domain state. The scoped loop only waits for either a
+timeout or a `RunningProgressPoints::running_point` signal, then calls your
+snapshot closure to build fresh `ProgressCounters`.
 
 This is useful for parallel executors: reporter callbacks stay out of worker
-hot paths for positive intervals, while `Duration::ZERO` can still report after
-each worker progress point without busy waiting.
+hot paths for positive intervals, while `Duration::ZERO` can still report
+after each worker progress point without busy waiting. Keep the
+`ScopedRunningProgress` guard on the coordinating thread, pass
+`RunningProgressPoints` clones to workers, and call `stop_and_join` before
+terminal `finished`, `failed`, or `canceled` events are reported.
 
 The example below uses [`qubit-atomic`](https://crates.io/crates/qubit-atomic)’s
 [`AtomicCount`](https://docs.rs/qubit-atomic/latest/qubit_atomic/struct.AtomicCount.html)
@@ -176,35 +179,30 @@ use qubit_progress::{
 
 let reporter = StdoutProgressReporter::default();
 let completed = Arc::new(AtomicCount::zero());
-let (progress_loop, notifier) = RunningProgressLoop::channel();
 
 thread::scope(|scope| {
     let loop_completed = Arc::clone(&completed);
-    let reporter_ref = &reporter;
-    let progress_thread = scope.spawn(move || {
-        let progress = Progress::new(reporter_ref, Duration::ZERO);
-        progress_loop.run(progress, || {
+    let progress = Progress::new(&reporter, Duration::ZERO);
+    let running_progress =
+        RunningProgressLoop::spawn_scoped(scope, progress, move || {
             ProgressCounters::new(Some(3))
                 .with_completed_count(loop_completed.get())
         });
-    });
+    let progress_points = running_progress.points();
 
     for _ in 0..3 {
         completed.inc();
-        notifier.running_point();
+        progress_points.running_point();
     }
 
-    notifier.stop();
-    progress_thread
-        .join()
-        .expect("progress loop should stop cleanly");
+    running_progress.stop_and_join();
 });
 ```
 
-For positive intervals, workers normally do not need to call
-`running_point`; the loop wakes itself with `recv_timeout`. A stop signal should
-still be sent when the operation completes so the background thread can join
-before terminal `finished`, `failed`, or `canceled` events are reported.
+For positive intervals, `RunningProgressPoints::running_point` is a no-op; the
+loop wakes itself with `recv_timeout`. This lets worker code call it
+unconditionally while the guard keeps stop/join ownership on the coordinating
+thread.
 
 ## Multi-stage progress
 
@@ -289,6 +287,8 @@ with a target and level.
 - `Progress`: lifecycle helper for one progress-producing operation.
 - `RunningProgressLoop`: background running-event loop driven by timeouts or
   worker signals.
+- `ScopedRunningProgress`: guard that owns a scoped background reporter thread.
+- `RunningProgressPoints`: cloneable worker-side handle for running points.
 - `RunningProgressNotifier`: cloneable handle for waking or stopping a
   `RunningProgressLoop`.
 - `NoOpProgressReporter`: reporter that ignores events.
