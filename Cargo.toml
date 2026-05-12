@@ -1,6 +1,6 @@
 [package]
 name = "qubit-progress"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 rust-version = "1.94"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -13,11 +13,14 @@ readme = "README.md"
 keywords = ["progress", "reporting", "status", "stage"]
 categories = ["development-tools"]
 exclude = [
-    "coverage.sh",
-    "check-coverage-thresholds.sh",
-    ".circleci/*",
     "align-ci.sh",
     "ci-check.sh",
+    "coverage.sh",
+    "style-check.sh",
+    "update-submodule.sh",
+    ".github/*",
+    ".llvm-cov.toml",
+    ".cargo-audit.toml.example",
 ]
 
 [lib]
