@@ -91,10 +91,15 @@ impl ProgressStage {
 
     /// Returns a copy configured with a relative stage weight.
     ///
+    /// The weight is intended for caller-side weighted progress calculations.
+    /// Callers should supply finite, non-negative values. This method records
+    /// the supplied value as-is and does not validate `NaN`, infinity, or
+    /// negative input.
+    ///
     /// # Parameters
     ///
-    /// * `weight` - Relative stage weight used by callers that compute
-    ///   weighted total progress.
+    /// * `weight` - Finite, non-negative relative stage weight used by callers
+    ///   that compute weighted total progress.
     ///
     /// # Returns
     ///

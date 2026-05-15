@@ -286,7 +286,9 @@ with a target and level.
 
 - `ProgressPhase`: lifecycle phase enum.
 - `ProgressStage`: stage id, name, index, total stage count, and optional
-  weight.
+  caller-supplied weight. When you use weight for weighted progress
+  calculations, supply finite, non-negative values; the crate stores the value
+  as-is and does not validate it.
 - `ProgressCounters`: generic counters with remaining-count and percentage
   helpers.
 - `ProgressEvent`: immutable event carrying phase, stage, counters, and elapsed

@@ -31,3 +31,15 @@ fn test_progress_stage_accessors_return_configured_values() {
     assert_eq!(configured_stage.total_stages(), Some(3));
     assert_eq!(configured_stage.weight(), Some(2.5));
 }
+
+#[test]
+fn test_progress_stage_weight_records_supplied_value() {
+    let stage = ProgressStage::new("copy", "Copy files").with_weight(f64::NAN);
+
+    assert!(
+        stage
+            .weight()
+            .expect("stage should carry supplied weight")
+            .is_nan()
+    );
+}

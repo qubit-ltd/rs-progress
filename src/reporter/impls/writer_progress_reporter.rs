@@ -114,8 +114,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics when the writer mutex is poisoned or writing to the configured
-    /// writer fails.
+    /// Recovers the inner writer when the writer mutex is poisoned, and panics
+    /// only when writing to the configured writer fails.
     fn report(&self, event: &ProgressEvent) {
         let mut writer = self
             .writer

@@ -40,3 +40,12 @@ fn test_progress_counters_handle_unknown_and_zero_total() {
     assert_eq!(empty.progress_fraction(), Some(1.0));
     assert_eq!(empty.progress_percent(), Some(100.0));
 }
+
+#[test]
+fn test_progress_counters_remaining_count_saturates_without_overflow() {
+    let counters = ProgressCounters::new(Some(usize::MAX))
+        .with_completed_count(usize::MAX)
+        .with_active_count(1);
+
+    assert_eq!(counters.remaining_count(), Some(0));
+}
