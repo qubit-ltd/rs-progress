@@ -193,9 +193,11 @@ impl ProgressCounters {
     #[inline]
     pub const fn remaining_count(&self) -> Option<usize> {
         match self.total_count {
-            Some(total_count) => {
-                Some(total_count.saturating_sub(self.completed_count + self.active_count))
-            }
+            Some(total_count) => Some(
+                total_count
+                    .saturating_sub(self.completed_count)
+                    .saturating_sub(self.active_count),
+            ),
             None => None,
         }
     }

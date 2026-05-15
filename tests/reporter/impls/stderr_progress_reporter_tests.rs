@@ -9,7 +9,14 @@
  ******************************************************************************/
 //! Tests for `StderrProgressReporter`.
 
-use std::time::Duration;
+use std::{
+    env,
+    process::{
+        Command,
+        Output,
+    },
+    time::Duration,
+};
 
 use qubit_progress::{
     ProgressCounters,
@@ -20,11 +27,43 @@ use qubit_progress::{
     },
 };
 
+const STDERR_CHILD_ENV: &str = "QUBIT_PROGRESS_STDERR_REPORTER_CHILD";
+
 #[test]
 fn test_stderr_progress_reporter_default_can_report() {
+    if env::var_os(STDERR_CHILD_ENV).is_some() {
+        report_failed_to_stderr();
+        return;
+    }
+
+    let output = run_current_test_in_child(
+        "reporter::impls::stderr_progress_reporter_tests::test_stderr_progress_reporter_default_can_report",
+        STDERR_CHILD_ENV,
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    assert!(stderr.contains("failed 1/2 (50.00%)"), "{stderr}");
+}
+
+fn report_failed_to_stderr() {
     let reporter = StderrProgressReporter::default();
     reporter.report(&ProgressEvent::failed(
         ProgressCounters::new(Some(2)).with_completed_count(1),
         Duration::from_millis(10),
     ));
+}
+
+fn run_current_test_in_child(test_name: &str, env_name: &str) -> Output {
+    let output = Command::new(env::current_exe().expect("test executable path should be known"))
+        .arg("--exact")
+        .arg(test_name)
+        .arg("--nocapture")
+        .env(env_name, "1")
+        .output()
+        .expect("child test process should run");
+    assert!(
+        output.status.success(),
+        "child test failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
 }
