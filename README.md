@@ -63,7 +63,7 @@ attached to progress events.
 
 ```toml
 [dependencies]
-qubit-progress = "0.4.4"
+qubit-progress = "0.4"
 ```
 
 ## Quick Start
