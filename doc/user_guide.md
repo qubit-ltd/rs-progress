@@ -24,6 +24,13 @@ another serde-compatible format crate:
 serde_json = "1"
 ```
 
+If you use the consumer-based extension examples directly, add `qubit-function`:
+
+```toml
+[dependencies]
+qubit-function = "0.15"
+```
+
 Some concurrent examples in this guide use `qubit-atomic` to avoid explicit
 standard-library memory ordering parameters:
 
@@ -42,6 +49,7 @@ A progress stream has five main concepts:
 | Metric | `ProgressMetric` | A stable metric id and a display name. |
 | Counter | `ProgressCounter` | The current numbers for one metric. |
 | Event | `ProgressEvent` | One immutable progress snapshot. |
+| Metric snapshot | `ProgressMetricSnapshot` | One event counter flattened with metric metadata and event context. |
 | Reporter | `ProgressReporter` | A sink that receives events. |
 
 A `Progress` value ties these concepts together for one logical operation. It
@@ -51,6 +59,11 @@ reporter reference.
 The event is self-describing: it carries its schema. This makes serialized JSON
 usable by logs, databases, agents, and external consumers without requiring a
 separate schema registry.
+
+When a reporter wants to handle one metric at a time, it can call
+`ProgressEvent::metric_snapshots()`. Each `ProgressMetricSnapshot` contains the
+complete `ProgressMetric`, event phase, optional stage, flattened counter
+values, and elapsed time.
 
 ## Quick Start
 
@@ -403,10 +416,18 @@ Important rules:
 | Reporter | Use case |
 | --- | --- |
 | `NoOpProgressReporter` | Tests, optional progress, or disabled reporting. |
-| `WriterProgressReporter<W>` | Write human-readable progress lines to any `Write + Send` sink. |
+| `MetricSnapshotProgressReporter` | Send structured `ProgressMetricSnapshot` objects to a consumer. |
+| `FormattedProgressReporter` | Format each metric snapshot and send strings to a consumer. |
+| `HumanReadableProgressReporter` | Send human-readable metric snapshot strings to a consumer. |
+| `JsonProgressReporter` | Send JSON metric snapshot strings to a consumer. |
+| `WriterProgressReporter<W>` | Write human-readable metric snapshot lines to any `Write + Send` sink. |
 | `StdoutProgressReporter` | Command-line progress to stdout. |
 | `StderrProgressReporter` | Command-line progress to stderr. |
 | `LoggerProgressReporter` | Emit progress through the `log` crate. |
+| `JsonWriterProgressReporter<W>` | Write JSON metric snapshot lines to any `Write + Send` sink. |
+| `JsonStdoutProgressReporter` | Command-line JSON progress to stdout. |
+| `JsonStderrProgressReporter` | Command-line JSON progress to stderr. |
+| `JsonLoggerProgressReporter` | Emit JSON metric snapshots through the `log` crate. |
 
 Example with an in-memory writer:
 
@@ -482,6 +503,87 @@ assert_eq!(
 
 This representation is useful for agent-readable logs because each event
 contains both the metric ids and their display names.
+
+For line-oriented structured output, prefer the built-in JSON metric snapshot
+reporters. They write one JSON object per metric counter:
+
+```rust
+use std::{
+    io::Cursor,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+use qubit_progress::{
+    JsonWriterProgressReporter,
+    ProgressCounter,
+    ProgressEvent,
+    ProgressReporter,
+    ProgressSchema,
+};
+
+let output = Arc::new(Mutex::new(Cursor::new(Vec::new())));
+let reporter = JsonWriterProgressReporter::new(output.clone());
+reporter.report(&ProgressEvent::running(
+    ProgressSchema::single("entries", "Entries"),
+    vec![ProgressCounter::new("entries").total(5).completed(2)],
+    Duration::from_millis(110),
+));
+
+let text = String::from_utf8(
+    output.lock().expect("output should lock").get_ref().clone(),
+)
+.expect("JSON output should be UTF-8");
+assert!(text.contains(r#""metric":{"id":"entries","name":"Entries"}"#));
+assert!(text.contains(r#""elapsed":"110ms""#));
+```
+
+Use `JsonProgressReporter` when you already have a
+`qubit_function::Consumer<String>`, `JsonWriterProgressReporter` for any
+`Write` sink, and `JsonLoggerProgressReporter` for `log` output.
+
+## Consuming Metric Snapshots Directly
+
+Some integrations should not format progress as strings at all. GUI progress
+bars, metrics collectors, and database writers often want structured objects.
+Use `MetricSnapshotProgressReporter` for those cases:
+
+```rust
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+use qubit_function::ArcConsumer;
+use qubit_progress::{
+    MetricSnapshotProgressReporter,
+    ProgressCounter,
+    ProgressEvent,
+    ProgressMetricSnapshot,
+    ProgressReporter,
+    ProgressSchema,
+};
+
+let snapshots = Arc::new(Mutex::new(Vec::<ProgressMetricSnapshot>::new()));
+let captured = Arc::clone(&snapshots);
+let consumer = ArcConsumer::new(move |snapshot: &ProgressMetricSnapshot| {
+    captured
+        .lock()
+        .expect("snapshot list should lock")
+        .push(snapshot.clone());
+});
+let reporter = MetricSnapshotProgressReporter::new(consumer);
+
+reporter.report(&ProgressEvent::running(
+    ProgressSchema::single("entries", "Entries"),
+    vec![ProgressCounter::new("entries").total(5).completed(2)],
+    Duration::from_millis(110),
+));
+
+let snapshots = snapshots.lock().expect("snapshot list should lock");
+assert_eq!(snapshots[0].metric_id(), "entries");
+assert_eq!(snapshots[0].completed_count(), 2);
+```
 
 ## Implementing a Custom Reporter
 

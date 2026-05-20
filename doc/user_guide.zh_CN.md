@@ -18,6 +18,13 @@ qubit-progress = "0.5"
 serde_json = "1"
 ```
 
+如果你直接使用基于 consumer 的扩展示例，需要添加 `qubit-function`：
+
+```toml
+[dependencies]
+qubit-function = "0.15"
+```
+
 本指南中的部分并发示例使用 `qubit-atomic`，从而避免直接暴露标准库 memory ordering 参数：
 
 ```toml
@@ -35,11 +42,14 @@ qubit-atomic = "0.13"
 | Metric | `ProgressMetric` | 稳定的 metric id 和展示名称。 |
 | Counter | `ProgressCounter` | 某个 metric 当前的计数值。 |
 | Event | `ProgressEvent` | 一次不可变的进度快照。 |
+| Metric snapshot | `ProgressMetricSnapshot` | 一个 event counter 与 metric 元数据和 event 上下文的扁平快照。 |
 | Reporter | `ProgressReporter` | 接收 events 的输出端。 |
 
 `Progress` 把这些概念组合成一个逻辑操作。它保存操作开始时间、汇报间隔、可选 stage 和 reporter 引用。
 
 Event 是自描述的：它自带 schema。因此序列化后的 JSON 可以直接被日志、数据库、agent 和外部消费者读取，而不依赖额外的 schema registry。
+
+当 reporter 希望按 metric 粒度处理事件时，可以调用 `ProgressEvent::metric_snapshots()`。每个 `ProgressMetricSnapshot` 都包含完整 `ProgressMetric`、event phase、可选 stage、扁平 counter 值和 elapsed time。
 
 ## 快速开始
 
@@ -372,10 +382,18 @@ thread::scope(|scope| {
 | Reporter | 适用场景 |
 | --- | --- |
 | `NoOpProgressReporter` | 测试、可选进度或禁用进度汇报。 |
-| `WriterProgressReporter<W>` | 把人类可读进度行写入任意 `Write + Send` sink。 |
+| `MetricSnapshotProgressReporter` | 把结构化 `ProgressMetricSnapshot` 对象发送给 consumer。 |
+| `FormattedProgressReporter` | 格式化每个 metric snapshot，并把字符串发送给 consumer。 |
+| `HumanReadableProgressReporter` | 把人类可读 metric snapshot 字符串发送给 consumer。 |
+| `JsonProgressReporter` | 把 JSON metric snapshot 字符串发送给 consumer。 |
+| `WriterProgressReporter<W>` | 把人类可读 metric snapshot 行写入任意 `Write + Send` sink。 |
 | `StdoutProgressReporter` | 命令行 stdout 进度输出。 |
 | `StderrProgressReporter` | 命令行 stderr 进度输出。 |
 | `LoggerProgressReporter` | 通过 `log` crate 输出进度。 |
+| `JsonWriterProgressReporter<W>` | 把 JSON metric snapshot 行写入任意 `Write + Send` sink。 |
+| `JsonStdoutProgressReporter` | 命令行 JSON 进度输出到 stdout。 |
+| `JsonStderrProgressReporter` | 命令行 JSON 进度输出到 stderr。 |
+| `JsonLoggerProgressReporter` | 通过 `log` crate 输出 JSON metric snapshot。 |
 
 使用内存 writer 的示例：
 
@@ -448,6 +466,82 @@ assert_eq!(
 ```
 
 这种表示方式适合 agent 读取的日志，因为每个 event 同时包含 metric id 和对应展示名称。
+
+如果需要面向行的结构化输出，优先使用内置 JSON metric snapshot reporter。它们会为每个 metric counter 写出一个 JSON object：
+
+```rust
+use std::{
+    io::Cursor,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+use qubit_progress::{
+    JsonWriterProgressReporter,
+    ProgressCounter,
+    ProgressEvent,
+    ProgressReporter,
+    ProgressSchema,
+};
+
+let output = Arc::new(Mutex::new(Cursor::new(Vec::new())));
+let reporter = JsonWriterProgressReporter::new(output.clone());
+reporter.report(&ProgressEvent::running(
+    ProgressSchema::single("entries", "Entries"),
+    vec![ProgressCounter::new("entries").total(5).completed(2)],
+    Duration::from_millis(110),
+));
+
+let text = String::from_utf8(
+    output.lock().expect("output should lock").get_ref().clone(),
+)
+.expect("JSON output should be UTF-8");
+assert!(text.contains(r#""metric":{"id":"entries","name":"Entries"}"#));
+assert!(text.contains(r#""elapsed":"110ms""#));
+```
+
+已有 `qubit_function::Consumer<String>` 时使用 `JsonProgressReporter`；需要写入任意 `Write` sink 时使用 `JsonWriterProgressReporter`；需要通过 `log` 输出时使用 `JsonLoggerProgressReporter`。
+
+## 直接消费 Metric Snapshot
+
+有些集成不应该把进度格式化成字符串。GUI 进度条、metrics collector 和数据库写入器通常更需要结构化对象。这类场景使用 `MetricSnapshotProgressReporter`：
+
+```rust
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+use qubit_function::ArcConsumer;
+use qubit_progress::{
+    MetricSnapshotProgressReporter,
+    ProgressCounter,
+    ProgressEvent,
+    ProgressMetricSnapshot,
+    ProgressReporter,
+    ProgressSchema,
+};
+
+let snapshots = Arc::new(Mutex::new(Vec::<ProgressMetricSnapshot>::new()));
+let captured = Arc::clone(&snapshots);
+let consumer = ArcConsumer::new(move |snapshot: &ProgressMetricSnapshot| {
+    captured
+        .lock()
+        .expect("snapshot list should lock")
+        .push(snapshot.clone());
+});
+let reporter = MetricSnapshotProgressReporter::new(consumer);
+
+reporter.report(&ProgressEvent::running(
+    ProgressSchema::single("entries", "Entries"),
+    vec![ProgressCounter::new("entries").total(5).completed(2)],
+    Duration::from_millis(110),
+));
+
+let snapshots = snapshots.lock().expect("snapshot list should lock");
+assert_eq!(snapshots[0].metric_id(), "entries");
+assert_eq!(snapshots[0].completed_count(), 2);
+```
 
 ## 实现自定义 Reporter
 

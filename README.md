@@ -78,6 +78,7 @@ event stream. A metric has a stable `id` for structured data and a human-readabl
 | `ProgressSchema` | metric definitions for one logical operation |
 | `ProgressMetric` | stable metric id plus display name |
 | `ProgressCounter` | `u64` counts for one metric id |
+| `ProgressMetricSnapshot` | one metric counter flattened with event phase, stage, and elapsed time |
 | `ProgressStage` | optional multi-stage operation metadata |
 
 A schema can contain multiple metrics, for example `entries` and `bytes`, so a
@@ -221,13 +222,22 @@ Built-in reporters:
 | Reporter | Purpose |
 | --- | --- |
 | `NoOpProgressReporter` | ignores events |
-| `WriterProgressReporter` | writes human-readable lines to any `Write` sink |
+| `MetricSnapshotProgressReporter` | sends structured `ProgressMetricSnapshot` objects to a consumer |
+| `FormattedProgressReporter` | formats each metric snapshot and sends strings to a consumer |
+| `HumanReadableProgressReporter` | sends human-readable metric snapshot strings to a consumer |
+| `JsonProgressReporter` | sends JSON metric snapshot strings to a consumer |
+| `WriterProgressReporter` | writes human-readable metric snapshot lines to any `Write` sink |
 | `StdoutProgressReporter` | writes to stdout |
 | `StderrProgressReporter` | writes to stderr |
 | `LoggerProgressReporter` | emits through the `log` crate |
+| `JsonWriterProgressReporter` | writes JSON metric snapshot lines to any `Write` sink |
+| `JsonStdoutProgressReporter` | writes JSON metric snapshots to stdout |
+| `JsonStderrProgressReporter` | writes JSON metric snapshots to stderr |
+| `JsonLoggerProgressReporter` | emits JSON metric snapshots through the `log` crate |
 
-A reporter can group counters by `metric_id` and use `event.schema()` to resolve
-human-readable metric names.
+A reporter can call `event.metric_snapshots()` to turn each counter into a
+`ProgressMetricSnapshot` containing the complete metric object, phase, optional
+stage, flattened counter values, and elapsed time.
 
 ## JSON Serialization
 
@@ -276,16 +286,18 @@ or long-term metrics storage.
 This crate depends on:
 
 - `serde` for serializable progress models;
+- `serde_json` for built-in JSON metric snapshot formatting;
 - `log` for `LoggerProgressReporter`;
+- `qubit-function` for consumer adapters used by formatted reporters;
 - `qubit-serde` for compact `Duration` serialization.
 
 It does not require an async runtime.
 
 ## Testing & Code Coverage
 
-This project maintains test coverage for progress models, event builders,
-reporting cadence, background reporting, reporter implementations, and JSON
-serialization.
+This project maintains test coverage for progress models, metric snapshots,
+event builders, reporting cadence, background reporting, text and JSON reporter
+implementations, and JSON serialization.
 
 ### Running Tests
 

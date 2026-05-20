@@ -73,6 +73,7 @@ assert_eq!(event.counter("entries").map(|c| c.completed_count()), Some(4));
 | `ProgressSchema` | 一个逻辑操作的 metric 定义 |
 | `ProgressMetric` | 稳定 metric id 和展示名称 |
 | `ProgressCounter` | 某个 metric id 对应的 `u64` 计数 |
+| `ProgressMetricSnapshot` | 一个 metric counter 与 event phase、stage、elapsed time 的扁平快照 |
 | `ProgressStage` | 可选的多阶段操作元数据 |
 
 一个 schema 可以包含多个 metric，例如 `entries` 和 `bytes`。这样单个 event 就能同时汇报逻辑条目进度和字节进度，而不会混淆单位。
@@ -205,12 +206,20 @@ fn report(&self, event: &ProgressEvent);
 | Reporter | 用途 |
 | --- | --- |
 | `NoOpProgressReporter` | 忽略事件 |
-| `WriterProgressReporter` | 把人类可读文本写入任意 `Write` sink |
+| `MetricSnapshotProgressReporter` | 把结构化 `ProgressMetricSnapshot` 对象发送给 consumer |
+| `FormattedProgressReporter` | 格式化每个 metric snapshot，并把字符串发送给 consumer |
+| `HumanReadableProgressReporter` | 把人类可读 metric snapshot 字符串发送给 consumer |
+| `JsonProgressReporter` | 把 JSON metric snapshot 字符串发送给 consumer |
+| `WriterProgressReporter` | 把人类可读 metric snapshot 行写入任意 `Write` sink |
 | `StdoutProgressReporter` | 写入 stdout |
 | `StderrProgressReporter` | 写入 stderr |
 | `LoggerProgressReporter` | 通过 `log` crate 输出 |
+| `JsonWriterProgressReporter` | 把 JSON metric snapshot 行写入任意 `Write` sink |
+| `JsonStdoutProgressReporter` | 把 JSON metric snapshot 写入 stdout |
+| `JsonStderrProgressReporter` | 把 JSON metric snapshot 写入 stderr |
+| `JsonLoggerProgressReporter` | 通过 `log` crate 输出 JSON metric snapshot |
 
-Reporter 可以按 `metric_id` 分组，并通过 `event.schema()` 解析适合展示的 metric 名称。
+Reporter 可以调用 `event.metric_snapshots()`，把每个 counter 转换成包含完整 metric 对象、phase、可选 stage、扁平 counter 值和 elapsed time 的 `ProgressMetricSnapshot`。
 
 ## JSON 序列化
 
@@ -255,14 +264,16 @@ assert_eq!(
 本 crate 依赖：
 
 - `serde`：用于可序列化的 progress model；
+- `serde_json`：用于内置 JSON metric snapshot 格式化；
 - `log`：用于 `LoggerProgressReporter`；
+- `qubit-function`：用于 formatted reporter 的 consumer adapter；
 - `qubit-serde`：用于紧凑的 `Duration` 序列化。
 
 它不要求 async runtime。
 
 ## 测试与代码覆盖率
 
-本项目为 progress model、event builder、汇报间隔、后台汇报、reporter 实现和 JSON 序列化保持测试覆盖。
+本项目为 progress model、metric snapshot、event builder、汇报间隔、后台汇报、text / JSON reporter 实现和 JSON 序列化保持测试覆盖。
 
 ### 运行测试
 
