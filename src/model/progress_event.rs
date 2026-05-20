@@ -9,14 +9,23 @@
  ******************************************************************************/
 use std::time::Duration;
 
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
 use super::{
-    ProgressCounters,
+    ProgressCounter,
     ProgressEventBuilder,
     ProgressPhase,
+    ProgressSchema,
     ProgressStage,
 };
 
 /// Immutable progress event delivered to reporters.
+///
+/// Each event carries its [`ProgressSchema`], making serialized events
+/// self-describing for logs, databases, and agent-readable JSON streams.
 ///
 /// # Examples
 ///
@@ -24,49 +33,59 @@ use super::{
 /// use std::time::Duration;
 ///
 /// use qubit_progress::{
-///     ProgressCounters,
 ///     ProgressEvent,
+///     ProgressMetric,
 ///     ProgressPhase,
-///     ProgressStage,
+///     ProgressSchema,
 /// };
 ///
-/// let counters = ProgressCounters::new(Some(5)).with_completed_count(2);
-/// let event = ProgressEvent::from_phase(
-///     ProgressPhase::Running,
-///     counters,
-///     Duration::from_millis(500),
-/// )
-/// .with_stage(ProgressStage::new("load", "Load records"));
+/// let schema = ProgressSchema::new(vec![
+///     ProgressMetric::new("entries", "Entries"),
+///     ProgressMetric::new("bytes", "Bytes"),
+/// ]);
+/// let event = ProgressEvent::builder(schema)
+///     .running()
+///     .counter("entries", |counter| counter.total(5).completed(2))
+///     .counter("bytes", |counter| counter.total(500).completed(200))
+///     .elapsed(Duration::from_millis(500))
+///     .build();
 ///
 /// assert_eq!(event.phase(), ProgressPhase::Running);
-/// assert_eq!(event.counters().completed_count(), 2);
-/// assert_eq!(event.stage().map(|stage| stage.name()), Some("Load records"));
+/// assert_eq!(event.counter("entries").map(|c| c.completed_count()), Some(2));
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProgressEvent {
+    /// Metric schema that describes every counter in this event.
+    schema: ProgressSchema,
     /// Lifecycle phase of the reported operation.
     phase: ProgressPhase,
     /// Optional current stage.
+    #[serde(skip_serializing_if = "Option::is_none")]
     stage: Option<ProgressStage>,
-    /// Generic counters for the operation.
-    counters: ProgressCounters,
+    /// Metric counters for this event.
+    counters: Vec<ProgressCounter>,
     /// Monotonic elapsed duration.
+    #[serde(with = "qubit_serde::serde::duration_with_unit")]
     elapsed: Duration,
 }
 
 impl ProgressEvent {
-    /// Creates a progress event builder.
+    /// Creates a progress event builder for a schema.
+    ///
+    /// # Parameters
+    ///
+    /// * `schema` - Metric schema carried by the built event.
     ///
     /// # Returns
     ///
-    /// A builder initialized as running, unknown-total progress with zeroed
-    /// counters and zero elapsed time.
+    /// A builder initialized as running progress with no counters and zero
+    /// elapsed time.
     #[inline]
-    pub const fn builder() -> ProgressEventBuilder {
-        ProgressEventBuilder::new()
+    pub fn builder(schema: ProgressSchema) -> ProgressEventBuilder {
+        ProgressEventBuilder::new(schema)
     }
 
-    /// Creates a progress event.
+    /// Creates a progress event from a builder.
     ///
     /// # Parameters
     ///
@@ -78,6 +97,7 @@ impl ProgressEvent {
     #[inline]
     pub fn new(builder: ProgressEventBuilder) -> Self {
         Self {
+            schema: builder.schema,
             phase: builder.phase,
             stage: builder.stage,
             counters: builder.counters,
@@ -85,10 +105,37 @@ impl ProgressEvent {
         }
     }
 
+    /// Creates a progress event for the supplied lifecycle phase.
+    ///
+    /// # Parameters
+    ///
+    /// * `schema` - Metric schema carried by the event.
+    /// * `phase` - Lifecycle phase for the event.
+    /// * `counters` - Metric counters carried by the event.
+    /// * `elapsed` - Elapsed duration carried by the event.
+    ///
+    /// # Returns
+    ///
+    /// A progress event with `schema`, `phase`, `counters`, and `elapsed`.
+    #[inline]
+    pub fn from_phase(
+        schema: ProgressSchema,
+        phase: ProgressPhase,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
+        Self::builder(schema)
+            .phase(phase)
+            .counters(counters)
+            .elapsed(elapsed)
+            .build()
+    }
+
     /// Creates a started progress event.
     ///
     /// # Parameters
     ///
+    /// * `schema` - Metric schema carried by the event.
     /// * `counters` - Initial progress counters.
     /// * `elapsed` - Elapsed duration at start, usually zero.
     ///
@@ -96,19 +143,19 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Started`].
     #[inline]
-    pub const fn started(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self {
-            phase: ProgressPhase::Started,
-            stage: None,
-            counters,
-            elapsed,
-        }
+    pub fn started(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
+        Self::from_phase(schema, ProgressPhase::Started, counters, elapsed)
     }
 
     /// Creates a running progress event.
     ///
     /// # Parameters
     ///
+    /// * `schema` - Metric schema carried by the event.
     /// * `counters` - Current progress counters.
     /// * `elapsed` - Elapsed duration since operation start.
     ///
@@ -116,19 +163,19 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Running`].
     #[inline]
-    pub const fn running(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self {
-            phase: ProgressPhase::Running,
-            stage: None,
-            counters,
-            elapsed,
-        }
+    pub fn running(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
+        Self::from_phase(schema, ProgressPhase::Running, counters, elapsed)
     }
 
     /// Creates a finished progress event.
     ///
     /// # Parameters
     ///
+    /// * `schema` - Metric schema carried by the event.
     /// * `counters` - Final progress counters.
     /// * `elapsed` - Total elapsed duration.
     ///
@@ -136,19 +183,19 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Finished`].
     #[inline]
-    pub const fn finished(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self {
-            phase: ProgressPhase::Finished,
-            stage: None,
-            counters,
-            elapsed,
-        }
+    pub fn finished(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
+        Self::from_phase(schema, ProgressPhase::Finished, counters, elapsed)
     }
 
     /// Creates a failed progress event.
     ///
     /// # Parameters
     ///
+    /// * `schema` - Metric schema carried by the event.
     /// * `counters` - Final or current progress counters.
     /// * `elapsed` - Elapsed duration at failure.
     ///
@@ -156,19 +203,19 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Failed`].
     #[inline]
-    pub const fn failed(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self {
-            phase: ProgressPhase::Failed,
-            stage: None,
-            counters,
-            elapsed,
-        }
+    pub fn failed(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
+        Self::from_phase(schema, ProgressPhase::Failed, counters, elapsed)
     }
 
     /// Creates a canceled progress event.
     ///
     /// # Parameters
     ///
+    /// * `schema` - Metric schema carried by the event.
     /// * `counters` - Final or current progress counters.
     /// * `elapsed` - Elapsed duration at cancellation.
     ///
@@ -176,39 +223,12 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Canceled`].
     #[inline]
-    pub const fn canceled(counters: ProgressCounters, elapsed: Duration) -> Self {
-        Self {
-            phase: ProgressPhase::Canceled,
-            stage: None,
-            counters,
-            elapsed,
-        }
-    }
-
-    /// Creates a progress event for the supplied lifecycle phase.
-    ///
-    /// # Parameters
-    ///
-    /// * `phase` - Lifecycle phase for the event.
-    /// * `counters` - Progress counters carried by the event.
-    /// * `elapsed` - Elapsed duration carried by the event.
-    ///
-    /// # Returns
-    ///
-    /// A progress event with `phase`, `counters`, and `elapsed`.
-    #[inline]
-    pub const fn from_phase(
-        phase: ProgressPhase,
-        counters: ProgressCounters,
+    pub fn canceled(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
         elapsed: Duration,
     ) -> Self {
-        match phase {
-            ProgressPhase::Started => Self::started(counters, elapsed),
-            ProgressPhase::Running => Self::running(counters, elapsed),
-            ProgressPhase::Finished => Self::finished(counters, elapsed),
-            ProgressPhase::Failed => Self::failed(counters, elapsed),
-            ProgressPhase::Canceled => Self::canceled(counters, elapsed),
-        }
+        Self::from_phase(schema, ProgressPhase::Canceled, counters, elapsed)
     }
 
     /// Returns a copy configured with the current stage.
@@ -221,9 +241,20 @@ impl ProgressEvent {
     ///
     /// This event with `stage` recorded.
     #[inline]
+    #[must_use]
     pub fn with_stage(mut self, stage: ProgressStage) -> Self {
         self.stage = Some(stage);
         self
+    }
+
+    /// Returns the event schema.
+    ///
+    /// # Returns
+    ///
+    /// The metric schema carried by this event.
+    #[inline]
+    pub const fn schema(&self) -> &ProgressSchema {
+        &self.schema
     }
 
     /// Returns the event phase.
@@ -253,8 +284,25 @@ impl ProgressEvent {
     ///
     /// The counters carried by this event.
     #[inline]
-    pub const fn counters(&self) -> ProgressCounters {
+    pub fn counters(&self) -> &[ProgressCounter] {
+        self.counters.as_slice()
+    }
+
+    /// Finds a counter by metric id.
+    ///
+    /// # Parameters
+    ///
+    /// * `metric_id` - Metric identifier to search for.
+    ///
+    /// # Returns
+    ///
+    /// `Some(counter)` when the event contains a matching counter, otherwise
+    /// `None`.
+    #[inline]
+    pub fn counter(&self, metric_id: &str) -> Option<&ProgressCounter> {
         self.counters
+            .iter()
+            .find(|counter| counter.metric_id() == metric_id)
     }
 
     /// Returns the elapsed duration.

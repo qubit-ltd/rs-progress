@@ -27,17 +27,21 @@ use super::running_progress_notifier::RunningProgressNotifier;
 /// use qubit_progress::{
 ///     NoOpProgressReporter,
 ///     Progress,
-///     ProgressCounters,
+///     ProgressCounter,
+///     ProgressSchema,
 /// };
 ///
 /// let reporter = NoOpProgressReporter;
 ///
 /// thread::scope(|scope| {
-///     let progress = Progress::new(&reporter, Duration::ZERO);
-///     let running_progress =
-///         progress.spawn_running_reporter(scope, || {
-///             ProgressCounters::new(Some(1)).with_completed_count(1)
-///         });
+///     let progress = Progress::new(
+///         &reporter,
+///         Duration::ZERO,
+///         ProgressSchema::single("entries", "Entries"),
+///     );
+///     let running_progress = progress.spawn_running_reporter(scope, || {
+///         vec![ProgressCounter::new("entries").total(1).completed(1)]
+///     });
 ///     let progress_point_handle = running_progress.point_handle();
 ///
 ///     let worker = scope.spawn({

@@ -20,3 +20,12 @@ fn test_progress_phase_formats_all_variants() {
     assert_eq!(ProgressPhase::Canceled.as_str(), "canceled");
     assert_eq!(ProgressPhase::Finished.to_string(), "finished");
 }
+
+#[test]
+fn test_progress_phase_identifies_terminal_phases() {
+    assert!(!ProgressPhase::Started.is_terminal());
+    assert!(!ProgressPhase::Running.is_terminal());
+    assert!(ProgressPhase::Finished.is_terminal());
+    assert!(ProgressPhase::Failed.is_terminal());
+    assert!(ProgressPhase::Canceled.is_terminal());
+}

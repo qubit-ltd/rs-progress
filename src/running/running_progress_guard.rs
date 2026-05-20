@@ -43,7 +43,8 @@ use super::{
 /// use qubit_progress::{
 ///     NoOpProgressReporter,
 ///     Progress,
-///     ProgressCounters,
+///     ProgressCounter,
+///     ProgressSchema,
 /// };
 ///
 /// let reporter = NoOpProgressReporter;
@@ -51,12 +52,16 @@ use super::{
 ///
 /// thread::scope(|scope| {
 ///     let loop_completed = Arc::clone(&completed);
-///     let progress = Progress::new(&reporter, Duration::ZERO);
-///     let running_progress =
-///         progress.spawn_running_reporter(scope, move || {
-///             ProgressCounters::new(Some(3))
-///                 .with_completed_count(loop_completed.load(Ordering::Acquire))
-///         });
+///     let progress = Progress::new(
+///         &reporter,
+///         Duration::ZERO,
+///         ProgressSchema::single("entries", "Entries"),
+///     );
+///     let running_progress = progress.spawn_running_reporter(scope, move || {
+///         vec![ProgressCounter::new("entries")
+///             .total(3)
+///             .completed(loop_completed.load(Ordering::Acquire) as u64)]
+///     });
 ///     let progress_point_handle = running_progress.point_handle();
 ///
 ///     let mut handles = Vec::new();

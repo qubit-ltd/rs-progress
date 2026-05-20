@@ -8,7 +8,11 @@
  *
  ******************************************************************************/
 use crate::{
-    model::ProgressEvent,
+    model::{
+        ProgressCounter,
+        ProgressEvent,
+        ProgressSchema,
+    },
     reporter::ProgressReporter,
 };
 
@@ -132,30 +136,52 @@ impl ProgressReporter for LoggerProgressReporter {
 ///
 /// A single-line log message.
 fn format_event(event: &ProgressEvent) -> String {
-    let counters = event.counters();
-    let progress = match counters.progress_percent() {
-        Some(percent) => format!("{percent:.2}%"),
-        None => "unknown".to_owned(),
-    };
+    let counters = format_counters(event.schema(), event.counters());
     match event.stage() {
         Some(stage) => format!(
-            "progress phase={}, stage={}, completed={}, total={:?}, active={}, failed={}, progress={}",
+            "progress phase={}, stage={}, counters={}",
             event.phase(),
             stage.name(),
-            counters.completed_count(),
-            counters.total_count(),
-            counters.active_count(),
-            counters.failed_count(),
-            progress,
+            counters,
         ),
-        None => format!(
-            "progress phase={}, completed={}, total={:?}, active={}, failed={}, progress={}",
-            event.phase(),
-            counters.completed_count(),
-            counters.total_count(),
-            counters.active_count(),
-            counters.failed_count(),
-            progress,
-        ),
+        None => format!("progress phase={}, counters={}", event.phase(), counters),
     }
+}
+
+/// Formats all counters for log output.
+///
+/// # Parameters
+///
+/// * `schema` - Schema used to resolve metric names.
+/// * `counters` - Counters to format.
+///
+/// # Returns
+///
+/// A comma-separated counter list.
+fn format_counters(schema: &ProgressSchema, counters: &[ProgressCounter]) -> String {
+    if counters.is_empty() {
+        return "[]".to_owned();
+    }
+    counters
+        .iter()
+        .map(|counter| {
+            let name = schema
+                .metric_name(counter.metric_id())
+                .unwrap_or_else(|| counter.metric_id());
+            let progress = match counter.progress_percent() {
+                Some(percent) => format!("{percent:.2}%"),
+                None => "unknown".to_owned(),
+            };
+            format!(
+                "{}: completed={}, total={:?}, active={}, failed={}, progress={}",
+                name,
+                counter.completed_count(),
+                counter.total_count(),
+                counter.active_count(),
+                counter.failed_count(),
+                progress,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }

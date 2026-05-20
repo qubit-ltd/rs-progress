@@ -20,8 +20,9 @@ use std::{
 
 use qubit_progress::{
     model::{
-        ProgressCounters,
+        ProgressCounter,
         ProgressEvent,
+        ProgressSchema,
     },
     reporter::{
         ProgressReporter,
@@ -33,9 +34,13 @@ fn render_line(elapsed: Duration) -> String {
     let output = Arc::new(Mutex::new(Cursor::new(Vec::new())));
     let reporter = WriterProgressReporter::new(output.clone());
     let event = ProgressEvent::running(
-        ProgressCounters::new(Some(3))
-            .with_active_count(1)
-            .with_completed_count(1),
+        ProgressSchema::single("entries", "Entries"),
+        vec![
+            ProgressCounter::new("entries")
+                .total(3)
+                .active(1)
+                .completed(1),
+        ],
         elapsed,
     );
     reporter.report(&event);

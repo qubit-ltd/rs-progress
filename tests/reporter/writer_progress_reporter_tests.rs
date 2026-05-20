@@ -20,8 +20,9 @@ use std::{
 
 use qubit_progress::{
     model::{
-        ProgressCounters,
+        ProgressCounter,
         ProgressEvent,
+        ProgressSchema,
         ProgressStage,
     },
     reporter::{
@@ -30,14 +31,22 @@ use qubit_progress::{
     },
 };
 
+fn schema() -> ProgressSchema {
+    ProgressSchema::single("entries", "Entries")
+}
+
 #[test]
 fn test_writer_progress_reporter_writes_human_readable_event() {
     let output = Arc::new(Mutex::new(Cursor::new(Vec::new())));
     let reporter = WriterProgressReporter::new(output.clone());
     let event = ProgressEvent::running(
-        ProgressCounters::new(Some(4))
-            .with_active_count(1)
-            .with_completed_count(2),
+        schema(),
+        vec![
+            ProgressCounter::new("entries")
+                .total(4)
+                .active(1)
+                .completed(2),
+        ],
         Duration::from_millis(1_500),
     )
     .with_stage(ProgressStage::new("install", "Install package"));
@@ -52,7 +61,7 @@ fn test_writer_progress_reporter_writes_human_readable_event() {
     let text = String::from_utf8(bytes).expect("writer output should be UTF-8");
     assert!(text.contains("running"));
     assert!(text.contains("Install package"));
-    assert!(text.contains("2/4"));
+    assert!(text.contains("Entries 2/4"));
     assert!(text.contains("50.00%"));
 }
 
@@ -63,11 +72,13 @@ fn test_writer_progress_reporter_handles_unknown_total_output() {
 
     assert!(Arc::ptr_eq(reporter.writer(), &output));
     reporter.report(&ProgressEvent::running(
-        ProgressCounters::new(None).with_completed_count(7),
+        schema(),
+        vec![ProgressCounter::new("entries").completed(7)],
         Duration::from_millis(0),
     ));
     reporter.report(&ProgressEvent::finished(
-        ProgressCounters::new(Some(7)).with_completed_count(7),
+        schema(),
+        vec![ProgressCounter::new("entries").total(7).completed(7)],
         Duration::from_secs(61),
     ));
 
@@ -77,16 +88,43 @@ fn test_writer_progress_reporter_handles_unknown_total_output() {
         .get_ref()
         .clone();
     let text = String::from_utf8(bytes).expect("writer output should be UTF-8");
-    assert!(text.contains("7 completed"));
+    assert!(text.contains("Entries 7 completed"));
     assert!(text.contains("running"));
     assert!(text.contains("finished"));
+}
+
+#[test]
+fn test_writer_progress_reporter_handles_empty_and_unknown_metric_output() {
+    let output = Arc::new(Mutex::new(Cursor::new(Vec::new())));
+    let reporter = WriterProgressReporter::new(output.clone());
+
+    reporter.report(&ProgressEvent::running(
+        schema(),
+        Vec::new(),
+        Duration::from_millis(1),
+    ));
+    reporter.report(&ProgressEvent::running(
+        schema(),
+        vec![ProgressCounter::new("missing").completed(3)],
+        Duration::from_millis(2),
+    ));
+
+    let bytes = output
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get_ref()
+        .clone();
+    let text = String::from_utf8(bytes).expect("writer output should be UTF-8");
+    assert!(text.contains("no counters"));
+    assert!(text.contains("missing 3 completed"));
 }
 
 #[test]
 fn test_writer_progress_reporter_supports_owned_writer() {
     let owned_reporter = WriterProgressReporter::from_writer(Cursor::new(Vec::new()));
     owned_reporter.report(&ProgressEvent::canceled(
-        ProgressCounters::new(Some(1)),
+        schema(),
+        vec![ProgressCounter::new("entries").total(1)],
         Duration::from_millis(5),
     ));
 }

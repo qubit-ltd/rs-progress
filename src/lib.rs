@@ -9,8 +9,9 @@
  ******************************************************************************/
 //! Generic progress reporting data model and reporter abstractions.
 //!
-//! This crate models progress as immutable events carrying lifecycle phase,
-//! optional stage information, counters, and timing.
+//! This crate models progress as immutable, self-describing events carrying a
+//! metric schema, lifecycle phase, optional stage information, metric counters,
+//! and elapsed time.
 
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -23,10 +24,12 @@ pub mod reporter;
 pub mod running;
 
 pub use model::{
-    ProgressCounters,
+    ProgressCounter,
     ProgressEvent,
     ProgressEventBuilder,
+    ProgressMetric,
     ProgressPhase,
+    ProgressSchema,
     ProgressStage,
 };
 pub use progress::Progress;

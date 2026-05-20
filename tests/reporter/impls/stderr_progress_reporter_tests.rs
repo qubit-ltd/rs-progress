@@ -19,8 +19,9 @@ use std::{
 };
 
 use qubit_progress::{
-    ProgressCounters,
+    ProgressCounter,
     ProgressEvent,
+    ProgressSchema,
     reporter::{
         ProgressReporter,
         StderrProgressReporter,
@@ -41,13 +42,14 @@ fn test_stderr_progress_reporter_default_can_report() {
         STDERR_CHILD_ENV,
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("failed 1/2 (50.00%)"), "{stderr}");
+    assert!(stderr.contains("failed Entries 1/2"), "{stderr}");
 }
 
 fn report_failed_to_stderr() {
     let reporter = StderrProgressReporter::default();
     reporter.report(&ProgressEvent::failed(
-        ProgressCounters::new(Some(2)).with_completed_count(1),
+        ProgressSchema::single("entries", "Entries"),
+        vec![ProgressCounter::new("entries").total(2).completed(1)],
         Duration::from_millis(10),
     ));
 }

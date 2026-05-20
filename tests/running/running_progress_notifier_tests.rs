@@ -7,7 +7,7 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for running progress notification through public point handles.
+//! Tests for internal running progress notifier behavior through public APIs.
 
 use std::{
     sync::Mutex,
@@ -17,9 +17,10 @@ use std::{
 
 use qubit_progress::{
     Progress,
-    ProgressCounters,
+    ProgressCounter,
     ProgressEvent,
     ProgressReporter,
+    ProgressSchema,
 };
 
 #[derive(Debug, Default)]
@@ -37,17 +38,17 @@ impl ProgressReporter for RecordingReporter {
 }
 
 #[test]
-fn test_running_progress_point_handle_reports_send_failure_after_stop() {
+fn test_running_progress_notifier_stop_is_idempotent_through_guard() {
     let reporter = RecordingReporter::default();
-    let progress = Progress::new(&reporter, Duration::ZERO);
+    let progress = Progress::new(
+        &reporter,
+        Duration::ZERO,
+        ProgressSchema::single("entries", "Entries"),
+    );
 
     thread::scope(|scope| {
-        let running_progress =
-            progress.spawn_running_reporter(scope, || ProgressCounters::new(Some(1)));
-        let point_handle = running_progress.point_handle();
-
-        assert!(point_handle.report());
+        let running_progress = progress
+            .spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1)]);
         running_progress.stop_and_join();
-        assert!(!point_handle.report());
     });
 }

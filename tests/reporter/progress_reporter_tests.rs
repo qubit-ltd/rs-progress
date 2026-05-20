@@ -20,8 +20,9 @@ use std::{
 
 use qubit_progress::{
     model::{
-        ProgressCounters,
+        ProgressCounter,
         ProgressEvent,
+        ProgressSchema,
     },
     reporter::ProgressReporter,
 };
@@ -36,6 +37,10 @@ impl ProgressReporter for CountingReporter {
     }
 }
 
+fn schema() -> ProgressSchema {
+    ProgressSchema::single("entries", "Entries")
+}
+
 #[test]
 fn test_progress_reporter_trait_object_dispatch() {
     let called = Arc::new(AtomicUsize::new(0));
@@ -45,11 +50,13 @@ fn test_progress_reporter_trait_object_dispatch() {
     let reporter: &dyn ProgressReporter = &concrete;
 
     reporter.report(&ProgressEvent::started(
-        ProgressCounters::new(Some(1)),
+        schema(),
+        vec![ProgressCounter::new("entries").total(1)],
         Duration::ZERO,
     ));
     reporter.report(&ProgressEvent::finished(
-        ProgressCounters::new(Some(1)).with_completed_count(1),
+        schema(),
+        vec![ProgressCounter::new("entries").total(1).completed(1)],
         Duration::from_secs(1),
     ));
 

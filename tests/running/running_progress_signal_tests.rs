@@ -7,7 +7,7 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for running progress stop signals through the public guard API.
+//! Tests for running progress signal behavior through public APIs.
 
 use std::{
     sync::Mutex,
@@ -17,10 +17,11 @@ use std::{
 
 use qubit_progress::{
     Progress,
-    ProgressCounters,
+    ProgressCounter,
     ProgressEvent,
     ProgressPhase,
     ProgressReporter,
+    ProgressSchema,
 };
 
 #[derive(Debug, Default)]
@@ -47,43 +48,46 @@ impl ProgressReporter for RecordingReporter {
 }
 
 #[test]
-fn test_running_progress_guard_stop_signal_stops_loop() {
+fn test_running_progress_signal_running_point_reports_for_zero_interval() {
     let reporter = RecordingReporter::default();
-    let progress = Progress::new(&reporter, Duration::ZERO);
+    let progress = Progress::new(
+        &reporter,
+        Duration::ZERO,
+        ProgressSchema::single("entries", "Entries"),
+    );
 
     thread::scope(|scope| {
         let running_progress = progress.spawn_running_reporter(scope, || {
-            ProgressCounters::new(Some(1)).with_active_count(1)
+            vec![ProgressCounter::new("entries").total(1).active(1)]
         });
-
+        let point = running_progress.point_handle();
+        assert!(point.report());
         running_progress.stop_and_join();
     });
 
-    let events = reporter.events();
     assert!(
-        events
+        reporter
+            .events()
             .iter()
-            .all(|event| event.phase() != ProgressPhase::Running)
+            .any(|event| event.phase() == ProgressPhase::Running)
     );
 }
 
 #[test]
-fn test_running_progress_guard_drop_disconnects_loop() {
+fn test_running_progress_signal_stop_prevents_further_zero_interval_points() {
     let reporter = RecordingReporter::default();
-    let progress = Progress::new(&reporter, Duration::ZERO);
+    let progress = Progress::new(
+        &reporter,
+        Duration::ZERO,
+        ProgressSchema::single("entries", "Entries"),
+    );
 
     thread::scope(|scope| {
         let running_progress = progress.spawn_running_reporter(scope, || {
-            ProgressCounters::new(Some(1)).with_active_count(1)
+            vec![ProgressCounter::new("entries").total(1).active(1)]
         });
-
-        drop(running_progress);
+        let point = running_progress.point_handle();
+        running_progress.stop_and_join();
+        assert!(!point.report());
     });
-
-    let events = reporter.events();
-    assert!(
-        events
-            .iter()
-            .all(|event| event.phase() != ProgressPhase::Running)
-    );
 }
