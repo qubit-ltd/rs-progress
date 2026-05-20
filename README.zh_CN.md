@@ -73,6 +73,7 @@ assert_eq!(event.counter("entries").map(|c| c.completed_count()), Some(4));
 | `ProgressSchema` | 一个逻辑操作的 metric 定义 |
 | `ProgressMetric` | 稳定 metric id 和展示名称 |
 | `ProgressCounter` | 某个 metric id 对应的 `u64` 计数 |
+| `ProgressStage` | 可选的多阶段操作元数据 |
 
 一个 schema 可以包含多个 metric，例如 `entries` 和 `bytes`。这样单个 event 就能同时汇报逻辑条目进度和字节进度，而不会混淆单位。
 

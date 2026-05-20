@@ -78,6 +78,7 @@ event stream. A metric has a stable `id` for structured data and a human-readabl
 | `ProgressSchema` | metric definitions for one logical operation |
 | `ProgressMetric` | stable metric id plus display name |
 | `ProgressCounter` | `u64` counts for one metric id |
+| `ProgressStage` | optional multi-stage operation metadata |
 
 A schema can contain multiple metrics, for example `entries` and `bytes`, so a
 single event can report logical item progress and byte progress together without
