@@ -9,24 +9,24 @@
  ******************************************************************************/
 use qubit_function::ArcConsumer;
 
-use super::human_readable_progress_reporter::HumanReadableProgressReporter;
+use super::json_progress_reporter::JsonProgressReporter;
 use crate::{
     model::ProgressEvent,
     reporter::ProgressReporter,
 };
 
-/// Progress reporter that emits human-readable metric snapshots through `log`.
-pub struct LoggerProgressReporter {
+/// Progress reporter that emits JSON metric snapshots through `log`.
+pub struct JsonLoggerProgressReporter {
     /// Log target used for emitted records.
     target: String,
     /// Log level used for emitted records.
     level: log::Level,
-    /// Human-readable reporter that consumes formatted strings.
-    inner: HumanReadableProgressReporter,
+    /// JSON reporter that consumes formatted strings.
+    inner: JsonProgressReporter,
 }
 
-impl LoggerProgressReporter {
-    /// Creates a logger reporter at [`log::Level::Info`].
+impl JsonLoggerProgressReporter {
+    /// Creates a JSON logger reporter at [`log::Level::Info`].
     ///
     /// # Parameters
     ///
@@ -34,7 +34,7 @@ impl LoggerProgressReporter {
     ///
     /// # Returns
     ///
-    /// A logger-backed progress reporter.
+    /// A JSON logger-backed progress reporter.
     #[inline]
     pub fn new(target: &str) -> Self {
         Self::with_target_and_level(target, log::Level::Info)
@@ -75,7 +75,7 @@ impl LoggerProgressReporter {
         self.level
     }
 
-    /// Creates a logger reporter from target and level.
+    /// Creates a JSON logger reporter from target and level.
     ///
     /// # Parameters
     ///
@@ -84,7 +84,7 @@ impl LoggerProgressReporter {
     ///
     /// # Returns
     ///
-    /// A configured logger reporter.
+    /// A configured JSON logger reporter.
     fn with_target_and_level(target: &str, level: log::Level) -> Self {
         let target = target.to_owned();
         let log_target = target.clone();
@@ -94,25 +94,25 @@ impl LoggerProgressReporter {
         Self {
             target,
             level,
-            inner: HumanReadableProgressReporter::new(consumer),
+            inner: JsonProgressReporter::new(consumer),
         }
     }
 }
 
-impl Default for LoggerProgressReporter {
-    /// Creates a logger reporter with the default target.
+impl Default for JsonLoggerProgressReporter {
+    /// Creates a JSON logger reporter with the default target.
     ///
     /// # Returns
     ///
-    /// A logger-backed reporter at [`log::Level::Info`].
+    /// A JSON logger-backed reporter at [`log::Level::Info`].
     #[inline]
     fn default() -> Self {
         Self::new("qubit_progress")
     }
 }
 
-impl ProgressReporter for LoggerProgressReporter {
-    /// Logs one line for every metric snapshot in the event.
+impl ProgressReporter for JsonLoggerProgressReporter {
+    /// Logs one JSON line for every metric snapshot in the event.
     ///
     /// # Parameters
     ///
