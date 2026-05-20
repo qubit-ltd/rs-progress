@@ -17,6 +17,8 @@ use serde::{
 use super::{
     ProgressCounter,
     ProgressEventBuilder,
+    ProgressMetric,
+    ProgressMetricSnapshot,
     ProgressPhase,
     ProgressSchema,
     ProgressStage,
@@ -303,6 +305,38 @@ impl ProgressEvent {
         self.counters
             .iter()
             .find(|counter| counter.metric_id() == metric_id)
+    }
+
+    /// Creates metric snapshots for all counters in this event.
+    ///
+    /// Each snapshot flattens one counter with the event phase, stage, elapsed
+    /// duration, and complete metric metadata. If a counter references a metric
+    /// id that is not present in the schema, the snapshot uses the metric id as
+    /// both the fallback id and display name.
+    ///
+    /// # Returns
+    ///
+    /// One snapshot per counter carried by this event.
+    pub fn metric_snapshots(&self) -> Vec<ProgressMetricSnapshot> {
+        self.counters
+            .iter()
+            .map(|counter| {
+                let metric = self
+                    .schema
+                    .metric(counter.metric_id())
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        ProgressMetric::new(counter.metric_id(), counter.metric_id())
+                    });
+                ProgressMetricSnapshot::new(
+                    metric,
+                    self.phase,
+                    self.stage.clone(),
+                    counter,
+                    self.elapsed,
+                )
+            })
+            .collect()
     }
 
     /// Returns the elapsed duration.

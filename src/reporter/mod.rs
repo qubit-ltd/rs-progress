@@ -9,11 +9,25 @@
  ******************************************************************************/
 //! Progress reporter trait and built-in implementations.
 
+pub mod format;
 mod impls;
 mod progress_reporter;
 
+pub use format::{
+    HumanReadableMetricSnapshotFormatter,
+    JsonMetricSnapshotFormatter,
+    MetricSnapshotFormatter,
+};
 pub use impls::{
+    FormattedProgressReporter,
+    HumanReadableProgressReporter,
+    JsonLoggerProgressReporter,
+    JsonProgressReporter,
+    JsonStderrProgressReporter,
+    JsonStdoutProgressReporter,
+    JsonWriterProgressReporter,
     LoggerProgressReporter,
+    MetricSnapshotProgressReporter,
     NoOpProgressReporter,
     StderrProgressReporter,
     StdoutProgressReporter,

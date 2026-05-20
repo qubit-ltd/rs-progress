@@ -17,24 +17,24 @@ use std::{
 
 use qubit_function::ArcConsumer;
 
-use super::human_readable_progress_reporter::HumanReadableProgressReporter;
+use super::json_progress_reporter::JsonProgressReporter;
 use crate::{
     model::ProgressEvent,
     reporter::ProgressReporter,
 };
 
-/// Progress reporter that writes human-readable metric snapshots to a writer.
+/// Progress reporter that writes JSON metric snapshots to a writer.
 ///
-/// One input event can produce multiple output lines: one line for each metric
+/// One input event can produce multiple JSON lines: one line for each metric
 /// counter carried by the event.
-pub struct WriterProgressReporter<W> {
-    /// Shared writer receiving progress lines.
+pub struct JsonWriterProgressReporter<W> {
+    /// Shared writer receiving JSON lines.
     writer: Arc<Mutex<W>>,
-    /// Human-readable reporter that consumes formatted strings.
-    inner: HumanReadableProgressReporter,
+    /// JSON reporter that consumes formatted strings.
+    inner: JsonProgressReporter,
 }
 
-impl<W> WriterProgressReporter<W> {
+impl<W> JsonWriterProgressReporter<W> {
     /// Returns the shared writer used by this reporter.
     ///
     /// # Returns
@@ -46,7 +46,7 @@ impl<W> WriterProgressReporter<W> {
     }
 }
 
-impl<W> WriterProgressReporter<W>
+impl<W> JsonWriterProgressReporter<W>
 where
     W: Write + Send + 'static,
 {
@@ -54,22 +54,22 @@ where
     ///
     /// # Parameters
     ///
-    /// * `writer` - Shared writer receiving progress output.
+    /// * `writer` - Shared writer receiving JSON progress output.
     ///
     /// # Returns
     ///
-    /// A writer-backed progress reporter.
+    /// A JSON writer-backed progress reporter.
     pub fn new(writer: Arc<Mutex<W>>) -> Self {
         let consumer_writer = Arc::clone(&writer);
         let consumer = ArcConsumer::new(move |line: &String| {
             let mut writer = consumer_writer
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            writeln!(writer, "{line}").expect("progress reporter should write event");
+            writeln!(writer, "{line}").expect("JSON progress reporter should write event");
         });
         Self {
             writer,
-            inner: HumanReadableProgressReporter::new(consumer),
+            inner: JsonProgressReporter::new(consumer),
         }
     }
 
@@ -77,22 +77,22 @@ where
     ///
     /// # Parameters
     ///
-    /// * `writer` - Owned writer receiving progress output.
+    /// * `writer` - Owned writer receiving JSON progress output.
     ///
     /// # Returns
     ///
-    /// A writer-backed progress reporter.
+    /// A JSON writer-backed progress reporter.
     #[inline]
     pub fn from_writer(writer: W) -> Self {
         Self::new(Arc::new(Mutex::new(writer)))
     }
 }
 
-impl<W> ProgressReporter for WriterProgressReporter<W>
+impl<W> ProgressReporter for JsonWriterProgressReporter<W>
 where
     W: Write + Send + 'static,
 {
-    /// Writes one line for every metric snapshot in the event.
+    /// Writes one JSON line for every metric snapshot in the event.
     ///
     /// # Parameters
     ///

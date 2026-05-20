@@ -10,45 +10,45 @@
 use crate::{
     model::ProgressEvent,
     reporter::{
+        JsonWriterProgressReporter,
         ProgressReporter,
-        WriterProgressReporter,
     },
 };
 
-/// Progress reporter that writes human-readable metric snapshots to stderr.
-pub struct StderrProgressReporter {
-    /// Writer-backed reporter targeting standard error.
-    inner: WriterProgressReporter<std::io::Stderr>,
+/// Progress reporter that writes JSON metric snapshots to stderr.
+pub struct JsonStderrProgressReporter {
+    /// JSON writer-backed reporter targeting standard error.
+    inner: JsonWriterProgressReporter<std::io::Stderr>,
 }
 
-impl StderrProgressReporter {
-    /// Creates a reporter writing to standard error.
+impl JsonStderrProgressReporter {
+    /// Creates a JSON reporter writing to standard error.
     ///
     /// # Returns
     ///
-    /// A stderr progress reporter.
+    /// A JSON stderr progress reporter.
     #[inline]
     pub fn new() -> Self {
         Self {
-            inner: WriterProgressReporter::from_writer(std::io::stderr()),
+            inner: JsonWriterProgressReporter::from_writer(std::io::stderr()),
         }
     }
 }
 
-impl Default for StderrProgressReporter {
-    /// Creates a default stderr progress reporter.
+impl Default for JsonStderrProgressReporter {
+    /// Creates a default JSON stderr progress reporter.
     ///
     /// # Returns
     ///
-    /// A stderr progress reporter.
+    /// A JSON stderr progress reporter.
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ProgressReporter for StderrProgressReporter {
-    /// Writes one line for every metric snapshot in the event.
+impl ProgressReporter for JsonStderrProgressReporter {
+    /// Writes one JSON line for every metric snapshot in the event.
     ///
     /// # Parameters
     ///

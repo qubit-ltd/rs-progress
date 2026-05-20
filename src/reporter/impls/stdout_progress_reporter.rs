@@ -15,8 +15,7 @@ use crate::{
     },
 };
 
-/// Progress reporter that writes human-readable events to stdout.
-#[derive(Debug)]
+/// Progress reporter that writes human-readable metric snapshots to stdout.
 pub struct StdoutProgressReporter {
     /// Writer-backed reporter targeting standard output.
     inner: WriterProgressReporter<std::io::Stdout>,
@@ -24,6 +23,10 @@ pub struct StdoutProgressReporter {
 
 impl StdoutProgressReporter {
     /// Creates a reporter writing to standard output.
+    ///
+    /// # Returns
+    ///
+    /// A stdout progress reporter.
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -33,6 +36,11 @@ impl StdoutProgressReporter {
 }
 
 impl Default for StdoutProgressReporter {
+    /// Creates a default stdout progress reporter.
+    ///
+    /// # Returns
+    ///
+    /// A stdout progress reporter.
     #[inline]
     fn default() -> Self {
         Self::new()
@@ -40,6 +48,11 @@ impl Default for StdoutProgressReporter {
 }
 
 impl ProgressReporter for StdoutProgressReporter {
+    /// Writes one line for every metric snapshot in the event.
+    ///
+    /// # Parameters
+    ///
+    /// * `event` - Progress event to report.
     #[inline]
     fn report(&self, event: &ProgressEvent) {
         self.inner.report(event);
