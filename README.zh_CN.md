@@ -1,321 +1,172 @@
 # Qubit Progress
 
-[![Rust CI](https://github.com/qubit-ltd/rs-progress/actions/workflows/ci.yml/badge.svg)](https://github.com/qubit-ltd/rs-progress/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://qubit-ltd.github.io/rs-progress/coverage-badge.json)](https://qubit-ltd.github.io/rs-progress/coverage/)
-[![Crates.io](https://img.shields.io/crates/v/qubit-progress.svg?color=blue)](https://crates.io/crates/qubit-progress)
-[![Rust](https://img.shields.io/badge/rust-1.94+-blue.svg?logo=rust)](https://www.rust-lang.org)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![English](https://img.shields.io/badge/docs-English-blue.svg)](README.md)
+`qubit-progress` 为 Qubit Rust 库和应用提供轻量级进度汇报抽象。
 
-面向 Rust 生态的通用进度汇报抽象。
+它把进度建模为不可变、自描述的事件。每个事件包含：
 
-## 什么时候使用
+- `ProgressSchema`：当前逻辑操作的 metric 定义。
+- `ProgressMetric`：稳定的 metric `id` 和适合展示的 `name`。
+- `ProgressCounter`：某个 metric 的 `u64` 计数器。
+- `ProgressPhase`：`started`、`running`、`finished`、`failed`、`canceled`。
+- `ProgressStage`：可选的多阶段操作信息。
+- `elapsed`：`std::time::Duration`，通过 `qubit-serde` 序列化为 `110ms` 这类字符串。
 
-当一个操作需要汇报进度，但又不希望进度 API 绑定到某个具体业务领域时，可以使用
-`qubit-progress`：
-
-- 安装程序需要依次汇报准备、复制、校验、清理等阶段；
-- 批处理任务需要统一的计数器和耗时信息；
-- 命令行工具希望在控制台输出和日志输出之间切换；
-- 库代码希望暴露进度快照，但不依赖具体运行时。
-
-这个 crate 不是调度器、任务执行器或 UI 框架。它只定义进度事件模型和基础 reporter。
-
-## 概览
-
-Qubit Progress 将进度建模为不可变事件。一个进度事件本身包含：
-
-- `ProgressPhase`：生命周期阶段，例如 started、running、finished、failed、canceled。
-- `ProgressStage`：多阶段操作的可选阶段信息。
-- `ProgressCounters`：通用的 total、completed、active、succeeded、failed 计数器。
-- `std::time::Duration` 表示的已耗时。
-
-除此之外，这个 crate 还提供：
-
-- `ProgressEventBuilder`：链式构造器，可以直接组装进度事件，而不必先手动拼好 counters 和 stage。
-- `ProgressReporter`：接收进度事件的 trait。
-- `Progress`：单次操作的生命周期辅助对象，负责 elapsed 和按间隔汇报 running 事件。
-- `RunningProgressGuard` 和 `RunningProgressPointHandle`：
-  `Progress::spawn_running_reporter` 返回的后台 running 进度汇报辅助对象，
-  适合 worker 线程更新共享业务状态、后台汇报线程读取快照并发送事件。
-- `NoOpProgressReporter`、`StdoutProgressReporter`、
-  `StderrProgressReporter`、`WriterProgressReporter` 和
-  `LoggerProgressReporter`：可复用的 reporter 实现。
-
-`ProgressReporter` 是一个刻意保持轻量的 trait：若内置 reporter 不够用，业务系统可以按自身需求实现自定义 reporter，例如在图形界面上驱动进度条、在桌面应用的状态区刷新进度，或向 Web 前端转发进度更新。本 crate 不绑定任何 UI 或传输层；把事件接到具体框架或通道上由你的集成代码完成。
-
-业务 crate 应保留自己的领域状态，并在汇报进度时转换成 `ProgressEvent`。领域错误、日志、指标和链路追踪应使用各自机制，不应附加到进度事件上。
+一个 `Progress` 对应一个逻辑操作。不要把多个无关操作混进同一个 reporter 事件流，除非该 reporter 明确支持复用和分流。多线程任务应先聚合 counters，再通过这个操作级 `Progress` 统一汇报。
 
 ## 安装
 
 ```toml
 [dependencies]
-qubit-progress = "0.4"
+qubit-progress = "0.5"
 ```
 
-## 快速开始
+## 构造自描述事件
 
 ```rust
 use std::time::Duration;
 
 use qubit_progress::{
     ProgressEvent,
-    ProgressReporter,
-    StdoutProgressReporter,
+    ProgressMetric,
+    ProgressPhase,
+    ProgressSchema,
 };
 
-let reporter = StdoutProgressReporter::default();
-let event = ProgressEvent::builder()
+let schema = ProgressSchema::new(vec![
+    ProgressMetric::new("entries", "Entries"),
+    ProgressMetric::new("bytes", "Bytes"),
+]);
+
+let event = ProgressEvent::builder(schema)
     .running()
-    .total(4)
-    .completed(2)
-    .active(1)
     .stage_named("copy", "Copy files")
-    .elapsed(Duration::from_secs(2))
+    .counter("entries", |counter| counter.total(10).completed(4))
+    .counter("bytes", |counter| counter.total(1_000_000).completed(400_000))
+    .elapsed(Duration::from_millis(110))
     .build();
 
-reporter.report(&event);
+assert_eq!(event.phase(), ProgressPhase::Running);
+assert_eq!(event.counter("entries").map(|c| c.completed_count()), Some(4));
 ```
 
-当调用方已经有完整的 counters 或 stage 元数据时，底层构造器仍然可用；普通进度汇报
-代码优先使用 builder。
-
-## 汇报一次操作的生命周期
-
-当一个操作需要 started、周期性 running 和终态事件时，使用 `Progress`。
-`Progress` 负责记录耗时并对 `running` 回调做时间间隔节流；业务代码仍然维护自己的状态，并在汇报时转换成 `ProgressCounters`。
+## 汇报一个操作
 
 ```rust
 use std::time::Duration;
 
 use qubit_progress::{
-    ProgressCounters,
     Progress,
-    StdoutProgressReporter,
+    ProgressMetric,
+    ProgressSchema,
+    WriterProgressReporter,
 };
 
-let reporter = StdoutProgressReporter::default();
-let mut progress = Progress::new(&reporter, Duration::from_secs(5));
+let schema = ProgressSchema::new(vec![
+    ProgressMetric::new("entries", "Entries"),
+    ProgressMetric::new("bytes", "Bytes"),
+]);
+let reporter = WriterProgressReporter::from_writer(std::io::stdout());
+let mut progress = Progress::new(&reporter, Duration::from_secs(1), schema);
 
-let started = progress.report_started(ProgressCounters::new(Some(3)));
-assert!(started.elapsed().is_zero());
+progress.report_started(|event| event.counter("entries", |counter| counter.total(3)));
 
-let mut completed = 0;
-for _task in 0..3 {
-    // ... 执行一个工作单元 ...
-    completed += 1;
-    let counters = ProgressCounters::new(Some(3)).with_completed_count(completed);
-    let _running_event = progress.report_running_if_due(counters);
-}
+progress.report_running(|event| {
+    event
+        .counter("entries", |counter| counter.total(3).completed(1).active(1))
+        .counter("bytes", |counter| counter.total(1_024).completed(512))
+});
 
-let final_counters = ProgressCounters::new(Some(3))
-    .with_completed_count(3)
-    .with_succeeded_count(3);
-let finished = progress.report_finished(final_counters);
-assert!(finished.elapsed() >= started.elapsed());
+progress.report_finished(|event| {
+    event
+        .counter("entries", |counter| counter.total(3).completed(3).succeeded(3))
+        .counter("bytes", |counter| counter.total(1_024).completed(1_024))
+});
 ```
 
-`report_running_if_due` 只有在真正发出事件时才返回 `Some(event)`。该方法不会阻塞等待
-下一次汇报周期：未到期时会立即返回 `None`，到期时会同步调用 reporter 并返回刚发出的
-事件（因此是否阻塞取决于 reporter 本身的实现）。实战中常见写法是：每完成一个工作
-单元就调用一次；到汇报间隔时会自动发出事件，未到间隔时这次调用基本没有效果。如果
-外部调度器或后台线程已经控制了汇报间隔，可以直接调用 `report_running`。
+`report_running_if_due` 只有在达到汇报间隔时才会调用 builder 闭包，因此正数间隔下的热路径开销很低。
 
-## 在后台线程中汇报 running 进度
+## 后台汇报线程
 
-当工作在一个或多个 worker 线程中执行，但 running 事件希望放到单独的后台汇报线程中
-时，使用 `Progress::spawn_running_reporter`。worker 继续维护自己的业务状态；后台
-汇报线程只负责等待超时或 `RunningProgressPointHandle::report` 信号，然后调用你提供
-的快照闭包，把当前业务状态转换为新的 `ProgressCounters`。
-
-这种模式适合并行执行器：正数汇报间隔下，worker 的热路径不需要直接调用 reporter；
-当间隔是 `Duration::ZERO` 时，又可以在每个 worker 进度点之后唤醒后台循环，而且不会
-忙等。协调线程持有 `RunningProgressGuard` guard，worker 只拿
-`RunningProgressPointHandle`，结束时由协调线程调用 `stop_and_join`。
-
-下面的示例用 [`qubit-atomic`](https://crates.io/crates/qubit-atomic) 的
-[`AtomicCount`](https://docs.rs/qubit-atomic/latest/qubit_atomic/struct.AtomicCount.html)
-作为跨线程共享的完成计数。只有在你采用这一写法时，才需要在 `Cargo.toml` 里增加对应依赖：
-
-```toml
-qubit-atomic = "0.10"
-```
+当 worker 线程更新业务状态，而协调线程需要周期性发出 `running` 事件时，可以使用 `Progress::spawn_running_reporter`。worker 更新共享状态后调用 `RunningProgressPointHandle::report()`；当间隔为 `Duration::ZERO` 时，这个调用会唤醒后台汇报线程。
+`RunningProgressGuard` 持有这个后台汇报线程，`RunningProgressPointHandle` 是可克隆的 worker 侧唤醒句柄。
 
 ```rust
 use std::{
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     thread,
     time::Duration,
 };
 
-use qubit_atomic::AtomicCount;
 use qubit_progress::{
+    NoOpProgressReporter,
     Progress,
-    ProgressCounters,
-    StdoutProgressReporter,
+    ProgressCounter,
+    ProgressSchema,
 };
 
-let reporter = StdoutProgressReporter::default();
-let completed = Arc::new(AtomicCount::zero());
+let reporter = NoOpProgressReporter;
+let completed = Arc::new(AtomicU64::new(0));
+let progress = Progress::new(
+    &reporter,
+    Duration::ZERO,
+    ProgressSchema::single("entries", "Entries"),
+);
 
 thread::scope(|scope| {
-    let loop_completed = Arc::clone(&completed);
-    let progress = Progress::new(&reporter, Duration::ZERO);
-    let running_progress =
-        progress.spawn_running_reporter(scope, move || {
-            ProgressCounters::new(Some(3))
-                .with_completed_count(loop_completed.get())
-        });
-    let progress_point_handle = running_progress.point_handle();
+    let snapshot_completed = Arc::clone(&completed);
+    let running = progress.spawn_running_reporter(scope, move || {
+        vec![ProgressCounter::new("entries")
+            .total(3)
+            .completed(snapshot_completed.load(Ordering::Acquire))]
+    });
+    let point = running.point_handle();
 
-    let mut handles = Vec::new();
-    for _ in 0..3 {
-        let completed_worker = Arc::clone(&completed);
-        let point = progress_point_handle.clone();
-        handles.push(scope.spawn(move || {
-            completed_worker.inc();
-            point.report();
-        }));
-    }
-    for handle in handles {
-        handle.join().unwrap();
-    }
+    completed.store(1, Ordering::Release);
+    assert!(point.report());
 
-    running_progress.stop_and_join();
+    running.stop_and_join();
 });
 ```
 
-如果汇报间隔是正数，`RunningProgressPointHandle::report` 是 no-op；后台汇报线程会
-通过超时等待定时醒来。这样 worker 可以无条件调用它，同时 stop/join 仍由
-协调线程持有的 guard 负责。
+## JSON 序列化
 
-## 阶段化进度
-
-`ProgressStage` 描述操作处于哪个业务阶段。它和生命周期阶段不同：复制文件这个
-stage 可以处于 running、finished、failed 或 canceled 等 phase。
+进度事件支持 serde 序列化。`elapsed` 使用 `qubit-serde` 的 `duration_with_unit` 适配器，因此 JSON 更紧凑，也更适合 agent 读取。
 
 ```rust
 use std::time::Duration;
 
 use qubit_progress::{
     ProgressEvent,
-    ProgressPhase,
-    ProgressStage,
+    ProgressMetric,
+    ProgressSchema,
 };
 
-let stage = ProgressStage::new("verify", "Verify installation")
-    .with_index(2)
-    .with_total_stages(5)
-    .with_weight(0.2);
-
-let event = ProgressEvent::builder()
-    .phase(ProgressPhase::Running)
-    .total(10)
-    .completed(7)
-    .elapsed(Duration::from_secs(12))
-    .stage(stage)
+let schema = ProgressSchema::new(vec![ProgressMetric::new("entries", "Entries")]);
+let event = ProgressEvent::builder(schema)
+    .running()
+    .counter("entries", |counter| counter.total(5).completed(2))
+    .elapsed(Duration::from_millis(110))
     .build();
 
-assert_eq!(event.phase(), ProgressPhase::Running);
-assert_eq!(event.counters().completed_count(), 7);
+let json = serde_json::to_string(&event).expect("event should serialize");
+assert!(json.contains("\"elapsed\":\"110ms\""));
 ```
 
-## 计数语义
+## 内置 reporter
 
-`ProgressCounters` 支持已知总量和未知总量两类进度：
+- `NoOpProgressReporter`：忽略事件。
+- `WriterProgressReporter`：把人类可读文本写入任意 `Write` sink。
+- `StdoutProgressReporter`：写入 stdout。
+- `StderrProgressReporter`：写入 stderr。
+- `LoggerProgressReporter`：通过 `log` crate 输出。
 
-- `total_count: Some(n)` 表示可以计算百分比和剩余数量。
-- `total_count: None` 表示开放式操作，或暂时不知道总量。
-- `completed_count` 表示已经到达终态的工作单元数量。
-- `active_count` 表示当前正在执行的工作单元数量。
-- `succeeded_count` 和 `failed_count` 是可选的聚合结果计数，供能汇报这些
-  信息的业务使用。
-
-当总量已知且为零时，进度被视为完成：
+Reporter 接收事件的接口是：
 
 ```rust
-use qubit_progress::ProgressCounters;
-
-let counters = ProgressCounters::new(Some(0));
-assert_eq!(counters.progress_percent(), Some(100.0));
+fn report(&self, event: &ProgressEvent);
 ```
 
-## Reporter 行为
-
-Reporter 本质上会产生副作用。它可以写终端、写文件、发日志、更新 UI 桥接层，
-也可以在测试中记录事件。如果 reporter panic，调用方自行决定传播还是隔离。
-
-`WriterProgressReporter` 会写出紧凑的人类可读文本。
-
-`StdoutProgressReporter` 和 `StderrProgressReporter` 是基于
-`WriterProgressReporter` 的便捷 reporter，分别输出到标准输出和标准错误。
-
-`LoggerProgressReporter` 通过 `log` crate 输出，并支持配置 target 和 level。
-
-## 公共 API 速查
-
-- `ProgressPhase`：生命周期阶段枚举。
-- `ProgressStage`：阶段 id、名称、索引、总阶段数和可选的调用方权重。
-  如果调用方用 weight 计算加权进度，应传入有限且非负的值；本 crate
-  会按原样保存该值，不负责校验。
-- `ProgressCounters`：通用计数器，提供剩余数量和百分比辅助方法。
-- `ProgressEvent`：不可变事件，携带 phase、stage、counters 和 elapsed。
-- `ProgressEventBuilder`：进度事件的链式构造器。
-- `ProgressReporter`：接收进度事件的 trait。
-- `Progress`：单次进度操作的生命周期辅助对象。
-- `RunningProgressGuard`：持有 scoped 后台汇报线程的生命周期 guard。
-- `RunningProgressPointHandle`：可克隆的 worker 侧 running point 句柄。
-- `NoOpProgressReporter`：忽略所有事件的 reporter。
-- `StdoutProgressReporter`：标准输出便捷 reporter。
-- `StderrProgressReporter`：标准错误便捷 reporter。
-- `WriterProgressReporter<W>`：基于 writer 的人类可读 reporter。
-- `LoggerProgressReporter`：基于 `log` crate 的 reporter。
-
-## 文档
-
-- API 文档：[docs.rs/qubit-progress](https://docs.rs/qubit-progress)
-- Crate 发布页：[crates.io/crates/qubit-progress](https://crates.io/crates/qubit-progress)
-- 源码仓库：[github.com/qubit-ltd/rs-progress](https://github.com/qubit-ltd/rs-progress)
-
-## 测试和 CI
-
-在 crate 根目录运行快速本地检查：
-
-```bash
-cargo test
-cargo clippy --all-targets -- -D warnings
-```
-
-要尽量匹配仓库 CI 环境，运行：
-
-```bash
-./align-ci.sh
-./ci-check.sh
-./coverage.sh json
-```
-
-`./align-ci.sh` 会同步本地工具链和 CI 相关配置；`./ci-check.sh` 运行与流水线一致的
-检查。修改需要覆盖率体现的行为时，可以运行 `./coverage.sh`。
-
-## 贡献
-
-欢迎 issue 和 pull request。请保持改动聚焦；行为变化时补充或更新测试；公共 API 或
-用户可见行为变化时同步更新 README 或 rustdoc。
-
-贡献代码即表示你同意贡献内容使用同一份 [Apache License, Version 2.0](LICENSE) 许可。
-
-## 许可和版权
-
-Copyright © 2026 Haixing Hu, Qubit Co. Ltd.
-
-本软件使用 [Apache License, Version 2.0](LICENSE) 许可。
-
-## 作者和维护
-
-**胡海星** — Qubit Co. Ltd.
-
-| | |
-| --- | --- |
-| **源码仓库** | [github.com/qubit-ltd/rs-progress](https://github.com/qubit-ltd/rs-progress) |
-| **API 文档** | [docs.rs/qubit-progress](https://docs.rs/qubit-progress) |
-| **Crate 发布** | [crates.io/crates/qubit-progress](https://crates.io/crates/qubit-progress) |
+Reporter 可以按 `metric_id` 分组，并通过 `event.schema()` 解析适合展示的 metric 名称。
