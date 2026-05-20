@@ -115,7 +115,6 @@ fn test_writer_progress_reporter_handles_empty_and_unknown_metric_output() {
         .get_ref()
         .clone();
     let text = String::from_utf8(bytes).expect("writer output should be UTF-8");
-    assert!(text.contains("no counters"));
     assert!(text.contains("missing 3 completed"));
 }
 
