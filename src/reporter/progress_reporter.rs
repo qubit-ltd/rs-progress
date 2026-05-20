@@ -9,7 +9,12 @@
  ******************************************************************************/
 use crate::model::ProgressEvent;
 
-/// Receives immutable progress events.
+/// Receives immutable progress events for one logical operation.
+///
+/// A reporter normally receives one logical operation's event stream. If an
+/// implementation multiplexes multiple operations into one sink, that routing
+/// information is reporter-specific metadata and is intentionally not part of
+/// [`ProgressEvent`].
 ///
 /// # Examples
 ///
@@ -18,10 +23,11 @@ use crate::model::ProgressEvent;
 /// use std::time::Duration;
 ///
 /// use qubit_progress::{
-///     ProgressCounters,
 ///     ProgressEvent,
+///     ProgressMetric,
 ///     ProgressPhase,
 ///     ProgressReporter,
+///     ProgressSchema,
 /// };
 ///
 /// #[derive(Default)]
@@ -36,10 +42,8 @@ use crate::model::ProgressEvent;
 /// }
 ///
 /// let reporter = RecordingReporter::default();
-/// reporter.report(&ProgressEvent::started(
-///     ProgressCounters::new(Some(1)),
-///     Duration::ZERO,
-/// ));
+/// let schema = ProgressSchema::new(vec![ProgressMetric::new("entries", "Entries")]);
+/// reporter.report(&ProgressEvent::started(schema, Vec::new(), Duration::ZERO));
 ///
 /// assert_eq!(
 ///     reporter.phases.lock().expect("phase list should lock").as_slice(),

@@ -19,7 +19,7 @@ use std::{
 
 use crate::{
     Progress,
-    model::ProgressCounters,
+    model::ProgressCounter,
 };
 
 use super::{
@@ -33,73 +33,7 @@ use super::{
 /// `RunningProgressLoop` is useful when worker threads update shared state and
 /// a separate reporter thread should periodically emit `running` events. The
 /// loop owns only the signal receiver. Callers provide a [`Progress`] instance
-/// and a snapshot closure that converts their domain state into
-/// [`ProgressCounters`].
-///
-/// `RunningProgressLoop` is an internal helper. Public callers should use
-/// [`Progress::spawn_running_reporter`](crate::Progress::spawn_running_reporter).
-///
-/// # Examples
-///
-/// ```
-/// use std::{
-///     sync::{
-///         Arc,
-///         atomic::{
-///             AtomicUsize,
-///             Ordering,
-///         },
-///     },
-///     thread,
-///     time::Duration,
-/// };
-///
-/// use qubit_progress::{
-///     NoOpProgressReporter,
-///     Progress,
-///     ProgressCounters,
-/// };
-///
-/// let reporter = NoOpProgressReporter;
-/// let completed = Arc::new(AtomicUsize::new(0));
-///
-/// thread::scope(|scope| {
-///     let loop_completed = Arc::clone(&completed);
-///     let progress = Progress::new(&reporter, Duration::ZERO);
-///     let running_progress =
-///         progress.spawn_running_reporter(scope, move || {
-///             // The background reporter thread does not own the operation
-///             // state. It only reads a fresh counter snapshot when the
-///             // interval is due or a worker sends a running point.
-///             ProgressCounters::new(Some(3))
-///                 .with_completed_count(loop_completed.load(Ordering::Acquire))
-///         });
-///     let progress_point_handle = running_progress.point_handle();
-///
-///     // Workers update domain state, then wake the loop. With a zero
-///     // interval, each running point may emit a `running` event.
-///     let mut handles = Vec::new();
-///     for _ in 0..3 {
-///         let c = Arc::clone(&completed);
-///         let p = progress_point_handle.clone();
-///         handles.push(scope.spawn(move || {
-///             c.fetch_add(1, Ordering::AcqRel);
-///             assert!(p.report());
-///         }));
-///     }
-///     for h in handles {
-///         h.join().unwrap();
-///     }
-///
-///     // Stop the loop before leaving the scope. Reporter panics are
-///     // propagated by `stop_and_join`.
-///     running_progress.stop_and_join();
-/// });
-/// ```
-///
-/// # Author
-///
-/// Haixing Hu
+/// and a snapshot closure that converts their domain state into metric counters.
 pub(crate) struct RunningProgressLoop {
     /// Signal receiver owned by the reporter loop.
     signal_receiver: Receiver<RunningProgressSignal>,
@@ -152,7 +86,7 @@ impl RunningProgressLoop {
     ) -> RunningProgressGuard<'scope>
     where
         'progress: 'scope,
-        F: FnMut() -> ProgressCounters + Send + 'scope,
+        F: FnMut() -> Vec<ProgressCounter> + Send + 'scope,
     {
         let report_points = progress.report_interval().is_zero();
         let (progress_loop, notifier) = Self::channel();
@@ -186,15 +120,14 @@ impl RunningProgressLoop {
     ///
     /// # Panics
     ///
-    /// Propagates panics from the configured reporter when a `running` event is
-    /// due.
+    /// Propagates panics from the configured reporter when a `running` event is due.
     pub(crate) fn run<F>(self, mut progress: Progress<'_>, mut snapshot: F)
     where
-        F: FnMut() -> ProgressCounters,
+        F: FnMut() -> Vec<ProgressCounter>,
     {
         let report_interval = progress.report_interval();
         while self.receive_wait(report_interval).should_report() {
-            progress.report_running_if_due(snapshot());
+            progress.report_running_if_due(|event| event.counters(snapshot()));
         }
     }
 
@@ -202,27 +135,13 @@ impl RunningProgressLoop {
     ///
     /// The calling thread blocks until this wait completes.
     ///
-    /// When `report_interval` is [`Duration::ZERO`], uses [`Receiver::recv`]: the call returns when a
-    /// [`RunningProgressSignal`] is received or when every notifier sender has been dropped. In this
-    /// mode no [`RunningProgressWait::Timeout`] is produced.
-    ///
-    /// When `report_interval` is positive, uses [`Receiver::recv_timeout`]: if no message arrives
-    /// before the deadline, returns [`RunningProgressWait::Timeout`] so [`Self::run`] can drive periodic
-    /// `running` progress; if a message arrives first, returns that signal wrapped in
-    /// [`RunningProgressWait::Signal`], or [`RunningProgressWait::Disconnected`] if the channel closes.
-    ///
     /// # Parameters
     ///
-    /// * `report_interval` - Configured report interval from the [`Progress`] run passed to [`Self::run`];
-    ///   [`Duration::ZERO`] selects unbounded waits (event-driven only), otherwise each wait is capped
-    ///   by this duration and may time out.
+    /// * `report_interval` - Configured report interval from the [`Progress`] run.
     ///
     /// # Returns
     ///
-    /// * [`RunningProgressWait::Signal`] - The next [`RunningProgressSignal`] from a notifier.
-    /// * [`RunningProgressWait::Timeout`] - Only when `report_interval` is positive and the wait reached
-    ///   the deadline without a message.
-    /// * [`RunningProgressWait::Disconnected`] - The MPSC channel has no senders left.
+    /// The wait outcome used by the running loop.
     fn receive_wait(&self, report_interval: Duration) -> RunningProgressWait {
         if report_interval.is_zero() {
             return match self.signal_receiver.recv() {

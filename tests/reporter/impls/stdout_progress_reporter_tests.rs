@@ -19,8 +19,9 @@ use std::{
 };
 
 use qubit_progress::{
-    ProgressCounters,
+    ProgressCounter,
     ProgressEvent,
+    ProgressSchema,
     reporter::{
         ProgressReporter,
         StdoutProgressReporter,
@@ -29,6 +30,10 @@ use qubit_progress::{
 
 const STDOUT_CHILD_ENV: &str = "QUBIT_PROGRESS_STDOUT_REPORTER_CHILD";
 const STDOUT_DEFAULT_CHILD_ENV: &str = "QUBIT_PROGRESS_STDOUT_DEFAULT_REPORTER_CHILD";
+
+fn schema() -> ProgressSchema {
+    ProgressSchema::single("entries", "Entries")
+}
 
 #[test]
 fn test_stdout_progress_reporter_can_report() {
@@ -42,7 +47,7 @@ fn test_stdout_progress_reporter_can_report() {
         STDOUT_CHILD_ENV,
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
-    assert!(stdout.contains("running 1/2 (50.00%)"), "{stdout}");
+    assert!(stdout.contains("running Entries 1/2 (50.00%)"), "{stdout}");
 }
 
 #[test]
@@ -57,13 +62,17 @@ fn test_stdout_progress_reporter_default_can_report() {
         STDOUT_DEFAULT_CHILD_ENV,
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
-    assert!(stdout.contains("finished 2/2 (100.00%)"), "{stdout}");
+    assert!(
+        stdout.contains("finished Entries 2/2 (100.00%)"),
+        "{stdout}"
+    );
 }
 
 fn report_running_to_stdout() {
     let reporter = StdoutProgressReporter::new();
     reporter.report(&ProgressEvent::running(
-        ProgressCounters::new(Some(2)).with_completed_count(1),
+        schema(),
+        vec![ProgressCounter::new("entries").total(2).completed(1)],
         Duration::from_millis(10),
     ));
 }
@@ -71,7 +80,8 @@ fn report_running_to_stdout() {
 fn report_finished_to_stdout() {
     let reporter = StdoutProgressReporter::default();
     reporter.report(&ProgressEvent::finished(
-        ProgressCounters::new(Some(2)).with_completed_count(2),
+        schema(),
+        vec![ProgressCounter::new("entries").total(2).completed(2)],
         Duration::from_millis(10),
     ));
 }

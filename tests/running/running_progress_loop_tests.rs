@@ -17,10 +17,11 @@ use std::{
 
 use qubit_progress::{
     Progress,
-    ProgressCounters,
+    ProgressCounter,
     ProgressEvent,
     ProgressPhase,
     ProgressReporter,
+    ProgressSchema,
 };
 
 #[derive(Debug, Default)]
@@ -49,11 +50,15 @@ impl ProgressReporter for RecordingReporter {
 #[test]
 fn test_running_progress_loop_reports_positive_interval_timeouts() {
     let reporter = RecordingReporter::default();
-    let progress = Progress::new(&reporter, Duration::from_millis(5));
+    let progress = Progress::new(
+        &reporter,
+        Duration::from_millis(5),
+        ProgressSchema::single("entries", "Entries"),
+    );
 
     thread::scope(|scope| {
         let running_progress = progress.spawn_running_reporter(scope, || {
-            ProgressCounters::new(Some(1)).with_active_count(1)
+            vec![ProgressCounter::new("entries").total(1).active(1)]
         });
 
         thread::sleep(Duration::from_millis(20));
@@ -61,7 +66,28 @@ fn test_running_progress_loop_reports_positive_interval_timeouts() {
     });
 
     let events = reporter.events();
-    assert!(events.iter().any(
-        |event| event.phase() == ProgressPhase::Running && event.counters().active_count() == 1
-    ));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.phase() == ProgressPhase::Running
+                && event.counter("entries").map(ProgressCounter::active_count) == Some(1))
+    );
+}
+
+#[test]
+fn test_running_progress_loop_exits_when_all_notifiers_are_dropped() {
+    let reporter = RecordingReporter::default();
+    let progress = Progress::new(
+        &reporter,
+        Duration::ZERO,
+        ProgressSchema::single("entries", "Entries"),
+    );
+
+    thread::scope(|scope| {
+        let running_progress = progress
+            .spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1)]);
+        drop(running_progress);
+    });
+
+    assert!(reporter.events().is_empty());
 }

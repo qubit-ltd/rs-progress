@@ -13,8 +13,9 @@ use std::time::Duration;
 
 use qubit_progress::{
     model::{
-        ProgressCounters,
+        ProgressCounter,
         ProgressEvent,
+        ProgressSchema,
     },
     reporter::{
         NoOpProgressReporter,
@@ -25,6 +26,10 @@ use qubit_progress::{
 #[test]
 fn test_no_op_progress_reporter_accepts_events() {
     let reporter = NoOpProgressReporter;
-    let event = ProgressEvent::started(ProgressCounters::new(Some(1)), Duration::ZERO);
+    let event = ProgressEvent::started(
+        ProgressSchema::single("entries", "Entries"),
+        vec![ProgressCounter::new("entries").total(1)],
+        Duration::ZERO,
+    );
     reporter.report(&event);
 }

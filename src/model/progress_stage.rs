@@ -7,6 +7,11 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
 /// Describes the current stage of a multi-stage operation.
 ///
 /// # Examples
@@ -23,17 +28,20 @@
 /// assert_eq!(stage.name(), "Verify files");
 /// assert_eq!(stage.index(), Some(2));
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProgressStage {
     /// Stable machine-readable stage identifier.
     id: String,
     /// Human-readable stage name.
     name: String,
     /// Zero-based stage index when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
     index: Option<usize>,
     /// Total number of stages when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
     total_stages: Option<usize>,
     /// Relative stage weight when the caller uses weighted progress.
+    #[serde(skip_serializing_if = "Option::is_none")]
     weight: Option<f64>,
 }
 
@@ -69,6 +77,7 @@ impl ProgressStage {
     ///
     /// This stage with `index` recorded.
     #[inline]
+    #[must_use]
     pub const fn with_index(mut self, index: usize) -> Self {
         self.index = Some(index);
         self
@@ -84,6 +93,7 @@ impl ProgressStage {
     ///
     /// This stage with `total_stages` recorded.
     #[inline]
+    #[must_use]
     pub const fn with_total_stages(mut self, total_stages: usize) -> Self {
         self.total_stages = Some(total_stages);
         self
@@ -105,6 +115,7 @@ impl ProgressStage {
     ///
     /// This stage with `weight` recorded.
     #[inline]
+    #[must_use]
     pub const fn with_weight(mut self, weight: f64) -> Self {
         self.weight = Some(weight);
         self

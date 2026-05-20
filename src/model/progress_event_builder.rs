@@ -10,17 +10,17 @@
 use std::time::Duration;
 
 use super::{
-    ProgressCounters,
+    ProgressCounter,
     ProgressEvent,
     ProgressPhase,
+    ProgressSchema,
     ProgressStage,
 };
 
 /// Builder for [`ProgressEvent`].
 ///
-/// The builder keeps the common path compact by letting callers configure
-/// phase, counters, optional stage information, and elapsed time in a single
-/// chain.
+/// The builder keeps the common path compact by carrying the event schema and
+/// letting callers append named metric counters with a closure.
 ///
 /// # Examples
 ///
@@ -29,28 +29,31 @@ use super::{
 ///
 /// use qubit_progress::{
 ///     ProgressEvent,
+///     ProgressMetric,
 ///     ProgressPhase,
+///     ProgressSchema,
 /// };
 ///
-/// let event = ProgressEvent::builder()
+/// let schema = ProgressSchema::new(vec![ProgressMetric::new("bytes", "Bytes")]);
+/// let event = ProgressEvent::builder(schema)
 ///     .running()
-///     .total(8)
-///     .completed(3)
-///     .active(1)
+///     .counter("bytes", |counter| counter.total(8).completed(3).active(1))
 ///     .stage_named("copy", "Copy files")
 ///     .elapsed(Duration::from_secs(2))
 ///     .build();
 ///
 /// assert_eq!(event.phase(), ProgressPhase::Running);
-/// assert_eq!(event.counters().completed_count(), 3);
+/// assert_eq!(event.counter("bytes").map(|c| c.completed_count()), Some(3));
 /// assert_eq!(event.stage().map(|stage| stage.id()), Some("copy"));
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProgressEventBuilder {
+    /// Metric schema carried by the event being built.
+    pub(crate) schema: ProgressSchema,
     /// Lifecycle phase of the event being built.
     pub(crate) phase: ProgressPhase,
-    /// Generic counters for the event being built.
-    pub(crate) counters: ProgressCounters,
+    /// Metric counters for the event being built.
+    pub(crate) counters: Vec<ProgressCounter>,
     /// Optional current stage.
     pub(crate) stage: Option<ProgressStage>,
     /// Monotonic elapsed duration.
@@ -58,17 +61,22 @@ pub struct ProgressEventBuilder {
 }
 
 impl ProgressEventBuilder {
-    /// Creates a builder with default running progress state.
+    /// Creates a builder for a schema.
+    ///
+    /// # Parameters
+    ///
+    /// * `schema` - Metric schema carried by the built event.
     ///
     /// # Returns
     ///
     /// A builder whose phase is [`ProgressPhase::Running`], elapsed duration is
-    /// zero, total count is unknown, and all counters are zero.
+    /// zero, and counters are empty.
     #[inline]
-    pub const fn new() -> Self {
+    pub fn new(schema: ProgressSchema) -> Self {
         Self {
+            schema,
             phase: ProgressPhase::Running,
-            counters: ProgressCounters::new(None),
+            counters: Vec::new(),
             stage: None,
             elapsed: Duration::ZERO,
         }
@@ -84,6 +92,7 @@ impl ProgressEventBuilder {
     ///
     /// This builder with `phase` recorded.
     #[inline]
+    #[must_use]
     pub const fn phase(mut self, phase: ProgressPhase) -> Self {
         self.phase = phase;
         self
@@ -95,6 +104,7 @@ impl ProgressEventBuilder {
     ///
     /// This builder with [`ProgressPhase::Started`].
     #[inline]
+    #[must_use]
     pub const fn started(self) -> Self {
         self.phase(ProgressPhase::Started)
     }
@@ -105,6 +115,7 @@ impl ProgressEventBuilder {
     ///
     /// This builder with [`ProgressPhase::Running`].
     #[inline]
+    #[must_use]
     pub const fn running(self) -> Self {
         self.phase(ProgressPhase::Running)
     }
@@ -115,6 +126,7 @@ impl ProgressEventBuilder {
     ///
     /// This builder with [`ProgressPhase::Finished`].
     #[inline]
+    #[must_use]
     pub const fn finished(self) -> Self {
         self.phase(ProgressPhase::Finished)
     }
@@ -125,6 +137,7 @@ impl ProgressEventBuilder {
     ///
     /// This builder with [`ProgressPhase::Failed`].
     #[inline]
+    #[must_use]
     pub const fn failed(self) -> Self {
         self.phase(ProgressPhase::Failed)
     }
@@ -135,108 +148,61 @@ impl ProgressEventBuilder {
     ///
     /// This builder with [`ProgressPhase::Canceled`].
     #[inline]
+    #[must_use]
     pub const fn canceled(self) -> Self {
         self.phase(ProgressPhase::Canceled)
     }
 
-    /// Replaces the current counter set.
+    /// Replaces the current counter list.
     ///
     /// # Parameters
     ///
-    /// * `counters` - Complete counter set to carry in the built event.
+    /// * `counters` - Complete counter list to carry in the built event.
     ///
     /// # Returns
     ///
     /// This builder with `counters` recorded.
     #[inline]
-    pub const fn counters(mut self, counters: ProgressCounters) -> Self {
+    #[must_use]
+    pub fn counters(mut self, counters: Vec<ProgressCounter>) -> Self {
         self.counters = counters;
         self
     }
 
-    /// Configures a known total work-unit count.
+    /// Appends one configured counter.
     ///
     /// # Parameters
     ///
-    /// * `total_count` - Total number of work units.
+    /// * `metric_id` - Metric identifier for the counter.
+    /// * `configure` - Closure that fills the counter values.
     ///
     /// # Returns
     ///
-    /// This builder with a known total count.
+    /// This builder with the configured counter appended.
     #[inline]
-    pub const fn total(mut self, total_count: usize) -> Self {
-        self.counters = self.counters.with_total_count(Some(total_count));
+    #[must_use]
+    pub fn counter<F>(mut self, metric_id: &str, configure: F) -> Self
+    where
+        F: FnOnce(ProgressCounter) -> ProgressCounter,
+    {
+        self.counters
+            .push(configure(ProgressCounter::new(metric_id)));
         self
     }
 
-    /// Configures the event as unknown-total progress.
-    ///
-    /// # Returns
-    ///
-    /// This builder with no total count.
-    #[inline]
-    pub const fn unknown_total(mut self) -> Self {
-        self.counters = self.counters.with_total_count(None);
-        self
-    }
-
-    /// Configures the completed work-unit count.
+    /// Appends a prebuilt counter.
     ///
     /// # Parameters
     ///
-    /// * `completed_count` - Number of completed work units.
+    /// * `counter` - Counter to append.
     ///
     /// # Returns
     ///
-    /// This builder with `completed_count` recorded.
+    /// This builder with `counter` appended.
     #[inline]
-    pub const fn completed(mut self, completed_count: usize) -> Self {
-        self.counters = self.counters.with_completed_count(completed_count);
-        self
-    }
-
-    /// Configures the active work-unit count.
-    ///
-    /// # Parameters
-    ///
-    /// * `active_count` - Number of currently active work units.
-    ///
-    /// # Returns
-    ///
-    /// This builder with `active_count` recorded.
-    #[inline]
-    pub const fn active(mut self, active_count: usize) -> Self {
-        self.counters = self.counters.with_active_count(active_count);
-        self
-    }
-
-    /// Configures the successful work-unit count.
-    ///
-    /// # Parameters
-    ///
-    /// * `succeeded_count` - Number of successful work units.
-    ///
-    /// # Returns
-    ///
-    /// This builder with `succeeded_count` recorded.
-    #[inline]
-    pub const fn succeeded(mut self, succeeded_count: usize) -> Self {
-        self.counters = self.counters.with_succeeded_count(succeeded_count);
-        self
-    }
-
-    /// Configures the failed work-unit count.
-    ///
-    /// # Parameters
-    ///
-    /// * `failed_count` - Number of failed work units.
-    ///
-    /// # Returns
-    ///
-    /// This builder with `failed_count` recorded.
-    #[inline]
-    pub const fn failed_count(mut self, failed_count: usize) -> Self {
-        self.counters = self.counters.with_failed_count(failed_count);
+    #[must_use]
+    pub fn add_counter(mut self, counter: ProgressCounter) -> Self {
+        self.counters.push(counter);
         self
     }
 
@@ -250,6 +216,7 @@ impl ProgressEventBuilder {
     ///
     /// This builder with `stage` recorded.
     #[inline]
+    #[must_use]
     pub fn stage(mut self, stage: ProgressStage) -> Self {
         self.stage = Some(stage);
         self
@@ -266,6 +233,7 @@ impl ProgressEventBuilder {
     ///
     /// This builder with a stage created from `id` and `name`.
     #[inline]
+    #[must_use]
     pub fn stage_named(self, id: &str, name: &str) -> Self {
         self.stage(ProgressStage::new(id, name))
     }
@@ -280,6 +248,7 @@ impl ProgressEventBuilder {
     ///
     /// This builder with `elapsed` recorded.
     #[inline]
+    #[must_use]
     pub const fn elapsed(mut self, elapsed: Duration) -> Self {
         self.elapsed = elapsed;
         self
@@ -293,17 +262,5 @@ impl ProgressEventBuilder {
     #[inline]
     pub fn build(self) -> ProgressEvent {
         ProgressEvent::new(self)
-    }
-}
-
-impl Default for ProgressEventBuilder {
-    /// Creates a builder with default running progress state.
-    ///
-    /// # Returns
-    ///
-    /// A builder equivalent to [`Self::new`].
-    #[inline]
-    fn default() -> Self {
-        Self::new()
     }
 }

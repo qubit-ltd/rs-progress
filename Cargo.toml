@@ -1,6 +1,6 @@
 [package]
 name = "qubit-progress"
-version = "0.4.6"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.94"
 authors = ["Haixing Hu <starfish.hu@gmail.com>"]
@@ -32,3 +32,9 @@ doctest = true
 
 [dependencies]
 log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+
+qubit-serde = "0.2"
+
+[dev-dependencies]
+serde_json = "1.0"

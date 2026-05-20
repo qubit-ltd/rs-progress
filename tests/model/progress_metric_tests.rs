@@ -7,12 +7,14 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for progress data model.
+//! Tests for `ProgressMetric`.
 
-mod progress_counter_tests;
-mod progress_event_builder_tests;
-mod progress_event_tests;
-mod progress_metric_tests;
-mod progress_phase_tests;
-mod progress_schema_tests;
-mod progress_stage_tests;
+use qubit_progress::ProgressMetric;
+
+#[test]
+fn test_progress_metric_stores_id_and_name() {
+    let metric = ProgressMetric::new("bytes", "Bytes");
+
+    assert_eq!(metric.id(), "bytes");
+    assert_eq!(metric.name(), "Bytes");
+}

@@ -17,10 +17,11 @@ use std::{
 
 use qubit_progress::{
     Progress,
-    ProgressCounters,
+    ProgressCounter,
     ProgressEvent,
     ProgressPhase,
     ProgressReporter,
+    ProgressSchema,
 };
 
 #[derive(Debug, Default)]
@@ -51,9 +52,13 @@ fn test_running_progress_point_handle_is_noop_for_positive_interval() {
     let reporter = RecordingReporter::default();
 
     thread::scope(|scope| {
-        let progress = Progress::new(&reporter, Duration::from_millis(5));
+        let progress = Progress::new(
+            &reporter,
+            Duration::from_millis(5),
+            ProgressSchema::single("entries", "Entries"),
+        );
         let running_progress = progress.spawn_running_reporter(scope, || {
-            ProgressCounters::new(Some(1)).with_active_count(1)
+            vec![ProgressCounter::new("entries").total(1).active(1)]
         });
         let progress_point_handle = running_progress.point_handle();
 
@@ -64,7 +69,10 @@ fn test_running_progress_point_handle_is_noop_for_positive_interval() {
     });
 
     let events = reporter.events();
-    assert!(events.iter().any(
-        |event| event.phase() == ProgressPhase::Running && event.counters().active_count() == 1
-    ));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.phase() == ProgressPhase::Running
+                && event.counter("entries").map(ProgressCounter::active_count) == Some(1))
+    );
 }

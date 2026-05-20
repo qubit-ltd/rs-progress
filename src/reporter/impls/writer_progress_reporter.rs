@@ -17,7 +17,11 @@ use std::{
 
 use super::format::format_duration;
 use crate::{
-    model::ProgressEvent,
+    model::{
+        ProgressCounter,
+        ProgressEvent,
+        ProgressSchema,
+    },
     reporter::ProgressReporter,
 };
 
@@ -38,23 +42,27 @@ use crate::{
 /// use std::time::Duration;
 ///
 /// use qubit_progress::{
-///     ProgressCounters,
+///     ProgressCounter,
 ///     ProgressEvent,
+///     ProgressMetric,
 ///     ProgressReporter,
+///     ProgressSchema,
 ///     WriterProgressReporter,
 /// };
 ///
+/// let schema = ProgressSchema::new(vec![ProgressMetric::new("entries", "Entries")]);
 /// let output = Arc::new(Mutex::new(Cursor::new(Vec::new())));
 /// let reporter = WriterProgressReporter::new(output.clone());
 /// reporter.report(&ProgressEvent::running(
-///     ProgressCounters::new(Some(4)).with_completed_count(2),
+///     schema,
+///     vec![ProgressCounter::new("entries").total(4).completed(2)],
 ///     Duration::from_secs(1),
 /// ));
 ///
 /// let bytes = output.lock().expect("output should lock").get_ref().clone();
 /// let text = String::from_utf8(bytes).expect("progress output should be UTF-8");
 /// assert!(text.contains("running"));
-/// assert!(text.contains("2/4"));
+/// assert!(text.contains("Entries 2/4"));
 /// ```
 #[derive(Debug)]
 pub struct WriterProgressReporter<W> {
@@ -135,26 +143,63 @@ where
 ///
 /// A compact human-readable line.
 fn format_event(event: &ProgressEvent) -> String {
-    let counters = event.counters();
-    let progress = match (counters.completed_count(), counters.total_count()) {
-        (completed, Some(total)) => format!(
-            "{completed}/{total} ({:.2}%)",
-            counters.progress_percent().unwrap_or(100.0)
-        ),
-        (completed, None) => format!("{completed} completed"),
-    };
-    let active = counters.active_count();
-    let failed = counters.failed_count();
+    let counters = format_counters(event.schema(), event.counters());
     let elapsed = format_duration(event.elapsed());
     match event.stage() {
         Some(stage) => format!(
-            "{} [{}] {progress}, active {active}, failed {failed}, elapsed {elapsed}",
+            "{} [{}] {counters}, elapsed {elapsed}",
             event.phase(),
             stage.name(),
         ),
-        None => format!(
-            "{} {progress}, active {active}, failed {failed}, elapsed {elapsed}",
-            event.phase(),
-        ),
+        None => format!("{} {counters}, elapsed {elapsed}", event.phase()),
     }
+}
+
+/// Formats all counters in one event.
+///
+/// # Parameters
+///
+/// * `schema` - Schema used to resolve metric names.
+/// * `counters` - Counters to format.
+///
+/// # Returns
+///
+/// A compact counter list.
+fn format_counters(schema: &ProgressSchema, counters: &[ProgressCounter]) -> String {
+    if counters.is_empty() {
+        return "no counters".to_owned();
+    }
+    counters
+        .iter()
+        .map(|counter| format_counter(schema, counter))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// Formats one counter.
+///
+/// # Parameters
+///
+/// * `schema` - Schema used to resolve the metric name.
+/// * `counter` - Counter to format.
+///
+/// # Returns
+///
+/// A compact counter description.
+fn format_counter(schema: &ProgressSchema, counter: &ProgressCounter) -> String {
+    let metric_name = schema
+        .metric_name(counter.metric_id())
+        .unwrap_or_else(|| counter.metric_id());
+    let progress = match (counter.completed_count(), counter.total_count()) {
+        (completed, Some(total)) => format!(
+            "{completed}/{total} ({:.2}%)",
+            counter.progress_percent().unwrap_or(100.0)
+        ),
+        (completed, None) => format!("{completed} completed"),
+    };
+    format!(
+        "{metric_name} {progress}, active {}, failed {}",
+        counter.active_count(),
+        counter.failed_count(),
+    )
 }

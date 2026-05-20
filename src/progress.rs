@@ -17,9 +17,12 @@ use std::{
 
 use crate::{
     model::{
-        ProgressCounters,
+        ProgressCounter,
         ProgressEvent,
+        ProgressEventBuilder,
+        ProgressMetric,
         ProgressPhase,
+        ProgressSchema,
         ProgressStage,
     },
     reporter::ProgressReporter,
@@ -29,12 +32,13 @@ use crate::{
     },
 };
 
-/// Tracks one progress-producing operation and reports lifecycle events.
+/// Tracks one logical progress-producing operation and reports events.
 ///
-/// `Progress` owns no operation-specific counters. Callers keep their own
-/// domain state and pass freshly built [`ProgressCounters`] when reporting.
-/// The run only manages elapsed time, periodic running-event throttling,
-/// optional stage metadata, and forwarding immutable events to a reporter.
+/// A `Progress` instance is scoped to one logical operation. It owns no domain
+/// state; callers keep their own counters and convert them into
+/// [`ProgressCounter`] values when reporting. The run manages elapsed time,
+/// periodic running-event throttling, optional stage metadata, a metric schema,
+/// and forwarding immutable events to one reporter.
 ///
 /// # Examples
 ///
@@ -42,31 +46,33 @@ use crate::{
 /// use std::time::Duration;
 ///
 /// use qubit_progress::{
-///     ProgressCounters,
 ///     Progress,
+///     ProgressMetric,
+///     ProgressSchema,
 ///     WriterProgressReporter,
 /// };
 ///
+/// let schema = ProgressSchema::new(vec![ProgressMetric::new("entries", "Entries")]);
 /// let reporter = WriterProgressReporter::from_writer(std::io::stdout());
-/// let mut progress = Progress::new(&reporter, Duration::from_secs(5));
+/// let mut progress = Progress::new(&reporter, Duration::from_secs(5), schema);
 ///
-/// let started = progress.report_started(ProgressCounters::new(Some(2)));
+/// let started = progress.report_started(|event| event.counter("entries", |c| c.total(2)));
 /// assert!(started.elapsed().is_zero());
 ///
-/// let running = ProgressCounters::new(Some(2))
-///     .with_completed_count(1)
-///     .with_active_count(1);
-/// let _reported = progress.report_running_if_due(running);
+/// let _reported = progress.report_running_if_due(|event| {
+///     event.counter("entries", |counter| counter.total(2).completed(1).active(1))
+/// });
 ///
-/// let finished = ProgressCounters::new(Some(2))
-///     .with_completed_count(2)
-///     .with_succeeded_count(2);
-/// let finished_event = progress.report_finished(finished);
-/// assert!(finished_event.elapsed() >= started.elapsed());
+/// let finished = progress.report_finished(|event| {
+///     event.counter("entries", |counter| counter.total(2).completed(2).succeeded(2))
+/// });
+/// assert!(finished.elapsed() >= started.elapsed());
 /// ```
 pub struct Progress<'a> {
     /// Reporter receiving lifecycle callbacks for this run.
     reporter: &'a dyn ProgressReporter,
+    /// Metric schema carried by events emitted from this run.
+    schema: ProgressSchema,
     /// Monotonic start time used to compute elapsed durations.
     started_at: Instant,
     /// Minimum interval between due-based running callbacks.
@@ -84,13 +90,44 @@ impl<'a> Progress<'a> {
     ///
     /// * `reporter` - Reporter receiving progress events.
     /// * `report_interval` - Minimum delay between due-based running events.
+    /// * `schema` - Metric schema carried by emitted events.
     ///
     /// # Returns
     ///
     /// A progress run whose elapsed time is measured from now.
     #[inline]
-    pub fn new(reporter: &'a dyn ProgressReporter, report_interval: Duration) -> Self {
-        Self::from_start(reporter, report_interval, Instant::now())
+    pub fn new(
+        reporter: &'a dyn ProgressReporter,
+        report_interval: Duration,
+        schema: ProgressSchema,
+    ) -> Self {
+        Self::from_start(reporter, report_interval, schema, Instant::now())
+    }
+
+    /// Creates a single-metric progress run starting at the current instant.
+    ///
+    /// # Parameters
+    ///
+    /// * `reporter` - Reporter receiving progress events.
+    /// * `report_interval` - Minimum delay between due-based running events.
+    /// * `metric_id` - Stable metric identifier.
+    /// * `metric_name` - Human-readable metric name.
+    ///
+    /// # Returns
+    ///
+    /// A progress run with a schema containing one metric.
+    #[inline]
+    pub fn single_metric(
+        reporter: &'a dyn ProgressReporter,
+        report_interval: Duration,
+        metric_id: &str,
+        metric_name: &str,
+    ) -> Self {
+        Self::new(
+            reporter,
+            report_interval,
+            ProgressSchema::new(vec![ProgressMetric::new(metric_id, metric_name)]),
+        )
     }
 
     /// Creates a progress run from an explicit start instant.
@@ -99,6 +136,7 @@ impl<'a> Progress<'a> {
     ///
     /// * `reporter` - Reporter receiving progress events.
     /// * `report_interval` - Minimum delay between due-based running events.
+    /// * `schema` - Metric schema carried by emitted events.
     /// * `started_at` - Monotonic instant representing operation start.
     ///
     /// # Returns
@@ -108,10 +146,12 @@ impl<'a> Progress<'a> {
     fn from_start(
         reporter: &'a dyn ProgressReporter,
         report_interval: Duration,
+        schema: ProgressSchema,
         started_at: Instant,
     ) -> Self {
         Self {
             reporter,
+            schema,
             started_at,
             report_interval,
             next_running_at: next_instant(started_at, report_interval),
@@ -129,6 +169,7 @@ impl<'a> Progress<'a> {
     ///
     /// This progress run with `stage` recorded.
     #[inline]
+    #[must_use]
     pub fn with_stage(mut self, stage: ProgressStage) -> Self {
         self.stage = Some(stage);
         self
@@ -140,40 +181,65 @@ impl<'a> Progress<'a> {
     ///
     /// This progress run without stage metadata.
     #[inline]
+    #[must_use]
     pub fn without_stage(mut self) -> Self {
         self.stage = None;
         self
+    }
+
+    /// Creates an event builder preconfigured with this run's schema, stage, and elapsed time.
+    ///
+    /// # Returns
+    ///
+    /// A progress event builder for this run.
+    #[inline]
+    pub fn event_builder(&self) -> ProgressEventBuilder {
+        self.event_builder_with_elapsed(self.elapsed())
     }
 
     /// Reports a started lifecycle event.
     ///
     /// # Parameters
     ///
-    /// * `counters` - Initial counters for the operation.
+    /// * `configure` - Closure that adds counters or stage overrides to the event builder.
+    ///
+    /// # Returns
+    ///
+    /// The event sent to the configured reporter.
     ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_started(&self, counters: ProgressCounters) -> ProgressEvent {
-        self.report_with_elapsed(ProgressPhase::Started, counters, Duration::ZERO)
+    pub fn report_started<F>(&self, configure: F) -> ProgressEvent
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        self.report_with_elapsed(ProgressPhase::Started, Duration::ZERO, configure)
     }
 
     /// Reports a running lifecycle event immediately.
     ///
     /// # Parameters
     ///
-    /// * `counters` - Current counters for the operation.
+    /// * `configure` - Closure that adds counters or stage overrides to the event builder.
+    ///
+    /// # Returns
+    ///
+    /// The event sent to the configured reporter.
     ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
-    pub fn report_running(&mut self, counters: ProgressCounters) -> ProgressEvent {
+    pub fn report_running<F>(&mut self, configure: F) -> ProgressEvent
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
         let now = Instant::now();
         let event = self.report_with_elapsed(
             ProgressPhase::Running,
-            counters,
             now.saturating_duration_since(self.started_at),
+            configure,
         );
         self.next_running_at = next_instant(now, self.report_interval);
         event
@@ -183,14 +249,14 @@ impl<'a> Progress<'a> {
     ///
     /// # Parameters
     ///
-    /// * `counters` - Current counters for the operation.
+    /// * `configure` - Closure that adds counters or stage overrides when an event is due.
     ///
     /// # Returns
     ///
     /// `Some(event)` when a running event was emitted, or `None` when the next
     /// running-event deadline has not been reached.
     ///
-    /// This method does not block waiting for the next deadline. It returns
+    /// This method does not call `configure` unless an event is due. It returns
     /// immediately when not due, and when due it synchronously calls the
     /// configured reporter. Any blocking behavior therefore comes from the
     /// reporter implementation.
@@ -198,15 +264,18 @@ impl<'a> Progress<'a> {
     /// # Panics
     ///
     /// Propagates panics from the configured reporter when an event is due.
-    pub fn report_running_if_due(&mut self, counters: ProgressCounters) -> Option<ProgressEvent> {
+    pub fn report_running_if_due<F>(&mut self, configure: F) -> Option<ProgressEvent>
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
         let now = Instant::now();
         if now < self.next_running_at {
             return None;
         }
         let event = self.report_with_elapsed(
             ProgressPhase::Running,
-            counters,
             now.saturating_duration_since(self.started_at),
+            configure,
         );
         self.next_running_at = next_instant(now, self.report_interval);
         Some(event)
@@ -216,49 +285,70 @@ impl<'a> Progress<'a> {
     ///
     /// # Parameters
     ///
-    /// * `counters` - Final counters for a successfully completed operation.
+    /// * `configure` - Closure that adds final counters to the event builder.
+    ///
+    /// # Returns
+    ///
+    /// The event sent to the configured reporter.
     ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_finished(&self, counters: ProgressCounters) -> ProgressEvent {
-        self.report_with_elapsed(ProgressPhase::Finished, counters, self.elapsed())
+    pub fn report_finished<F>(&self, configure: F) -> ProgressEvent
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        self.report_with_elapsed(ProgressPhase::Finished, self.elapsed(), configure)
     }
 
     /// Reports a failed lifecycle event.
     ///
     /// # Parameters
     ///
-    /// * `counters` - Final or current counters for a failed operation.
+    /// * `configure` - Closure that adds final or current counters to the event builder.
+    ///
+    /// # Returns
+    ///
+    /// The event sent to the configured reporter.
     ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_failed(&self, counters: ProgressCounters) -> ProgressEvent {
-        self.report_with_elapsed(ProgressPhase::Failed, counters, self.elapsed())
+    pub fn report_failed<F>(&self, configure: F) -> ProgressEvent
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        self.report_with_elapsed(ProgressPhase::Failed, self.elapsed(), configure)
     }
 
     /// Reports a canceled lifecycle event.
     ///
     /// # Parameters
     ///
-    /// * `counters` - Final or current counters for a canceled operation.
+    /// * `configure` - Closure that adds final or current counters to the event builder.
+    ///
+    /// # Returns
+    ///
+    /// The event sent to the configured reporter.
     ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_canceled(&self, counters: ProgressCounters) -> ProgressEvent {
-        self.report_with_elapsed(ProgressPhase::Canceled, counters, self.elapsed())
+    pub fn report_canceled<F>(&self, configure: F) -> ProgressEvent
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        self.report_with_elapsed(ProgressPhase::Canceled, self.elapsed(), configure)
     }
 
     /// Spawns a scoped background reporter for periodic running events.
     ///
-    /// The background reporter shares this progress run's reporter, start time,
-    /// interval, and stage metadata. Worker threads should update their own
-    /// domain state first, then call
+    /// The background reporter shares this progress run's reporter, schema,
+    /// start time, interval, and stage metadata. Worker threads should update
+    /// their own domain state first, then call
     /// [`RunningProgressPointHandle::report`](crate::RunningProgressPointHandle::report)
     /// on the handle returned by the guard. The guard must be stopped and
     /// joined before the thread scope exits.
@@ -271,63 +361,12 @@ impl<'a> Progress<'a> {
     ///
     /// # Returns
     ///
-    /// A guard that owns the background reporter thread and can create
-    /// worker-side point handles.
+    /// A guard that owns the reporter thread and can create worker-side point handles.
     ///
     /// # Panics
     ///
     /// Panics raised by the reporter thread are propagated by
     /// [`RunningProgressGuard::stop_and_join`].
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::{
-    ///     sync::{
-    ///         Arc,
-    ///         atomic::{
-    ///             AtomicUsize,
-    ///             Ordering,
-    ///         },
-    ///     },
-    ///     thread,
-    ///     time::Duration,
-    /// };
-    ///
-    /// use qubit_progress::{
-    ///     NoOpProgressReporter,
-    ///     Progress,
-    ///     ProgressCounters,
-    /// };
-    ///
-    /// let reporter = NoOpProgressReporter;
-    /// let completed = Arc::new(AtomicUsize::new(0));
-    /// let progress = Progress::new(&reporter, Duration::ZERO);
-    ///
-    /// thread::scope(|scope| {
-    ///     let loop_completed = Arc::clone(&completed);
-    ///     let running = progress.spawn_running_reporter(scope, move || {
-    ///         ProgressCounters::new(Some(3))
-    ///             .with_completed_count(loop_completed.load(Ordering::Acquire))
-    ///     });
-    ///     let point = running.point_handle();
-    ///
-    ///     let mut handles = Vec::new();
-    ///     for _ in 0..3 {
-    ///         let c = Arc::clone(&completed);
-    ///         let p = point.clone();
-    ///         handles.push(scope.spawn(move || {
-    ///             c.fetch_add(1, Ordering::AcqRel);
-    ///             assert!(p.report());
-    ///         }));
-    ///     }
-    ///     for h in handles {
-    ///         h.join().unwrap();
-    ///     }
-    ///
-    ///     running.stop_and_join();
-    /// });
-    /// ```
     pub fn spawn_running_reporter<'scope, 'env, F>(
         &self,
         scope: &'scope thread::Scope<'scope, 'env>,
@@ -335,7 +374,7 @@ impl<'a> Progress<'a> {
     ) -> RunningProgressGuard<'scope>
     where
         'a: 'scope,
-        F: FnMut() -> ProgressCounters + Send + 'scope,
+        F: FnMut() -> Vec<ProgressCounter> + Send + 'scope,
     {
         RunningProgressLoop::spawn_scoped(scope, self.fork_for_running(), snapshot)
     }
@@ -345,8 +384,8 @@ impl<'a> Progress<'a> {
     /// # Parameters
     ///
     /// * `phase` - Lifecycle phase to report.
-    /// * `counters` - Counters carried by the event.
     /// * `elapsed` - Elapsed duration carried by the event.
+    /// * `configure` - Closure that adds counters or stage overrides.
     ///
     /// # Returns
     ///
@@ -355,15 +394,28 @@ impl<'a> Progress<'a> {
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
-    fn report_with_elapsed(
+    fn report_with_elapsed<F>(
         &self,
         phase: ProgressPhase,
-        counters: ProgressCounters,
         elapsed: Duration,
-    ) -> ProgressEvent {
-        let event = self.event_with_elapsed(phase, counters, elapsed);
+        configure: F,
+    ) -> ProgressEvent
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        let event = configure(self.event_builder_with_elapsed(elapsed).phase(phase)).build();
         self.reporter.report(&event);
         event
+    }
+
+    /// Returns the metric schema for this progress run.
+    ///
+    /// # Returns
+    ///
+    /// The schema cloned into every event emitted by this run.
+    #[inline]
+    pub const fn schema(&self) -> &ProgressSchema {
+        &self.schema
     }
 
     /// Returns the elapsed duration since this run started.
@@ -410,11 +462,12 @@ impl<'a> Progress<'a> {
     ///
     /// # Returns
     ///
-    /// A progress run with the same reporter, start time, interval, stage, and
-    /// next running deadline as this run.
+    /// A progress run with the same reporter, schema, start time, interval,
+    /// stage, and next running deadline as this run.
     fn fork_for_running(&self) -> Self {
         Self {
             reporter: self.reporter,
+            schema: self.schema.clone(),
             started_at: self.started_at,
             report_interval: self.report_interval,
             next_running_at: self.next_running_at,
@@ -422,27 +475,20 @@ impl<'a> Progress<'a> {
         }
     }
 
-    /// Builds a progress event with optional stage metadata.
+    /// Creates an event builder with a specific elapsed duration.
     ///
     /// # Parameters
     ///
-    /// * `phase` - Lifecycle phase for the event.
-    /// * `counters` - Counters carried by the event.
-    /// * `elapsed` - Elapsed duration carried by the event.
+    /// * `elapsed` - Elapsed duration to attach to the event.
     ///
     /// # Returns
     ///
-    /// A progress event ready to be sent to the reporter.
-    fn event_with_elapsed(
-        &self,
-        phase: ProgressPhase,
-        counters: ProgressCounters,
-        elapsed: Duration,
-    ) -> ProgressEvent {
-        let event = ProgressEvent::from_phase(phase, counters, elapsed);
+    /// A builder carrying this run's schema and optional stage.
+    fn event_builder_with_elapsed(&self, elapsed: Duration) -> ProgressEventBuilder {
+        let builder = ProgressEvent::builder(self.schema.clone()).elapsed(elapsed);
         match self.stage.clone() {
-            Some(stage) => event.with_stage(stage),
-            None => event,
+            Some(stage) => builder.stage(stage),
+            None => builder,
         }
     }
 }
