@@ -12,6 +12,7 @@
 mod progress_counter_tests;
 mod progress_event_builder_tests;
 mod progress_event_tests;
+mod progress_metric_snapshot_tests;
 mod progress_metric_tests;
 mod progress_phase_tests;
 mod progress_schema_tests;

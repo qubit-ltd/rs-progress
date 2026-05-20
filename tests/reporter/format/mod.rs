@@ -7,10 +7,7 @@
  *    Licensed under the Apache License, Version 2.0.
  *
  ******************************************************************************/
-//! Tests for concrete built-in reporter implementations.
+//! Tests for progress metric snapshot formatters.
 
-mod json_stderr_progress_reporter_tests;
-mod json_stdout_progress_reporter_tests;
-mod json_writer_progress_reporter_tests;
-mod stderr_progress_reporter_tests;
-mod stdout_progress_reporter_tests;
+mod human_readable_metric_snapshot_formatter_tests;
+mod json_metric_snapshot_formatter_tests;
