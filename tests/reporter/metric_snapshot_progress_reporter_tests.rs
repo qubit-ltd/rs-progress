@@ -57,9 +57,7 @@ fn test_metric_snapshot_progress_reporter_consumes_snapshot_objects() {
         Duration::from_millis(10),
     ));
 
-    let snapshots = snapshots
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let snapshots = snapshots.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(snapshots.len(), 2);
     assert_eq!(snapshots[0].metric_id(), "manual");
     assert_eq!(snapshots[1].metric_id(), "entries");

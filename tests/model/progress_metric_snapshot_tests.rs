@@ -94,10 +94,7 @@ fn test_progress_event_metric_snapshots_resolve_schema_and_fallback_metrics() {
     assert_eq!(snapshots[0].metric_id(), "entries");
     assert_eq!(snapshots[0].metric_name(), "Entries");
     assert_eq!(snapshots[0].completed_count(), 2);
-    assert_eq!(
-        snapshots[0].stage().map(ProgressStage::name),
-        Some("Scan files")
-    );
+    assert_eq!(snapshots[0].stage().map(ProgressStage::name), Some("Scan files"));
     assert_eq!(snapshots[0].elapsed(), Duration::from_millis(110));
     assert_eq!(snapshots[1].metric_id(), "missing");
     assert_eq!(snapshots[1].metric_name(), "missing");

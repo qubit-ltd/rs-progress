@@ -44,9 +44,7 @@ fn schema() -> ProgressSchema {
 #[test]
 fn test_progress_reporter_trait_object_dispatch() {
     let called = Arc::new(AtomicUsize::new(0));
-    let concrete = CountingReporter {
-        called: called.clone(),
-    };
+    let concrete = CountingReporter { called: called.clone() };
     let reporter: &dyn ProgressReporter = &concrete;
 
     reporter.report(&ProgressEvent::started(

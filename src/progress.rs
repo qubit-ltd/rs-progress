@@ -96,11 +96,7 @@ impl<'a> Progress<'a> {
     ///
     /// A progress run whose elapsed time is measured from now.
     #[inline]
-    pub fn new(
-        reporter: &'a dyn ProgressReporter,
-        report_interval: Duration,
-        schema: ProgressSchema,
-    ) -> Self {
+    pub fn new(reporter: &'a dyn ProgressReporter, report_interval: Duration, schema: ProgressSchema) -> Self {
         Self::from_start(reporter, report_interval, schema, Instant::now())
     }
 
@@ -394,12 +390,7 @@ impl<'a> Progress<'a> {
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
-    fn report_with_elapsed<F>(
-        &self,
-        phase: ProgressPhase,
-        elapsed: Duration,
-        configure: F,
-    ) -> ProgressEvent
+    fn report_with_elapsed<F>(&self, phase: ProgressPhase, elapsed: Duration, configure: F) -> ProgressEvent
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {

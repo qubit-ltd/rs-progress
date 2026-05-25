@@ -42,10 +42,7 @@ impl<F, C> FormattedProgressReporter<F, C> {
     /// A reporter that formats metric snapshots and sends strings to `consumer`.
     #[inline]
     pub const fn new(formatter: F, consumer: C) -> Self {
-        Self {
-            formatter,
-            consumer,
-        }
+        Self { formatter, consumer }
     }
 
     /// Returns the configured formatter.

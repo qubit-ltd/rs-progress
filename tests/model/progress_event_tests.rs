@@ -34,18 +34,12 @@ fn test_progress_event_carries_schema_phase_stage_counters_and_timing() {
         .with_index(1)
         .with_total_stages(4)
         .with_weight(0.5);
-    let event = ProgressEvent::running(schema(), counters(), Duration::from_secs(3))
-        .with_stage(stage.clone());
+    let event = ProgressEvent::running(schema(), counters(), Duration::from_secs(3)).with_stage(stage.clone());
 
     assert_eq!(event.phase(), ProgressPhase::Running);
     assert_eq!(event.stage(), Some(&stage));
     assert_eq!(event.schema().metric_name("entries"), Some("Entries"));
-    assert_eq!(
-        event
-            .counter("entries")
-            .map(ProgressCounter::completed_count),
-        Some(2)
-    );
+    assert_eq!(event.counter("entries").map(ProgressCounter::completed_count), Some(2));
     assert_eq!(event.elapsed(), Duration::from_secs(3));
 }
 
@@ -59,9 +53,7 @@ fn test_progress_event_constructors_cover_terminal_phases() {
     assert_eq!(started.phase(), ProgressPhase::Started);
     assert_eq!(started.stage(), None);
     assert_eq!(
-        started
-            .counter("entries")
-            .map(ProgressCounter::completed_count),
+        started.counter("entries").map(ProgressCounter::completed_count),
         Some(2)
     );
     assert_eq!(finished.phase(), ProgressPhase::Finished);
@@ -84,12 +76,7 @@ fn test_progress_event_from_phase_creates_matching_event() {
 
         assert_eq!(event.phase(), phase);
         assert_eq!(event.stage(), None);
-        assert_eq!(
-            event
-                .counter("entries")
-                .map(ProgressCounter::completed_count),
-            Some(2)
-        );
+        assert_eq!(event.counter("entries").map(ProgressCounter::completed_count), Some(2));
         assert_eq!(event.elapsed(), elapsed);
     }
 }
@@ -106,12 +93,7 @@ fn test_progress_event_builder_and_new_constructor() {
         built.counter("entries").map(ProgressCounter::total_count),
         Some(Some(2))
     );
-    assert_eq!(
-        built
-            .counter("entries")
-            .map(ProgressCounter::completed_count),
-        Some(2)
-    );
+    assert_eq!(built.counter("entries").map(ProgressCounter::completed_count), Some(2));
     assert_eq!(built.elapsed(), Duration::from_millis(250));
 
     let rebuilt = ProgressEvent::new(
@@ -121,17 +103,10 @@ fn test_progress_event_builder_and_new_constructor() {
     );
     assert_eq!(rebuilt.phase(), ProgressPhase::Failed);
     assert_eq!(
-        rebuilt
-            .counter("entries")
-            .map(ProgressCounter::completed_count),
+        rebuilt.counter("entries").map(ProgressCounter::completed_count),
         Some(1)
     );
-    assert_eq!(
-        rebuilt
-            .counter("entries")
-            .map(ProgressCounter::failed_count),
-        Some(1)
-    );
+    assert_eq!(rebuilt.counter("entries").map(ProgressCounter::failed_count), Some(1));
 }
 
 #[test]
@@ -150,9 +125,7 @@ fn test_progress_event_serializes_to_self_describing_json() {
     let decoded: ProgressEvent = serde_json::from_str(&json).expect("event should deserialize");
     assert_eq!(decoded.elapsed(), Duration::from_millis(110));
     assert_eq!(
-        decoded
-            .counter("entries")
-            .map(ProgressCounter::completed_count),
+        decoded.counter("entries").map(ProgressCounter::completed_count),
         Some(2)
     );
 }

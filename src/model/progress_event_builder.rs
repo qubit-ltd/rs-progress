@@ -185,8 +185,7 @@ impl ProgressEventBuilder {
     where
         F: FnOnce(ProgressCounter) -> ProgressCounter,
     {
-        self.counters
-            .push(configure(ProgressCounter::new(metric_id)));
+        self.counters.push(configure(ProgressCounter::new(metric_id)));
         self
     }
 

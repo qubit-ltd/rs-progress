@@ -35,12 +35,7 @@ fn render_line(elapsed: Duration) -> String {
     let reporter = WriterProgressReporter::new(output.clone());
     let event = ProgressEvent::running(
         ProgressSchema::single("entries", "Entries"),
-        vec![
-            ProgressCounter::new("entries")
-                .total(3)
-                .active(1)
-                .completed(1),
-        ],
+        vec![ProgressCounter::new("entries").total(3).active(1).completed(1)],
         elapsed,
     );
     reporter.report(&event);
