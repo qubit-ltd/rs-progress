@@ -62,10 +62,7 @@ fn test_stdout_progress_reporter_default_can_report() {
         STDOUT_DEFAULT_CHILD_ENV,
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
-    assert!(
-        stdout.contains("finished Entries 2/2 (100.00%)"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("finished Entries 2/2 (100.00%)"), "{stdout}");
 }
 
 fn report_running_to_stdout() {

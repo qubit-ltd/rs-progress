@@ -45,9 +45,7 @@ fn test_json_progress_reporter_uses_default_formatter() {
         Duration::from_millis(10),
     ));
 
-    let lines = lines
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let lines = lines.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(lines.len(), 1);
     let value: serde_json::Value = serde_json::from_str(&lines[0]).expect("JSON should parse");
     assert_eq!(value["metric"]["id"], "entries");

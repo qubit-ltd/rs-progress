@@ -79,11 +79,7 @@ fn test_logger_progress_reporter_handles_empty_and_unknown_metric_paths() {
     ensure_test_logger();
 
     let reporter = LoggerProgressReporter::new("qubit_progress_test").with_level(log::Level::Info);
-    reporter.report(&ProgressEvent::running(
-        schema(),
-        Vec::new(),
-        Duration::from_millis(1),
-    ));
+    reporter.report(&ProgressEvent::running(schema(), Vec::new(), Duration::from_millis(1)));
     reporter.report(&ProgressEvent::running(
         schema(),
         vec![ProgressCounter::new("missing").completed(3)],

@@ -104,10 +104,7 @@ impl RunningProgressLoop {
     /// stop signals to that loop.
     pub(crate) fn channel() -> (Self, RunningProgressNotifier) {
         let (signal_sender, signal_receiver) = mpsc::channel();
-        (
-            Self { signal_receiver },
-            RunningProgressNotifier { signal_sender },
-        )
+        (Self { signal_receiver }, RunningProgressNotifier { signal_sender })
     }
 
     /// Runs until a stop signal is received or every notifier is dropped.

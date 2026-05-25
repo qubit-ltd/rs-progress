@@ -41,12 +41,7 @@ fn test_writer_progress_reporter_writes_human_readable_event() {
     let reporter = WriterProgressReporter::new(output.clone());
     let event = ProgressEvent::running(
         schema(),
-        vec![
-            ProgressCounter::new("entries")
-                .total(4)
-                .active(1)
-                .completed(2),
-        ],
+        vec![ProgressCounter::new("entries").total(4).active(1).completed(2)],
         Duration::from_millis(1_500),
     )
     .with_stage(ProgressStage::new("install", "Install package"));
@@ -98,11 +93,7 @@ fn test_writer_progress_reporter_handles_empty_and_unknown_metric_output() {
     let output = Arc::new(Mutex::new(Cursor::new(Vec::new())));
     let reporter = WriterProgressReporter::new(output.clone());
 
-    reporter.report(&ProgressEvent::running(
-        schema(),
-        Vec::new(),
-        Duration::from_millis(1),
-    ));
+    reporter.report(&ProgressEvent::running(schema(), Vec::new(), Duration::from_millis(1)));
     reporter.report(&ProgressEvent::running(
         schema(),
         vec![ProgressCounter::new("missing").completed(3)],

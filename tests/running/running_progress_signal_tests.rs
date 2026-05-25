@@ -50,16 +50,11 @@ impl ProgressReporter for RecordingReporter {
 #[test]
 fn test_running_progress_signal_running_point_reports_for_zero_interval() {
     let reporter = RecordingReporter::default();
-    let progress = Progress::new(
-        &reporter,
-        Duration::ZERO,
-        ProgressSchema::single("entries", "Entries"),
-    );
+    let progress = Progress::new(&reporter, Duration::ZERO, ProgressSchema::single("entries", "Entries"));
 
     thread::scope(|scope| {
-        let running_progress = progress.spawn_running_reporter(scope, || {
-            vec![ProgressCounter::new("entries").total(1).active(1)]
-        });
+        let running_progress =
+            progress.spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1).active(1)]);
         let point = running_progress.point_handle();
         assert!(point.report());
         running_progress.stop_and_join();
@@ -76,16 +71,11 @@ fn test_running_progress_signal_running_point_reports_for_zero_interval() {
 #[test]
 fn test_running_progress_signal_stop_prevents_further_zero_interval_points() {
     let reporter = RecordingReporter::default();
-    let progress = Progress::new(
-        &reporter,
-        Duration::ZERO,
-        ProgressSchema::single("entries", "Entries"),
-    );
+    let progress = Progress::new(&reporter, Duration::ZERO, ProgressSchema::single("entries", "Entries"));
 
     thread::scope(|scope| {
-        let running_progress = progress.spawn_running_reporter(scope, || {
-            vec![ProgressCounter::new("entries").total(1).active(1)]
-        });
+        let running_progress =
+            progress.spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1).active(1)]);
         let point = running_progress.point_handle();
         running_progress.stop_and_join();
         assert!(!point.report());

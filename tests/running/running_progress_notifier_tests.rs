@@ -40,15 +40,11 @@ impl ProgressReporter for RecordingReporter {
 #[test]
 fn test_running_progress_notifier_stop_is_idempotent_through_guard() {
     let reporter = RecordingReporter::default();
-    let progress = Progress::new(
-        &reporter,
-        Duration::ZERO,
-        ProgressSchema::single("entries", "Entries"),
-    );
+    let progress = Progress::new(&reporter, Duration::ZERO, ProgressSchema::single("entries", "Entries"));
 
     thread::scope(|scope| {
-        let running_progress = progress
-            .spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1)]);
+        let running_progress =
+            progress.spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1)]);
         running_progress.stop_and_join();
     });
 }

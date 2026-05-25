@@ -40,10 +40,7 @@ impl<C> HumanReadableProgressReporter<C> {
     #[inline]
     pub fn new(consumer: C) -> Self {
         Self {
-            inner: FormattedProgressReporter::new(
-                HumanReadableMetricSnapshotFormatter::new(),
-                consumer,
-            ),
+            inner: FormattedProgressReporter::new(HumanReadableMetricSnapshotFormatter::new(), consumer),
         }
     }
 
@@ -53,9 +50,7 @@ impl<C> HumanReadableProgressReporter<C> {
     ///
     /// A shared reference to the inner reporter.
     #[inline]
-    pub const fn inner(
-        &self,
-    ) -> &FormattedProgressReporter<HumanReadableMetricSnapshotFormatter, C> {
+    pub const fn inner(&self) -> &FormattedProgressReporter<HumanReadableMetricSnapshotFormatter, C> {
         &self.inner
     }
 }

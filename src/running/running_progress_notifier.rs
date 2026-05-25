@@ -39,9 +39,7 @@ impl RunningProgressNotifier {
     /// already stopped.
     #[inline]
     pub(crate) fn running_point(&self) -> bool {
-        self.signal_sender
-            .send(RunningProgressSignal::RunningPoint)
-            .is_ok()
+        self.signal_sender.send(RunningProgressSignal::RunningPoint).is_ok()
     }
 
     /// Sends a stop signal.

@@ -46,8 +46,7 @@ fn test_json_logger_progress_reporter_accessors_and_report_paths() {
     assert_eq!(default_reporter.target(), "qubit_progress");
     assert_eq!(default_reporter.level(), log::Level::Info);
 
-    let reporter =
-        JsonLoggerProgressReporter::new("qubit_progress_json_test").with_level(log::Level::Warn);
+    let reporter = JsonLoggerProgressReporter::new("qubit_progress_json_test").with_level(log::Level::Warn);
     assert_eq!(reporter.target(), "qubit_progress_json_test");
     assert_eq!(reporter.level(), log::Level::Warn);
 
