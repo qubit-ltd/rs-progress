@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use std::collections::HashSet;
 
 use serde::{
@@ -143,9 +141,9 @@ impl ProgressSchema {
     /// duplicated.
     pub fn validate_counters(&self, counters: &[ProgressCounter]) -> bool {
         let mut seen = HashSet::with_capacity(counters.len());
-        counters
-            .iter()
-            .all(|counter| self.validate_counter(counter) && seen.insert(counter.metric_id()))
+        counters.iter().all(|counter| {
+            self.validate_counter(counter) && seen.insert(counter.metric_id())
+        })
     }
 }
 

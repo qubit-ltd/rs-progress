@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use std::{
     io::Write,
     sync::{
@@ -65,7 +63,8 @@ where
             let mut writer = consumer_writer
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            writeln!(writer, "{line}").expect("progress reporter should write event");
+            writeln!(writer, "{line}")
+                .expect("progress reporter should write event");
         });
         Self {
             writer,

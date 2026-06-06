@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use serde::{
     Deserialize,
     Serialize,
@@ -252,7 +250,8 @@ impl ProgressCounter {
     ///
     /// # Returns
     ///
-    /// `Some(total)` for known-total progress, or `None` for open-ended progress.
+    /// `Some(total)` for known-total progress, or `None` for open-ended
+    /// progress.
     #[inline]
     pub const fn total_count(&self) -> Option<u64> {
         self.total_count
@@ -328,7 +327,8 @@ impl ProgressCounter {
             if total_count == 0 {
                 1.0
             } else {
-                (self.completed_count as f64 / total_count as f64).clamp(0.0, 1.0)
+                (self.completed_count as f64 / total_count as f64)
+                    .clamp(0.0, 1.0)
             }
         })
     }

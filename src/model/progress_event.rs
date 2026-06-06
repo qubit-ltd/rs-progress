@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use std::time::Duration;
 
 use serde::{
@@ -145,7 +143,11 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Started`].
     #[inline]
-    pub fn started(schema: ProgressSchema, counters: Vec<ProgressCounter>, elapsed: Duration) -> Self {
+    pub fn started(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
         Self::from_phase(schema, ProgressPhase::Started, counters, elapsed)
     }
 
@@ -161,7 +163,11 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Running`].
     #[inline]
-    pub fn running(schema: ProgressSchema, counters: Vec<ProgressCounter>, elapsed: Duration) -> Self {
+    pub fn running(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
         Self::from_phase(schema, ProgressPhase::Running, counters, elapsed)
     }
 
@@ -177,7 +183,11 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Finished`].
     #[inline]
-    pub fn finished(schema: ProgressSchema, counters: Vec<ProgressCounter>, elapsed: Duration) -> Self {
+    pub fn finished(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
         Self::from_phase(schema, ProgressPhase::Finished, counters, elapsed)
     }
 
@@ -193,7 +203,11 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Failed`].
     #[inline]
-    pub fn failed(schema: ProgressSchema, counters: Vec<ProgressCounter>, elapsed: Duration) -> Self {
+    pub fn failed(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
         Self::from_phase(schema, ProgressPhase::Failed, counters, elapsed)
     }
 
@@ -209,7 +223,11 @@ impl ProgressEvent {
     ///
     /// A progress event with [`ProgressPhase::Canceled`].
     #[inline]
-    pub fn canceled(schema: ProgressSchema, counters: Vec<ProgressCounter>, elapsed: Duration) -> Self {
+    pub fn canceled(
+        schema: ProgressSchema,
+        counters: Vec<ProgressCounter>,
+        elapsed: Duration,
+    ) -> Self {
         Self::from_phase(schema, ProgressPhase::Canceled, counters, elapsed)
     }
 
@@ -282,7 +300,9 @@ impl ProgressEvent {
     /// `None`.
     #[inline]
     pub fn counter(&self, metric_id: &str) -> Option<&ProgressCounter> {
-        self.counters.iter().find(|counter| counter.metric_id() == metric_id)
+        self.counters
+            .iter()
+            .find(|counter| counter.metric_id() == metric_id)
     }
 
     /// Creates metric snapshots for all counters in this event.
@@ -303,8 +323,19 @@ impl ProgressEvent {
                     .schema
                     .metric(counter.metric_id())
                     .cloned()
-                    .unwrap_or_else(|| ProgressMetric::new(counter.metric_id(), counter.metric_id()));
-                ProgressMetricSnapshot::new(metric, self.phase, self.stage.clone(), counter, self.elapsed)
+                    .unwrap_or_else(|| {
+                        ProgressMetric::new(
+                            counter.metric_id(),
+                            counter.metric_id(),
+                        )
+                    });
+                ProgressMetricSnapshot::new(
+                    metric,
+                    self.phase,
+                    self.stage.clone(),
+                    counter,
+                    self.elapsed,
+                )
             })
             .collect()
     }

@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `StdoutProgressReporter`.
 
 use std::{
@@ -29,7 +27,8 @@ use qubit_progress::{
 };
 
 const STDOUT_CHILD_ENV: &str = "QUBIT_PROGRESS_STDOUT_REPORTER_CHILD";
-const STDOUT_DEFAULT_CHILD_ENV: &str = "QUBIT_PROGRESS_STDOUT_DEFAULT_REPORTER_CHILD";
+const STDOUT_DEFAULT_CHILD_ENV: &str =
+    "QUBIT_PROGRESS_STDOUT_DEFAULT_REPORTER_CHILD";
 
 fn schema() -> ProgressSchema {
     ProgressSchema::single("entries", "Entries")
@@ -46,7 +45,8 @@ fn test_stdout_progress_reporter_can_report() {
         "reporter::impls::stdout_progress_reporter_tests::test_stdout_progress_reporter_can_report",
         STDOUT_CHILD_ENV,
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
+    let stdout =
+        String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(stdout.contains("running Entries 1/2 (50.00%)"), "{stdout}");
 }
 
@@ -61,8 +61,12 @@ fn test_stdout_progress_reporter_default_can_report() {
         "reporter::impls::stdout_progress_reporter_tests::test_stdout_progress_reporter_default_can_report",
         STDOUT_DEFAULT_CHILD_ENV,
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
-    assert!(stdout.contains("finished Entries 2/2 (100.00%)"), "{stdout}");
+    let stdout =
+        String::from_utf8(output.stdout).expect("stdout should be UTF-8");
+    assert!(
+        stdout.contains("finished Entries 2/2 (100.00%)"),
+        "{stdout}"
+    );
 }
 
 fn report_running_to_stdout() {
@@ -84,13 +88,15 @@ fn report_finished_to_stdout() {
 }
 
 fn run_current_test_in_child(test_name: &str, env_name: &str) -> Output {
-    let output = Command::new(env::current_exe().expect("test executable path should be known"))
-        .arg("--exact")
-        .arg(test_name)
-        .arg("--nocapture")
-        .env(env_name, "1")
-        .output()
-        .expect("child test process should run");
+    let output = Command::new(
+        env::current_exe().expect("test executable path should be known"),
+    )
+    .arg("--exact")
+    .arg(test_name)
+    .arg("--nocapture")
+    .env(env_name, "1")
+    .output()
+    .expect("child test process should run");
     assert!(
         output.status.success(),
         "child test failed: {}",

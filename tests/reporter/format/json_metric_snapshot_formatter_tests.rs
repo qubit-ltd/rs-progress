@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `JsonMetricSnapshotFormatter`.
 
 use std::time::Duration;
@@ -31,7 +29,8 @@ fn test_json_metric_snapshot_formatter_formats_compact_json() {
     );
 
     let json = JsonMetricSnapshotFormatter::new().format(&snapshot);
-    let value: serde_json::Value = serde_json::from_str(&json).expect("JSON should parse");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("JSON should parse");
 
     assert_eq!(value["metric"]["id"], "entries");
     assert_eq!(value["metric"]["name"], "Entries");

@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `RunningProgressPointHandle`.
 
 use std::{
@@ -57,8 +55,9 @@ fn test_running_progress_point_handle_is_noop_for_positive_interval() {
             Duration::from_millis(5),
             ProgressSchema::single("entries", "Entries"),
         );
-        let running_progress =
-            progress.spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1).active(1)]);
+        let running_progress = progress.spawn_running_reporter(scope, || {
+            vec![ProgressCounter::new("entries").total(1).active(1)]
+        });
         let progress_point_handle = running_progress.point_handle();
 
         assert!(progress_point_handle.report());
@@ -68,6 +67,11 @@ fn test_running_progress_point_handle_is_noop_for_positive_interval() {
     });
 
     let events = reporter.events();
-    assert!(events.iter().any(|event| event.phase() == ProgressPhase::Running
-        && event.counter("entries").map(ProgressCounter::active_count) == Some(1)));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.phase() == ProgressPhase::Running
+                && event.counter("entries").map(ProgressCounter::active_count)
+                    == Some(1))
+    );
 }

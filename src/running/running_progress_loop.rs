@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use std::{
     sync::mpsc::{
         self,
@@ -33,7 +31,8 @@ use super::{
 /// `RunningProgressLoop` is useful when worker threads update shared state and
 /// a separate reporter thread should periodically emit `running` events. The
 /// loop owns only the signal receiver. Callers provide a [`Progress`] instance
-/// and a snapshot closure that converts their domain state into metric counters.
+/// and a snapshot closure that converts their domain state into metric
+/// counters.
 pub(crate) struct RunningProgressLoop {
     /// Signal receiver owned by the reporter loop.
     signal_receiver: Receiver<RunningProgressSignal>,
@@ -104,7 +103,10 @@ impl RunningProgressLoop {
     /// stop signals to that loop.
     pub(crate) fn channel() -> (Self, RunningProgressNotifier) {
         let (signal_sender, signal_receiver) = mpsc::channel();
-        (Self { signal_receiver }, RunningProgressNotifier { signal_sender })
+        (
+            Self { signal_receiver },
+            RunningProgressNotifier { signal_sender },
+        )
     }
 
     /// Runs until a stop signal is received or every notifier is dropped.
@@ -117,7 +119,8 @@ impl RunningProgressLoop {
     ///
     /// # Panics
     ///
-    /// Propagates panics from the configured reporter when a `running` event is due.
+    /// Propagates panics from the configured reporter when a `running` event is
+    /// due.
     pub(crate) fn run<F>(self, mut progress: Progress<'_>, mut snapshot: F)
     where
         F: FnMut() -> Vec<ProgressCounter>,
@@ -128,13 +131,15 @@ impl RunningProgressLoop {
         }
     }
 
-    /// Waits once on the signal channel and maps the outcome to [`RunningProgressWait`].
+    /// Waits once on the signal channel and maps the outcome to
+    /// [`RunningProgressWait`].
     ///
     /// The calling thread blocks until this wait completes.
     ///
     /// # Parameters
     ///
-    /// * `report_interval` - Configured report interval from the [`Progress`] run.
+    /// * `report_interval` - Configured report interval from the [`Progress`]
+    ///   run.
     ///
     /// # Returns
     ///
@@ -149,7 +154,9 @@ impl RunningProgressLoop {
         match self.signal_receiver.recv_timeout(report_interval) {
             Ok(signal) => RunningProgressWait::Signal(signal),
             Err(RecvTimeoutError::Timeout) => RunningProgressWait::Timeout,
-            Err(RecvTimeoutError::Disconnected) => RunningProgressWait::Disconnected,
+            Err(RecvTimeoutError::Disconnected) => {
+                RunningProgressWait::Disconnected
+            }
         }
     }
 }

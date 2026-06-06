@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use super::{
     format_duration::format_duration,
     metric_snapshot_formatter::MetricSnapshotFormatter,
@@ -38,15 +36,17 @@ impl MetricSnapshotFormatter for HumanReadableMetricSnapshotFormatter {
     ///
     /// # Returns
     ///
-    /// A compact line containing phase, stage, metric progress, counters, and elapsed time.
+    /// A compact line containing phase, stage, metric progress, counters, and
+    /// elapsed time.
     fn format(&self, snapshot: &ProgressMetricSnapshot) -> String {
-        let progress = match (snapshot.completed_count(), snapshot.total_count()) {
-            (completed, Some(total)) => format!(
-                "{completed}/{total} ({:.2}%)",
-                snapshot.progress_percent().unwrap_or(100.0)
-            ),
-            (completed, None) => format!("{completed} completed"),
-        };
+        let progress =
+            match (snapshot.completed_count(), snapshot.total_count()) {
+                (completed, Some(total)) => format!(
+                    "{completed}/{total} ({:.2}%)",
+                    snapshot.progress_percent().unwrap_or(100.0)
+                ),
+                (completed, None) => format!("{completed} completed"),
+            };
         let elapsed = format_duration(snapshot.elapsed());
         let stage = snapshot
             .stage()

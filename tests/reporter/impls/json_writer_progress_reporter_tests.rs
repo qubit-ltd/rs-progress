@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `JsonWriterProgressReporter`.
 
 use std::{
@@ -47,7 +45,8 @@ fn test_json_writer_progress_reporter_writes_one_json_line_per_metric() {
     let lines = text.lines().collect::<Vec<_>>();
     assert_eq!(lines.len(), 1);
 
-    let value: serde_json::Value = serde_json::from_str(lines[0]).expect("JSON should parse");
+    let value: serde_json::Value =
+        serde_json::from_str(lines[0]).expect("JSON should parse");
     assert_eq!(value["metric"]["id"], "entries");
     assert_eq!(value["metric"]["name"], "Entries");
     assert_eq!(value["phase"], "running");
@@ -57,7 +56,8 @@ fn test_json_writer_progress_reporter_writes_one_json_line_per_metric() {
 
 #[test]
 fn test_json_writer_progress_reporter_supports_owned_writer() {
-    let reporter = JsonWriterProgressReporter::from_writer(Cursor::new(Vec::new()));
+    let reporter =
+        JsonWriterProgressReporter::from_writer(Cursor::new(Vec::new()));
     reporter.report(&ProgressEvent::finished(
         ProgressSchema::single("entries", "Entries"),
         vec![ProgressCounter::new("entries").total(1).completed(1)],
