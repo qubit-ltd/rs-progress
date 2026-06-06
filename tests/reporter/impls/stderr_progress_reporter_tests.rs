@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `StderrProgressReporter`.
 
 use std::{
@@ -41,7 +39,8 @@ fn test_stderr_progress_reporter_default_can_report() {
         "reporter::impls::stderr_progress_reporter_tests::test_stderr_progress_reporter_default_can_report",
         STDERR_CHILD_ENV,
     );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    let stderr =
+        String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     assert!(stderr.contains("failed Entries 1/2"), "{stderr}");
 }
 
@@ -55,13 +54,15 @@ fn report_failed_to_stderr() {
 }
 
 fn run_current_test_in_child(test_name: &str, env_name: &str) -> Output {
-    let output = Command::new(env::current_exe().expect("test executable path should be known"))
-        .arg("--exact")
-        .arg(test_name)
-        .arg("--nocapture")
-        .env(env_name, "1")
-        .output()
-        .expect("child test process should run");
+    let output = Command::new(
+        env::current_exe().expect("test executable path should be known"),
+    )
+    .arg("--exact")
+    .arg(test_name)
+    .arg("--nocapture")
+    .env(env_name, "1")
+    .output()
+    .expect("child test process should run");
     assert!(
         output.status.success(),
         "child test failed: {}",

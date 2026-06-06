@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use std::{
     thread,
     time::{
@@ -96,7 +94,11 @@ impl<'a> Progress<'a> {
     ///
     /// A progress run whose elapsed time is measured from now.
     #[inline]
-    pub fn new(reporter: &'a dyn ProgressReporter, report_interval: Duration, schema: ProgressSchema) -> Self {
+    pub fn new(
+        reporter: &'a dyn ProgressReporter,
+        report_interval: Duration,
+        schema: ProgressSchema,
+    ) -> Self {
         Self::from_start(reporter, report_interval, schema, Instant::now())
     }
 
@@ -122,7 +124,10 @@ impl<'a> Progress<'a> {
         Self::new(
             reporter,
             report_interval,
-            ProgressSchema::new(vec![ProgressMetric::new(metric_id, metric_name)]),
+            ProgressSchema::new(vec![ProgressMetric::new(
+                metric_id,
+                metric_name,
+            )]),
         )
     }
 
@@ -183,7 +188,8 @@ impl<'a> Progress<'a> {
         self
     }
 
-    /// Creates an event builder preconfigured with this run's schema, stage, and elapsed time.
+    /// Creates an event builder preconfigured with this run's schema, stage,
+    /// and elapsed time.
     ///
     /// # Returns
     ///
@@ -197,7 +203,8 @@ impl<'a> Progress<'a> {
     ///
     /// # Parameters
     ///
-    /// * `configure` - Closure that adds counters or stage overrides to the event builder.
+    /// * `configure` - Closure that adds counters or stage overrides to the
+    ///   event builder.
     ///
     /// # Returns
     ///
@@ -211,14 +218,19 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_with_elapsed(ProgressPhase::Started, Duration::ZERO, configure)
+        self.report_with_elapsed(
+            ProgressPhase::Started,
+            Duration::ZERO,
+            configure,
+        )
     }
 
     /// Reports a running lifecycle event immediately.
     ///
     /// # Parameters
     ///
-    /// * `configure` - Closure that adds counters or stage overrides to the event builder.
+    /// * `configure` - Closure that adds counters or stage overrides to the
+    ///   event builder.
     ///
     /// # Returns
     ///
@@ -245,7 +257,8 @@ impl<'a> Progress<'a> {
     ///
     /// # Parameters
     ///
-    /// * `configure` - Closure that adds counters or stage overrides when an event is due.
+    /// * `configure` - Closure that adds counters or stage overrides when an
+    ///   event is due.
     ///
     /// # Returns
     ///
@@ -260,7 +273,10 @@ impl<'a> Progress<'a> {
     /// # Panics
     ///
     /// Propagates panics from the configured reporter when an event is due.
-    pub fn report_running_if_due<F>(&mut self, configure: F) -> Option<ProgressEvent>
+    pub fn report_running_if_due<F>(
+        &mut self,
+        configure: F,
+    ) -> Option<ProgressEvent>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
@@ -295,14 +311,19 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_with_elapsed(ProgressPhase::Finished, self.elapsed(), configure)
+        self.report_with_elapsed(
+            ProgressPhase::Finished,
+            self.elapsed(),
+            configure,
+        )
     }
 
     /// Reports a failed lifecycle event.
     ///
     /// # Parameters
     ///
-    /// * `configure` - Closure that adds final or current counters to the event builder.
+    /// * `configure` - Closure that adds final or current counters to the event
+    ///   builder.
     ///
     /// # Returns
     ///
@@ -316,14 +337,19 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_with_elapsed(ProgressPhase::Failed, self.elapsed(), configure)
+        self.report_with_elapsed(
+            ProgressPhase::Failed,
+            self.elapsed(),
+            configure,
+        )
     }
 
     /// Reports a canceled lifecycle event.
     ///
     /// # Parameters
     ///
-    /// * `configure` - Closure that adds final or current counters to the event builder.
+    /// * `configure` - Closure that adds final or current counters to the event
+    ///   builder.
     ///
     /// # Returns
     ///
@@ -337,7 +363,11 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_with_elapsed(ProgressPhase::Canceled, self.elapsed(), configure)
+        self.report_with_elapsed(
+            ProgressPhase::Canceled,
+            self.elapsed(),
+            configure,
+        )
     }
 
     /// Spawns a scoped background reporter for periodic running events.
@@ -357,7 +387,8 @@ impl<'a> Progress<'a> {
     ///
     /// # Returns
     ///
-    /// A guard that owns the reporter thread and can create worker-side point handles.
+    /// A guard that owns the reporter thread and can create worker-side point
+    /// handles.
     ///
     /// # Panics
     ///
@@ -372,7 +403,11 @@ impl<'a> Progress<'a> {
         'a: 'scope,
         F: FnMut() -> Vec<ProgressCounter> + Send + 'scope,
     {
-        RunningProgressLoop::spawn_scoped(scope, self.fork_for_running(), snapshot)
+        RunningProgressLoop::spawn_scoped(
+            scope,
+            self.fork_for_running(),
+            snapshot,
+        )
     }
 
     /// Reports a lifecycle event with an explicit elapsed duration.
@@ -390,11 +425,18 @@ impl<'a> Progress<'a> {
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
-    fn report_with_elapsed<F>(&self, phase: ProgressPhase, elapsed: Duration, configure: F) -> ProgressEvent
+    fn report_with_elapsed<F>(
+        &self,
+        phase: ProgressPhase,
+        elapsed: Duration,
+        configure: F,
+    ) -> ProgressEvent
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        let event = configure(self.event_builder_with_elapsed(elapsed).phase(phase)).build();
+        let event =
+            configure(self.event_builder_with_elapsed(elapsed).phase(phase))
+                .build();
         self.reporter.report(&event);
         event
     }
@@ -449,7 +491,8 @@ impl<'a> Progress<'a> {
         self.stage.as_ref()
     }
 
-    /// Creates a background-thread copy that reports running events for this run.
+    /// Creates a background-thread copy that reports running events for this
+    /// run.
     ///
     /// # Returns
     ///
@@ -475,8 +518,12 @@ impl<'a> Progress<'a> {
     /// # Returns
     ///
     /// A builder carrying this run's schema and optional stage.
-    fn event_builder_with_elapsed(&self, elapsed: Duration) -> ProgressEventBuilder {
-        let builder = ProgressEvent::builder(self.schema.clone()).elapsed(elapsed);
+    fn event_builder_with_elapsed(
+        &self,
+        elapsed: Duration,
+    ) -> ProgressEventBuilder {
+        let builder =
+            ProgressEvent::builder(self.schema.clone()).elapsed(elapsed);
         match self.stage.clone() {
             Some(stage) => builder.stage(stage),
             None => builder,

@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `MetricSnapshotProgressReporter`.
 
 use std::{
@@ -36,12 +34,13 @@ use qubit_progress::{
 fn test_metric_snapshot_progress_reporter_consumes_snapshot_objects() {
     let snapshots = Arc::new(Mutex::new(Vec::<ProgressMetricSnapshot>::new()));
     let captured_snapshots = Arc::clone(&snapshots);
-    let consumer = ArcConsumer::new(move |snapshot: &ProgressMetricSnapshot| {
-        captured_snapshots
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(snapshot.clone());
-    });
+    let consumer =
+        ArcConsumer::new(move |snapshot: &ProgressMetricSnapshot| {
+            captured_snapshots
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(snapshot.clone());
+        });
     let reporter = MetricSnapshotProgressReporter::new(consumer);
     reporter.consumer().accept(&ProgressMetricSnapshot::new(
         ProgressMetric::new("manual", "Manual"),
@@ -57,7 +56,9 @@ fn test_metric_snapshot_progress_reporter_consumes_snapshot_objects() {
         Duration::from_millis(10),
     ));
 
-    let snapshots = snapshots.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let snapshots = snapshots
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(snapshots.len(), 2);
     assert_eq!(snapshots[0].metric_id(), "manual");
     assert_eq!(snapshots[1].metric_id(), "entries");

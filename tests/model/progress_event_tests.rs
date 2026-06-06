@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `ProgressEvent`.
 
 use std::time::Duration;
@@ -34,26 +32,38 @@ fn test_progress_event_carries_schema_phase_stage_counters_and_timing() {
         .with_index(1)
         .with_total_stages(4)
         .with_weight(0.5);
-    let event = ProgressEvent::running(schema(), counters(), Duration::from_secs(3)).with_stage(stage.clone());
+    let event =
+        ProgressEvent::running(schema(), counters(), Duration::from_secs(3))
+            .with_stage(stage.clone());
 
     assert_eq!(event.phase(), ProgressPhase::Running);
     assert_eq!(event.stage(), Some(&stage));
     assert_eq!(event.schema().metric_name("entries"), Some("Entries"));
-    assert_eq!(event.counter("entries").map(ProgressCounter::completed_count), Some(2));
+    assert_eq!(
+        event
+            .counter("entries")
+            .map(ProgressCounter::completed_count),
+        Some(2)
+    );
     assert_eq!(event.elapsed(), Duration::from_secs(3));
 }
 
 #[test]
 fn test_progress_event_constructors_cover_terminal_phases() {
     let started = ProgressEvent::started(schema(), counters(), Duration::ZERO);
-    let finished = ProgressEvent::finished(schema(), counters(), Duration::from_secs(1));
-    let failed = ProgressEvent::failed(schema(), counters(), Duration::from_secs(2));
-    let canceled = ProgressEvent::canceled(schema(), counters(), Duration::from_secs(3));
+    let finished =
+        ProgressEvent::finished(schema(), counters(), Duration::from_secs(1));
+    let failed =
+        ProgressEvent::failed(schema(), counters(), Duration::from_secs(2));
+    let canceled =
+        ProgressEvent::canceled(schema(), counters(), Duration::from_secs(3));
 
     assert_eq!(started.phase(), ProgressPhase::Started);
     assert_eq!(started.stage(), None);
     assert_eq!(
-        started.counter("entries").map(ProgressCounter::completed_count),
+        started
+            .counter("entries")
+            .map(ProgressCounter::completed_count),
         Some(2)
     );
     assert_eq!(finished.phase(), ProgressPhase::Finished);
@@ -72,11 +82,17 @@ fn test_progress_event_from_phase_creates_matching_event() {
         ProgressPhase::Failed,
         ProgressPhase::Canceled,
     ] {
-        let event = ProgressEvent::from_phase(schema(), phase, counters(), elapsed);
+        let event =
+            ProgressEvent::from_phase(schema(), phase, counters(), elapsed);
 
         assert_eq!(event.phase(), phase);
         assert_eq!(event.stage(), None);
-        assert_eq!(event.counter("entries").map(ProgressCounter::completed_count), Some(2));
+        assert_eq!(
+            event
+                .counter("entries")
+                .map(ProgressCounter::completed_count),
+            Some(2)
+        );
         assert_eq!(event.elapsed(), elapsed);
     }
 }
@@ -93,7 +109,12 @@ fn test_progress_event_builder_and_new_constructor() {
         built.counter("entries").map(ProgressCounter::total_count),
         Some(Some(2))
     );
-    assert_eq!(built.counter("entries").map(ProgressCounter::completed_count), Some(2));
+    assert_eq!(
+        built
+            .counter("entries")
+            .map(ProgressCounter::completed_count),
+        Some(2)
+    );
     assert_eq!(built.elapsed(), Duration::from_millis(250));
 
     let rebuilt = ProgressEvent::new(
@@ -103,10 +124,17 @@ fn test_progress_event_builder_and_new_constructor() {
     );
     assert_eq!(rebuilt.phase(), ProgressPhase::Failed);
     assert_eq!(
-        rebuilt.counter("entries").map(ProgressCounter::completed_count),
+        rebuilt
+            .counter("entries")
+            .map(ProgressCounter::completed_count),
         Some(1)
     );
-    assert_eq!(rebuilt.counter("entries").map(ProgressCounter::failed_count), Some(1));
+    assert_eq!(
+        rebuilt
+            .counter("entries")
+            .map(ProgressCounter::failed_count),
+        Some(1)
+    );
 }
 
 #[test]
@@ -122,10 +150,13 @@ fn test_progress_event_serializes_to_self_describing_json() {
     assert!(json.contains("\"metric_id\":\"entries\""));
     assert!(json.contains("\"elapsed\":\"110ms\""));
 
-    let decoded: ProgressEvent = serde_json::from_str(&json).expect("event should deserialize");
+    let decoded: ProgressEvent =
+        serde_json::from_str(&json).expect("event should deserialize");
     assert_eq!(decoded.elapsed(), Duration::from_millis(110));
     assert_eq!(
-        decoded.counter("entries").map(ProgressCounter::completed_count),
+        decoded
+            .counter("entries")
+            .map(ProgressCounter::completed_count),
         Some(2)
     );
 }

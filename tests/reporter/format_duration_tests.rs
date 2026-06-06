@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Integration tests covering elapsed time formatting output.
 
 use std::{
@@ -35,7 +33,12 @@ fn render_line(elapsed: Duration) -> String {
     let reporter = WriterProgressReporter::new(output.clone());
     let event = ProgressEvent::running(
         ProgressSchema::single("entries", "Entries"),
-        vec![ProgressCounter::new("entries").total(3).active(1).completed(1)],
+        vec![
+            ProgressCounter::new("entries")
+                .total(3)
+                .active(1)
+                .completed(1),
+        ],
         elapsed,
     );
     reporter.report(&event);
@@ -51,11 +54,15 @@ fn render_line(elapsed: Duration) -> String {
 fn test_elapsed_format_handles_sub_second_and_seconds() {
     assert!(render_line(Duration::from_millis(0)).contains("elapsed 0ms"));
     assert!(render_line(Duration::from_millis(42)).contains("elapsed 42ms"));
-    assert!(render_line(Duration::from_millis(1_500)).contains("elapsed 1.500s"));
+    assert!(
+        render_line(Duration::from_millis(1_500)).contains("elapsed 1.500s")
+    );
 }
 
 #[test]
 fn test_elapsed_format_handles_minutes_and_hours() {
     assert!(render_line(Duration::from_secs(61)).contains("elapsed 1m 1s"));
-    assert!(render_line(Duration::from_secs(3_661)).contains("elapsed 1h 1m 1s"));
+    assert!(
+        render_line(Duration::from_secs(3_661)).contains("elapsed 1h 1m 1s")
+    );
 }

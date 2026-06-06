@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `ProgressReporter` trait behavior.
 
 use std::{
@@ -44,7 +42,9 @@ fn schema() -> ProgressSchema {
 #[test]
 fn test_progress_reporter_trait_object_dispatch() {
     let called = Arc::new(AtomicUsize::new(0));
-    let concrete = CountingReporter { called: called.clone() };
+    let concrete = CountingReporter {
+        called: called.clone(),
+    };
     let reporter: &dyn ProgressReporter = &concrete;
 
     reporter.report(&ProgressEvent::started(

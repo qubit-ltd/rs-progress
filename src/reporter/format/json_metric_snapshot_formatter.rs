@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use super::metric_snapshot_formatter::MetricSnapshotFormatter;
 use crate::model::ProgressMetricSnapshot;
 
@@ -42,6 +40,7 @@ impl MetricSnapshotFormatter for JsonMetricSnapshotFormatter {
     /// Panics if serde serialization unexpectedly fails.
     #[inline]
     fn format(&self, snapshot: &ProgressMetricSnapshot) -> String {
-        serde_json::to_string(snapshot).expect("progress metric snapshot should serialize")
+        serde_json::to_string(snapshot)
+            .expect("progress metric snapshot should serialize")
     }
 }

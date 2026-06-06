@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `RunningProgressGuard`.
 
 use std::{
@@ -81,14 +79,14 @@ fn test_running_progress_guard_reports_zero_interval_running_points() {
     thread::scope(|scope| {
         let loop_completed_count = Arc::clone(&completed_count);
         let progress = Progress::new(&reporter, Duration::ZERO, schema());
-        let running_progress: RunningProgressGuard<'_> = progress.spawn_running_reporter(scope, move || {
-            vec![
-                ProgressCounter::new("entries")
-                    .total(2)
-                    .completed(loop_completed_count.load(Ordering::Acquire) as u64),
-            ]
-        });
-        let progress_point_handle: RunningProgressPointHandle = running_progress.point_handle();
+        let running_progress: RunningProgressGuard<'_> = progress
+            .spawn_running_reporter(scope, move || {
+                vec![ProgressCounter::new("entries").total(2).completed(
+                    loop_completed_count.load(Ordering::Acquire) as u64,
+                )]
+            });
+        let progress_point_handle: RunningProgressPointHandle =
+            running_progress.point_handle();
 
         completed_count.store(1, Ordering::Release);
         assert!(progress_point_handle.report());
@@ -98,7 +96,10 @@ fn test_running_progress_guard_reports_zero_interval_running_points() {
     let events = reporter.events();
     assert!(events.iter().any(|event| {
         event.phase() == ProgressPhase::Running
-            && event.counter("entries").map(ProgressCounter::completed_count) == Some(1)
+            && event
+                .counter("entries")
+                .map(ProgressCounter::completed_count)
+                == Some(1)
     }));
 }
 
@@ -108,8 +109,10 @@ fn test_running_progress_guard_stop_and_join_propagates_reporter_panic() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         thread::scope(|scope| {
             let progress = Progress::new(&reporter, Duration::ZERO, schema());
-            let running_progress =
-                progress.spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1)]);
+            let running_progress = progress
+                .spawn_running_reporter(scope, || {
+                    vec![ProgressCounter::new("entries").total(1)]
+                });
             let progress_point_handle = running_progress.point_handle();
 
             assert!(progress_point_handle.report());

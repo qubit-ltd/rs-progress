@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `JsonProgressReporter`.
 
 use std::{
@@ -45,9 +43,12 @@ fn test_json_progress_reporter_uses_default_formatter() {
         Duration::from_millis(10),
     ));
 
-    let lines = lines.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let lines = lines
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(lines.len(), 1);
-    let value: serde_json::Value = serde_json::from_str(&lines[0]).expect("JSON should parse");
+    let value: serde_json::Value =
+        serde_json::from_str(&lines[0]).expect("JSON should parse");
     assert_eq!(value["metric"]["id"], "entries");
     assert_eq!(value["completed_count"], 2);
 }

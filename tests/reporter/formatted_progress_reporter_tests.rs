@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `FormattedProgressReporter`.
 
 use std::{
@@ -44,7 +42,10 @@ fn test_formatted_progress_reporter_formats_each_metric_snapshot() {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(line.clone());
     });
-    let reporter = FormattedProgressReporter::new(HumanReadableMetricSnapshotFormatter::new(), consumer);
+    let reporter = FormattedProgressReporter::new(
+        HumanReadableMetricSnapshotFormatter::new(),
+        consumer,
+    );
     let preview = reporter.formatter().format(&ProgressMetricSnapshot::new(
         ProgressMetric::new("entries", "Entries"),
         ProgressPhase::Running,
@@ -68,7 +69,9 @@ fn test_formatted_progress_reporter_formats_each_metric_snapshot() {
 
     reporter.report(&event);
 
-    let lines = lines.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let lines = lines
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(lines.len(), 3);
     assert_eq!(lines[0], "manual line");
     assert!(lines[1].contains("Entries 1/2"));

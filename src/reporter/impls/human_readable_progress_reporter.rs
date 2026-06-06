@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use qubit_function::{
     ArcConsumer,
     Consumer,
@@ -40,7 +38,10 @@ impl<C> HumanReadableProgressReporter<C> {
     #[inline]
     pub fn new(consumer: C) -> Self {
         Self {
-            inner: FormattedProgressReporter::new(HumanReadableMetricSnapshotFormatter::new(), consumer),
+            inner: FormattedProgressReporter::new(
+                HumanReadableMetricSnapshotFormatter::new(),
+                consumer,
+            ),
         }
     }
 
@@ -50,7 +51,10 @@ impl<C> HumanReadableProgressReporter<C> {
     ///
     /// A shared reference to the inner reporter.
     #[inline]
-    pub const fn inner(&self) -> &FormattedProgressReporter<HumanReadableMetricSnapshotFormatter, C> {
+    pub const fn inner(
+        &self,
+    ) -> &FormattedProgressReporter<HumanReadableMetricSnapshotFormatter, C>
+    {
         &self.inner
     }
 }

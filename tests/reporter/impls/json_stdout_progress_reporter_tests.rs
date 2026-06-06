@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `JsonStdoutProgressReporter`.
 
 use std::{
@@ -39,7 +37,8 @@ fn test_json_stdout_progress_reporter_can_report() {
         "reporter::impls::json_stdout_progress_reporter_tests::test_json_stdout_progress_reporter_can_report",
         JSON_STDOUT_CHILD_ENV,
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
+    let stdout =
+        String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     assert!(
         stdout.contains("\"metric\":{\"id\":\"entries\",\"name\":\"Entries\"}"),
         "{stdout}"
@@ -56,13 +55,15 @@ fn report_json_to_stdout() {
 }
 
 fn run_current_test_in_child(test_name: &str, env_name: &str) -> Output {
-    let output = Command::new(env::current_exe().expect("test executable path should be known"))
-        .arg("--exact")
-        .arg(test_name)
-        .arg("--nocapture")
-        .env(env_name, "1")
-        .output()
-        .expect("child test process should run");
+    let output = Command::new(
+        env::current_exe().expect("test executable path should be known"),
+    )
+    .arg("--exact")
+    .arg(test_name)
+    .arg("--nocapture")
+    .env(env_name, "1")
+    .output()
+    .expect("child test process should run");
     assert!(
         output.status.success(),
         "child test failed: {}",

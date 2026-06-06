@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use std::sync::mpsc::Sender;
 
 use super::running_progress_signal::RunningProgressSignal;
@@ -19,7 +17,8 @@ use super::running_progress_signal::RunningProgressSignal;
 ///
 /// # Examples
 ///
-/// This is an internal helper used by [`RunningProgressGuard`](crate::RunningProgressGuard).
+/// This is an internal helper used by
+/// [`RunningProgressGuard`](crate::RunningProgressGuard).
 ///
 /// # Author
 ///
@@ -39,7 +38,9 @@ impl RunningProgressNotifier {
     /// already stopped.
     #[inline]
     pub(crate) fn running_point(&self) -> bool {
-        self.signal_sender.send(RunningProgressSignal::RunningPoint).is_ok()
+        self.signal_sender
+            .send(RunningProgressSignal::RunningPoint)
+            .is_ok()
     }
 
     /// Sends a stop signal.

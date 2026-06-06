@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use qubit_function::{
     ArcConsumer,
     Consumer,
@@ -24,7 +22,9 @@ use crate::{
 ///
 /// This reporter is useful for GUI, database, metrics, and monitoring adapters
 /// that want structured metric snapshots instead of preformatted strings.
-pub struct MetricSnapshotProgressReporter<C = ArcConsumer<ProgressMetricSnapshot>> {
+pub struct MetricSnapshotProgressReporter<
+    C = ArcConsumer<ProgressMetricSnapshot>,
+> {
     /// Consumer receiving metric snapshots.
     consumer: C,
 }

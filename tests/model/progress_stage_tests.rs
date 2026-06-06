@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 //! Tests for `ProgressStage`.
 
 use qubit_progress::model::ProgressStage;
@@ -36,5 +34,10 @@ fn test_progress_stage_accessors_return_configured_values() {
 fn test_progress_stage_weight_records_supplied_value() {
     let stage = ProgressStage::new("copy", "Copy files").with_weight(f64::NAN);
 
-    assert!(stage.weight().expect("stage should carry supplied weight").is_nan());
+    assert!(
+        stage
+            .weight()
+            .expect("stage should carry supplied weight")
+            .is_nan()
+    );
 }

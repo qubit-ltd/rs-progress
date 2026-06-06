@@ -1,12 +1,10 @@
-/*******************************************************************************
- *
- *    Copyright (c) 2025 - 2026 Haixing Hu.
- *
- *    SPDX-License-Identifier: Apache-2.0
- *
- *    Licensed under the Apache License, Version 2.0.
- *
- ******************************************************************************/
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
 use qubit_function::Consumer;
 
 use crate::{
@@ -17,7 +15,8 @@ use crate::{
     },
 };
 
-/// Progress reporter that formats each metric snapshot and sends it to a consumer.
+/// Progress reporter that formats each metric snapshot and sends it to a
+/// consumer.
 ///
 /// This reporter is the common adapter behind text and JSON progress reporters.
 /// It converts every counter in an event into a metric snapshot, formats the
@@ -39,10 +38,14 @@ impl<F, C> FormattedProgressReporter<F, C> {
     ///
     /// # Returns
     ///
-    /// A reporter that formats metric snapshots and sends strings to `consumer`.
+    /// A reporter that formats metric snapshots and sends strings to
+    /// `consumer`.
     #[inline]
     pub const fn new(formatter: F, consumer: C) -> Self {
-        Self { formatter, consumer }
+        Self {
+            formatter,
+            consumer,
+        }
     }
 
     /// Returns the configured formatter.
