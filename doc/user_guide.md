@@ -28,7 +28,7 @@ If you use the consumer-based extension examples directly, add `qubit-function`:
 
 ```toml
 [dependencies]
-qubit-function = "0.15"
+qubit-function = "0.16"
 ```
 
 Some concurrent examples in this guide use `qubit-atomic` to avoid explicit

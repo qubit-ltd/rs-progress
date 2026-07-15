@@ -22,7 +22,7 @@ serde_json = "1"
 
 ```toml
 [dependencies]
-qubit-function = "0.15"
+qubit-function = "0.16"
 ```
 
 本指南中的部分并发示例使用 `qubit-atomic`，从而避免直接暴露标准库 memory ordering 参数：

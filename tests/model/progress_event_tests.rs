@@ -161,6 +161,22 @@ fn test_progress_event_serializes_to_self_describing_json() {
     );
 }
 
+/// Test the public elapsed-duration wire format is exact and canonical.
+#[test]
+fn test_progress_event_elapsed_wire_format_is_exact_and_rejects_whitespace() {
+    let event =
+        ProgressEvent::running(schema(), counters(), Duration::from_nanos(42));
+    let json = serde_json::to_string(&event).expect("event should serialize");
+    assert!(json.contains("\"elapsed\":\"42ns\""));
+
+    let decoded: ProgressEvent =
+        serde_json::from_str(&json).expect("event should deserialize");
+    assert_eq!(decoded, event);
+
+    let noncanonical = json.replace("\"42ns\"", "\" 42ns \"");
+    assert!(serde_json::from_str::<ProgressEvent>(&noncanonical).is_err());
+}
+
 #[test]
 fn test_progress_types_are_reexported_from_crate_root() {
     let event: qubit_progress::ProgressEvent = ProgressEvent::running(

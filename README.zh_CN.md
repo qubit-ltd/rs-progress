@@ -30,7 +30,7 @@ API 参考文档可在 [docs.rs](https://docs.rs/qubit-progress) 查看。
 
 ```toml
 [dependencies]
-qubit-progress = "0.5"
+qubit-progress = "0.6"
 ```
 
 ## 快速示例
@@ -224,6 +224,8 @@ Reporter 可以调用 `event.metric_snapshots()`，把每个 counter 转换成�
 ## JSON 序列化
 
 Progress event 支持 serde 序列化。`elapsed` 使用 `qubit-serde` 的 `duration_with_unit` 适配器，因此 JSON 更紧凑，也更适合 agent 读取。
+该适配器会自动选择能够精确表示数值的最大单位，因此亚毫秒 elapsed 也能无损
+round-trip。反序列化要求规范的 duration 文本，不会 trim 两侧空白。
 
 ```rust
 use std::time::Duration;
