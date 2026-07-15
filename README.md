@@ -33,7 +33,7 @@ API reference documentation is available on [docs.rs](https://docs.rs/qubit-prog
 
 ```toml
 [dependencies]
-qubit-progress = "0.5"
+qubit-progress = "0.6"
 ```
 
 ## Quick Example
@@ -243,6 +243,9 @@ stage, flattened counter values, and elapsed time.
 
 Progress events are serde-serializable. `elapsed` uses the `duration_with_unit`
 adapter from `qubit-serde`, so JSON is compact and agent-friendly.
+The adapter selects the largest unit that preserves the value exactly, so
+sub-millisecond elapsed times round-trip without precision loss. Deserialization
+requires canonical duration text and does not trim surrounding whitespace.
 
 ```rust
 use std::time::Duration;
