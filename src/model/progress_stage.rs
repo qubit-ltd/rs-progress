@@ -10,6 +10,11 @@ use serde::{
     Serialize,
 };
 
+use super::{
+    ProgressStageError,
+    internal::ProgressStageUnchecked,
+};
+
 /// Describes the current stage of a multi-stage operation.
 ///
 /// # Examples
@@ -27,6 +32,7 @@ use serde::{
 /// assert_eq!(stage.index(), Some(2));
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ProgressStageUnchecked")]
 pub struct ProgressStage {
     /// Stable machine-readable stage identifier.
     id: String,
@@ -99,10 +105,8 @@ impl ProgressStage {
 
     /// Returns a copy configured with a relative stage weight.
     ///
-    /// The weight is intended for caller-side weighted progress calculations.
-    /// Callers should supply finite, non-negative values. This method records
-    /// the supplied value as-is and does not validate `NaN`, infinity, or
-    /// negative input.
+    /// The weight is intended for caller-side weighted progress calculations
+    /// and must be finite and non-negative.
     ///
     /// # Parameters
     ///
@@ -112,11 +116,45 @@ impl ProgressStage {
     /// # Returns
     ///
     /// This stage with `weight` recorded.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `weight` is NaN, infinite, or negative. Use
+    /// [`Self::try_with_weight`] to handle invalid input without panicking.
     #[inline]
     #[must_use]
-    pub const fn with_weight(mut self, weight: f64) -> Self {
+    pub fn with_weight(self, weight: f64) -> Self {
+        self.try_with_weight(weight)
+            .expect("progress stage weight must be finite and non-negative")
+    }
+
+    /// Tries to configure a relative stage weight.
+    ///
+    /// # Parameters
+    ///
+    /// * `weight` - Finite, non-negative relative stage weight.
+    ///
+    /// # Returns
+    ///
+    /// This stage with `weight` recorded.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProgressStageError::NonFiniteWeight`] for NaN or infinity,
+    /// and [`ProgressStageError::NegativeWeight`] for a finite negative value.
+    #[inline]
+    pub fn try_with_weight(
+        mut self,
+        weight: f64,
+    ) -> Result<Self, ProgressStageError> {
+        if !weight.is_finite() {
+            return Err(ProgressStageError::NonFiniteWeight);
+        }
+        if weight < 0.0 {
+            return Err(ProgressStageError::NegativeWeight);
+        }
         self.weight = Some(weight);
-        self
+        Ok(self)
     }
 
     /// Returns the stable stage identifier.
@@ -168,5 +206,38 @@ impl ProgressStage {
     #[inline]
     pub const fn weight(&self) -> Option<f64> {
         self.weight
+    }
+}
+
+impl TryFrom<ProgressStageUnchecked> for ProgressStage {
+    type Error = ProgressStageError;
+
+    /// Validates and converts an unchecked serialized stage.
+    ///
+    /// # Parameters
+    ///
+    /// * `unchecked` - Stage representation produced by deserialization.
+    ///
+    /// # Returns
+    ///
+    /// A stage whose optional weight is finite and non-negative.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the serialized weight is non-finite or negative.
+    fn try_from(
+        unchecked: ProgressStageUnchecked,
+    ) -> Result<Self, Self::Error> {
+        let stage = Self {
+            id: unchecked.id,
+            name: unchecked.name,
+            index: unchecked.index,
+            total_stages: unchecked.total_stages,
+            weight: None,
+        };
+        match unchecked.weight {
+            Some(weight) => stage.try_with_weight(weight),
+            None => Ok(stage),
+        }
     }
 }

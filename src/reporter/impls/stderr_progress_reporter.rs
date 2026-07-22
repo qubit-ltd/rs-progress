@@ -8,6 +8,7 @@
 use crate::{
     model::ProgressEvent,
     reporter::{
+        ProgressReportError,
         ProgressReporter,
         WriterProgressReporter,
     },
@@ -52,7 +53,7 @@ impl ProgressReporter for StderrProgressReporter {
     ///
     /// * `event` - Progress event to report.
     #[inline]
-    fn report(&self, event: &ProgressEvent) {
-        self.inner.report(event);
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
+        self.inner.report(event)
     }
 }

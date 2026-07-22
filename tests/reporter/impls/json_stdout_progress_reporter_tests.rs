@@ -47,7 +47,7 @@ fn test_json_stdout_progress_reporter_can_report() {
 
 fn report_json_to_stdout() {
     let reporter = JsonStdoutProgressReporter::default();
-    reporter.report(&ProgressEvent::running(
+    let _ = reporter.report(&ProgressEvent::running(
         ProgressSchema::single("entries", "Entries"),
         vec![ProgressCounter::new("entries").total(2).completed(1)],
         Duration::from_millis(10),

@@ -15,7 +15,10 @@ use crate::{
         ProgressEvent,
         ProgressMetricSnapshot,
     },
-    reporter::ProgressReporter,
+    reporter::{
+        ProgressReportError,
+        ProgressReporter,
+    },
 };
 
 /// Progress reporter that sends metric snapshot objects to a consumer.
@@ -65,9 +68,10 @@ where
     ///
     /// * `event` - Event whose metric snapshots should be consumed.
     #[inline]
-    fn report(&self, event: &ProgressEvent) {
-        for snapshot in event.metric_snapshots() {
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
+        for snapshot in event.metric_snapshots_iter() {
             self.consumer.accept(&snapshot);
         }
+        Ok(())
     }
 }

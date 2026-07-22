@@ -14,6 +14,7 @@ use super::formatted_progress_reporter::FormattedProgressReporter;
 use crate::{
     model::ProgressEvent,
     reporter::{
+        ProgressReportError,
         ProgressReporter,
         format::HumanReadableMetricSnapshotFormatter,
     },
@@ -69,7 +70,7 @@ where
     ///
     /// * `event` - Event to report.
     #[inline]
-    fn report(&self, event: &ProgressEvent) {
-        self.inner.report(event);
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
+        self.inner.report(event)
     }
 }

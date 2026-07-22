@@ -15,6 +15,7 @@ use serde::{
 use super::{
     ProgressCounter,
     ProgressMetric,
+    ProgressMetricSnapshotError,
     ProgressPhase,
     ProgressStage,
 };
@@ -63,6 +64,11 @@ impl ProgressMetricSnapshot {
     /// # Returns
     ///
     /// A flattened metric snapshot.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `metric.id()` differs from `counter.metric_id()`. Use
+    /// [`Self::try_new`] to handle mismatched input without panicking.
     #[inline]
     pub fn new(
         metric: ProgressMetric,
@@ -71,7 +77,42 @@ impl ProgressMetricSnapshot {
         counter: &ProgressCounter,
         elapsed: Duration,
     ) -> Self {
-        Self {
+        Self::try_new(metric, phase, stage, counter, elapsed)
+            .expect("progress metric and counter ids must match")
+    }
+
+    /// Tries to create a metric snapshot from explicit values.
+    ///
+    /// # Parameters
+    ///
+    /// * `metric` - Complete metric metadata.
+    /// * `phase` - Lifecycle phase inherited from the source event.
+    /// * `stage` - Optional stage inherited from the source event.
+    /// * `counter` - Counter values copied into the snapshot.
+    /// * `elapsed` - Elapsed duration inherited from the source event.
+    ///
+    /// # Returns
+    ///
+    /// A validated flattened metric snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProgressMetricSnapshotError::MetricIdMismatch`] when metric
+    /// and counter identifiers differ.
+    pub fn try_new(
+        metric: ProgressMetric,
+        phase: ProgressPhase,
+        stage: Option<ProgressStage>,
+        counter: &ProgressCounter,
+        elapsed: Duration,
+    ) -> Result<Self, ProgressMetricSnapshotError> {
+        if metric.id() != counter.metric_id() {
+            return Err(ProgressMetricSnapshotError::MetricIdMismatch {
+                metric_id: metric.id().to_owned(),
+                counter_metric_id: counter.metric_id().to_owned(),
+            });
+        }
+        Ok(Self {
             metric,
             phase,
             stage,
@@ -81,7 +122,7 @@ impl ProgressMetricSnapshot {
             succeeded_count: counter.succeeded_count(),
             failed_count: counter.failed_count(),
             elapsed,
-        }
+        })
     }
 
     /// Returns the complete metric metadata.

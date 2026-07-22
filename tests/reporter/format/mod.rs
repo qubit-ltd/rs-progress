@@ -9,3 +9,4 @@
 
 mod human_readable_metric_snapshot_formatter_tests;
 mod json_metric_snapshot_formatter_tests;
+mod metric_snapshot_formatter_tests;

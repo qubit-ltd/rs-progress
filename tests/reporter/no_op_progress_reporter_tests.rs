@@ -29,5 +29,5 @@ fn test_no_op_progress_reporter_accepts_events() {
         vec![ProgressCounter::new("entries").total(1)],
         Duration::ZERO,
     );
-    reporter.report(&event);
+    let _ = reporter.report(&event);
 }

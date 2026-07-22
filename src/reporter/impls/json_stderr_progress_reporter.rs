@@ -9,6 +9,7 @@ use crate::{
     model::ProgressEvent,
     reporter::{
         JsonWriterProgressReporter,
+        ProgressReportError,
         ProgressReporter,
     },
 };
@@ -52,7 +53,7 @@ impl ProgressReporter for JsonStderrProgressReporter {
     ///
     /// * `event` - Progress event to report.
     #[inline]
-    fn report(&self, event: &ProgressEvent) {
-        self.inner.report(event);
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
+        self.inner.report(event)
     }
 }

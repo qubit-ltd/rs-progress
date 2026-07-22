@@ -27,11 +27,15 @@ struct RecordingReporter {
 }
 
 impl ProgressReporter for RecordingReporter {
-    fn report(&self, event: &ProgressEvent) {
+    fn report(
+        &self,
+        event: &ProgressEvent,
+    ) -> Result<(), qubit_progress::ProgressReportError> {
         self.events
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(event.clone());
+        Ok(())
     }
 }
 
@@ -48,6 +52,8 @@ fn test_running_progress_notifier_stop_is_idempotent_through_guard() {
         let running_progress = progress.spawn_running_reporter(scope, || {
             vec![ProgressCounter::new("entries").total(1)]
         });
-        running_progress.stop_and_join();
+        running_progress
+            .stop_and_join()
+            .expect("progress reporter should stop cleanly");
     });
 }

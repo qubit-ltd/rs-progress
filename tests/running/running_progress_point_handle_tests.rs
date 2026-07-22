@@ -37,11 +37,15 @@ impl RecordingReporter {
 }
 
 impl ProgressReporter for RecordingReporter {
-    fn report(&self, event: &ProgressEvent) {
+    fn report(
+        &self,
+        event: &ProgressEvent,
+    ) -> Result<(), qubit_progress::ProgressReportError> {
         self.events
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(event.clone());
+        Ok(())
     }
 }
 
@@ -60,10 +64,12 @@ fn test_running_progress_point_handle_is_noop_for_positive_interval() {
         });
         let progress_point_handle = running_progress.point_handle();
 
-        assert!(progress_point_handle.report());
+        progress_point_handle.report();
         thread::sleep(Duration::from_millis(20));
-        running_progress.stop_and_join();
-        assert!(progress_point_handle.report());
+        running_progress
+            .stop_and_join()
+            .expect("progress reporter should stop cleanly");
+        assert!(progress_point_handle.try_report());
     });
 
     let events = reporter.events();

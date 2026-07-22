@@ -24,10 +24,13 @@ use qubit_progress::{
         ProgressStage,
     },
     reporter::{
+        ProgressReportError,
         ProgressReporter,
         WriterProgressReporter,
     },
 };
+
+use crate::support::FailingWriter;
 
 fn schema() -> ProgressSchema {
     ProgressSchema::single("entries", "Entries")
@@ -49,7 +52,7 @@ fn test_writer_progress_reporter_writes_human_readable_event() {
     )
     .with_stage(ProgressStage::new("install", "Install package"));
 
-    reporter.report(&event);
+    let _ = reporter.report(&event);
 
     let bytes = output
         .lock()
@@ -69,12 +72,12 @@ fn test_writer_progress_reporter_handles_unknown_total_output() {
     let reporter = WriterProgressReporter::new(output.clone());
 
     assert!(Arc::ptr_eq(reporter.writer(), &output));
-    reporter.report(&ProgressEvent::running(
+    let _ = reporter.report(&ProgressEvent::running(
         schema(),
         vec![ProgressCounter::new("entries").completed(7)],
         Duration::from_millis(0),
     ));
-    reporter.report(&ProgressEvent::finished(
+    let _ = reporter.report(&ProgressEvent::finished(
         schema(),
         vec![ProgressCounter::new("entries").total(7).completed(7)],
         Duration::from_secs(61),
@@ -92,19 +95,14 @@ fn test_writer_progress_reporter_handles_unknown_total_output() {
 }
 
 #[test]
-fn test_writer_progress_reporter_handles_empty_and_unknown_metric_output() {
+fn test_writer_progress_reporter_handles_empty_event_output() {
     let output = Arc::new(Mutex::new(Cursor::new(Vec::new())));
     let reporter = WriterProgressReporter::new(output.clone());
 
-    reporter.report(&ProgressEvent::running(
+    let _ = reporter.report(&ProgressEvent::running(
         schema(),
         Vec::new(),
         Duration::from_millis(1),
-    ));
-    reporter.report(&ProgressEvent::running(
-        schema(),
-        vec![ProgressCounter::new("missing").completed(3)],
-        Duration::from_millis(2),
     ));
 
     let bytes = output
@@ -113,16 +111,28 @@ fn test_writer_progress_reporter_handles_empty_and_unknown_metric_output() {
         .get_ref()
         .clone();
     let text = String::from_utf8(bytes).expect("writer output should be UTF-8");
-    assert!(text.contains("missing 3 completed"));
+    assert!(text.is_empty());
 }
 
 #[test]
 fn test_writer_progress_reporter_supports_owned_writer() {
     let owned_reporter =
         WriterProgressReporter::from_writer(Cursor::new(Vec::new()));
-    owned_reporter.report(&ProgressEvent::canceled(
+    let _ = owned_reporter.report(&ProgressEvent::canceled(
         schema(),
         vec![ProgressCounter::new("entries").total(1)],
         Duration::from_millis(5),
     ));
+}
+
+#[test]
+fn test_writer_progress_reporter_returns_output_errors() {
+    let reporter = WriterProgressReporter::from_writer(FailingWriter);
+    let result = reporter.report(&ProgressEvent::running(
+        schema(),
+        vec![ProgressCounter::new("entries").completed(1)],
+        Duration::ZERO,
+    ));
+
+    assert!(matches!(result, Err(ProgressReportError::Io(_))));
 }

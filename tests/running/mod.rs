@@ -7,6 +7,7 @@
 // =============================================================================
 //! Tests for running progress helpers.
 
+mod internal;
 mod running_progress_guard_tests;
 mod running_progress_loop_tests;
 mod running_progress_notifier_tests;

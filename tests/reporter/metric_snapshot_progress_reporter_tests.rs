@@ -50,7 +50,7 @@ fn test_metric_snapshot_progress_reporter_consumes_snapshot_objects() {
         Duration::ZERO,
     ));
 
-    reporter.report(&ProgressEvent::running(
+    let _ = reporter.report(&ProgressEvent::running(
         ProgressSchema::single("entries", "Entries"),
         vec![ProgressCounter::new("entries").total(4).completed(2)],
         Duration::from_millis(10),

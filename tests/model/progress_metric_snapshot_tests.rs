@@ -14,10 +14,30 @@ use qubit_progress::{
     ProgressEvent,
     ProgressMetric,
     ProgressMetricSnapshot,
+    ProgressMetricSnapshotError,
     ProgressPhase,
     ProgressSchema,
     ProgressStage,
 };
+
+#[test]
+fn test_progress_metric_snapshot_try_new_rejects_mismatched_metric_id() {
+    let result = ProgressMetricSnapshot::try_new(
+        ProgressMetric::new("entries", "Entries"),
+        ProgressPhase::Running,
+        None,
+        &ProgressCounter::new("bytes"),
+        Duration::ZERO,
+    );
+
+    assert_eq!(
+        result,
+        Err(ProgressMetricSnapshotError::MetricIdMismatch {
+            metric_id: "entries".to_owned(),
+            counter_metric_id: "bytes".to_owned(),
+        })
+    );
+}
 
 #[test]
 fn test_progress_metric_snapshot_flattens_metric_counter_and_event_state() {
@@ -77,19 +97,18 @@ fn test_progress_metric_snapshot_handles_unknown_and_zero_total_progress() {
 }
 
 #[test]
-fn test_progress_event_metric_snapshots_resolve_schema_and_fallback_metrics() {
+fn test_progress_event_metric_snapshots_resolve_schema_metrics() {
     let event =
         ProgressEvent::builder(ProgressSchema::single("entries", "Entries"))
             .running()
             .stage_named("scan", "Scan files")
             .counter("entries", |counter| counter.total(5).completed(2))
-            .counter("missing", |counter| counter.completed(3))
             .elapsed(Duration::from_millis(110))
             .build();
 
     let snapshots = event.metric_snapshots();
 
-    assert_eq!(snapshots.len(), 2);
+    assert_eq!(snapshots.len(), 1);
     assert_eq!(snapshots[0].metric_id(), "entries");
     assert_eq!(snapshots[0].metric_name(), "Entries");
     assert_eq!(snapshots[0].completed_count(), 2);
@@ -98,9 +117,22 @@ fn test_progress_event_metric_snapshots_resolve_schema_and_fallback_metrics() {
         Some("Scan files")
     );
     assert_eq!(snapshots[0].elapsed(), Duration::from_millis(110));
-    assert_eq!(snapshots[1].metric_id(), "missing");
-    assert_eq!(snapshots[1].metric_name(), "missing");
-    assert_eq!(snapshots[1].total_count(), None);
+}
+
+#[test]
+fn test_progress_event_metric_snapshots_iterates_without_collecting() {
+    let event =
+        ProgressEvent::builder(ProgressSchema::single("entries", "Entries"))
+            .counter("entries", |counter| counter.completed(2))
+            .build();
+
+    let mut snapshots = event.metric_snapshots_iter();
+    assert_eq!(snapshots.size_hint(), (1, Some(1)));
+    assert_eq!(
+        snapshots.next().map(|snapshot| snapshot.completed_count()),
+        Some(2),
+    );
+    assert!(snapshots.next().is_none());
 }
 
 #[test]

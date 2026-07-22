@@ -71,7 +71,7 @@ fn test_stdout_progress_reporter_default_can_report() {
 
 fn report_running_to_stdout() {
     let reporter = StdoutProgressReporter::new();
-    reporter.report(&ProgressEvent::running(
+    let _ = reporter.report(&ProgressEvent::running(
         schema(),
         vec![ProgressCounter::new("entries").total(2).completed(1)],
         Duration::from_millis(10),
@@ -80,7 +80,7 @@ fn report_running_to_stdout() {
 
 fn report_finished_to_stdout() {
     let reporter = StdoutProgressReporter::default();
-    reporter.report(&ProgressEvent::finished(
+    let _ = reporter.report(&ProgressEvent::finished(
         schema(),
         vec![ProgressCounter::new("entries").total(2).completed(2)],
         Duration::from_millis(10),

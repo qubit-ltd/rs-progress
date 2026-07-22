@@ -14,6 +14,7 @@ use super::{
     running_progress_notifier::RunningProgressNotifier,
     running_progress_point_handle::RunningProgressPointHandle,
 };
+use crate::ProgressReportError;
 
 /// Owns a scoped running progress reporter thread.
 ///
@@ -68,25 +69,29 @@ use super::{
 ///         let p = progress_point_handle.clone();
 ///         handles.push(scope.spawn(move || {
 ///             c.fetch_add(1, Ordering::AcqRel);
-///             assert!(p.report());
+///             p.report();
 ///         }));
 ///     }
 ///     for h in handles {
 ///         h.join().unwrap();
 ///     }
 ///
-///     running_progress.stop_and_join();
+///     running_progress
+///         .stop_and_join()
+///         .expect("progress output should succeed");
 /// });
 /// ```
 ///
 /// # Author
 ///
 /// Haixing Hu
+#[must_use = "the guard must be stopped and joined to finish reporter work"]
 pub struct RunningProgressGuard<'scope> {
     /// Notifier used to stop the reporter thread.
-    notifier: RunningProgressNotifier,
+    notifier: Option<RunningProgressNotifier>,
     /// Scoped reporter thread handle.
-    progress_thread: ScopedJoinHandle<'scope, ()>,
+    progress_thread:
+        Option<ScopedJoinHandle<'scope, Result<(), ProgressReportError>>>,
     /// Whether worker point notifications should wake the reporter loop.
     report_points: bool,
 }
@@ -106,13 +111,30 @@ impl<'scope> RunningProgressGuard<'scope> {
     #[inline]
     pub(crate) const fn new(
         notifier: RunningProgressNotifier,
-        progress_thread: ScopedJoinHandle<'scope, ()>,
+        progress_thread: ScopedJoinHandle<
+            'scope,
+            Result<(), ProgressReportError>,
+        >,
         report_points: bool,
     ) -> Self {
         Self {
-            notifier,
-            progress_thread,
+            notifier: Some(notifier),
+            progress_thread: Some(progress_thread),
             report_points,
+        }
+    }
+
+    /// Creates an inactive guard for a disabled reporter.
+    ///
+    /// # Returns
+    ///
+    /// A guard that owns no notifier or reporter thread.
+    #[inline]
+    pub(crate) const fn inactive() -> Self {
+        Self {
+            notifier: None,
+            progress_thread: None,
+            report_points: false,
         }
     }
 
@@ -124,21 +146,33 @@ impl<'scope> RunningProgressGuard<'scope> {
     /// becomes a no-op for positive intervals.
     #[inline]
     pub fn point_handle(&self) -> RunningProgressPointHandle {
-        RunningProgressPointHandle::new(
-            self.report_points.then(|| self.notifier.clone()),
-        )
+        let notifier = self
+            .report_points
+            .then(|| self.notifier.as_ref().cloned())
+            .flatten();
+        RunningProgressPointHandle::new(notifier)
     }
 
     /// Stops the reporter loop and joins the scoped reporter thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first output error produced by the background reporter.
     ///
     /// # Panics
     ///
     /// Propagates any panic raised by the reporter thread.
     #[inline]
-    pub fn stop_and_join(self) {
-        self.notifier.stop();
-        if let Err(payload) = self.progress_thread.join() {
-            resume_unwind(payload);
+    pub fn stop_and_join(self) -> Result<(), ProgressReportError> {
+        if let Some(notifier) = self.notifier {
+            notifier.stop();
         }
+        if let Some(progress_thread) = self.progress_thread {
+            match progress_thread.join() {
+                Ok(result) => result?,
+                Err(payload) => resume_unwind(payload),
+            }
+        }
+        Ok(())
     }
 }

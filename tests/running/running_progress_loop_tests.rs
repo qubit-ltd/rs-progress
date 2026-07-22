@@ -8,7 +8,14 @@
 //! Tests for the running progress loop through the public `Progress` API.
 
 use std::{
-    sync::Mutex,
+    sync::{
+        Mutex,
+        mpsc::{
+            self,
+            Receiver,
+            SyncSender,
+        },
+    },
     thread,
     time::Duration,
 };
@@ -25,9 +32,25 @@ use qubit_progress::{
 #[derive(Debug, Default)]
 struct RecordingReporter {
     events: Mutex<Vec<ProgressEvent>>,
+    entered: Option<SyncSender<()>>,
+    release: Option<Mutex<Receiver<()>>>,
 }
 
 impl RecordingReporter {
+    fn blocking() -> (Self, Receiver<()>, SyncSender<()>) {
+        let (entered_sender, entered_receiver) = mpsc::sync_channel(1);
+        let (release_sender, release_receiver) = mpsc::sync_channel(1);
+        (
+            Self {
+                events: Mutex::default(),
+                entered: Some(entered_sender),
+                release: Some(Mutex::new(release_receiver)),
+            },
+            entered_receiver,
+            release_sender,
+        )
+    }
+
     fn events(&self) -> Vec<ProgressEvent> {
         self.events
             .lock()
@@ -37,12 +60,67 @@ impl RecordingReporter {
 }
 
 impl ProgressReporter for RecordingReporter {
-    fn report(&self, event: &ProgressEvent) {
-        self.events
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(event.clone());
+    fn report(
+        &self,
+        event: &ProgressEvent,
+    ) -> Result<(), qubit_progress::ProgressReportError> {
+        let is_first = {
+            let mut events = self
+                .events
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            events.push(event.clone());
+            events.len() == 1
+        };
+        if is_first {
+            if let Some(entered) = &self.entered {
+                entered.send(()).expect("test should observe first report");
+            }
+            if let Some(release) = &self.release {
+                release
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .recv()
+                    .expect("test should release first report");
+            }
+        }
+        Ok(())
     }
+}
+
+#[test]
+fn test_running_progress_loop_coalesces_points_and_prioritizes_stop() {
+    let (reporter, entered, release) = RecordingReporter::blocking();
+    let progress = Progress::new(
+        &reporter,
+        Duration::ZERO,
+        ProgressSchema::single("entries", "Entries"),
+    );
+
+    thread::scope(|scope| {
+        let running_progress = progress.spawn_running_reporter(scope, || {
+            vec![ProgressCounter::new("entries").total(1).active(1)]
+        });
+        let point = running_progress.point_handle();
+
+        point.report();
+        entered.recv().expect("reporter should enter first report");
+        for _ in 0..10_000 {
+            point.report();
+        }
+
+        let stopper = scope.spawn(move || running_progress.stop_and_join());
+        while point.try_report() {
+            thread::yield_now();
+        }
+        release.send(()).expect("reporter should still be waiting");
+        stopper
+            .join()
+            .expect("stopper should not panic")
+            .expect("progress reporter should stop cleanly");
+    });
+
+    assert!(reporter.events().len() <= 2);
 }
 
 #[test]
@@ -60,7 +138,9 @@ fn test_running_progress_loop_reports_positive_interval_timeouts() {
         });
 
         thread::sleep(Duration::from_millis(20));
-        running_progress.stop_and_join();
+        running_progress
+            .stop_and_join()
+            .expect("progress reporter should stop cleanly");
     });
 
     let events = reporter.events();

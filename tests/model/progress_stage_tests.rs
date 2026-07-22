@@ -7,7 +7,10 @@
 // =============================================================================
 //! Tests for `ProgressStage`.
 
-use qubit_progress::model::ProgressStage;
+use qubit_progress::model::{
+    ProgressStage,
+    ProgressStageError,
+};
 
 #[test]
 fn test_progress_stage_accessors_return_configured_values() {
@@ -31,13 +34,30 @@ fn test_progress_stage_accessors_return_configured_values() {
 }
 
 #[test]
-fn test_progress_stage_weight_records_supplied_value() {
-    let stage = ProgressStage::new("copy", "Copy files").with_weight(f64::NAN);
+fn test_progress_stage_try_with_weight_rejects_invalid_values() {
+    let stage = ProgressStage::new("copy", "Copy files");
 
-    assert!(
-        stage
-            .weight()
-            .expect("stage should carry supplied weight")
-            .is_nan()
+    assert_eq!(
+        stage.clone().try_with_weight(-0.1),
+        Err(ProgressStageError::NegativeWeight),
     );
+    assert_eq!(
+        stage.clone().try_with_weight(f64::NAN),
+        Err(ProgressStageError::NonFiniteWeight),
+    );
+    assert_eq!(
+        stage.clone().try_with_weight(f64::INFINITY),
+        Err(ProgressStageError::NonFiniteWeight),
+    );
+    assert_eq!(
+        stage.try_with_weight(f64::NEG_INFINITY),
+        Err(ProgressStageError::NonFiniteWeight),
+    );
+}
+
+#[test]
+fn test_progress_stage_deserialization_rejects_negative_weight() {
+    let json = r#"{"id":"copy","name":"Copy files","weight":-0.1}"#;
+
+    assert!(serde_json::from_str::<ProgressStage>(json).is_err());
 }

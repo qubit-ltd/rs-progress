@@ -67,7 +67,7 @@ fn test_formatted_progress_reporter_formats_each_metric_snapshot() {
         Duration::from_millis(10),
     );
 
-    reporter.report(&event);
+    let _ = reporter.report(&event);
 
     let lines = lines
         .lock()

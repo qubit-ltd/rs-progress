@@ -44,7 +44,7 @@ fn test_json_stderr_progress_reporter_default_can_report() {
 
 fn report_json_to_stderr() {
     let reporter = JsonStderrProgressReporter::default();
-    reporter.report(&ProgressEvent::failed(
+    let _ = reporter.report(&ProgressEvent::failed(
         ProgressSchema::single("entries", "Entries"),
         vec![ProgressCounter::new("entries").total(2).completed(1)],
         Duration::from_millis(10),

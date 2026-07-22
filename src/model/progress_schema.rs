@@ -15,6 +15,8 @@ use serde::{
 use super::{
     ProgressCounter,
     ProgressMetric,
+    ProgressSchemaError,
+    internal::ProgressSchemaUnchecked,
 };
 
 /// Metric dictionary for one logical progress operation.
@@ -23,6 +25,7 @@ use super::{
 /// a schema so every serialized progress event is self-describing and reporters
 /// can resolve metric ids to display names without external state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "ProgressSchemaUnchecked")]
 pub struct ProgressSchema {
     /// Metric definitions available in this progress stream.
     metrics: Vec<ProgressMetric>,
@@ -38,9 +41,43 @@ impl ProgressSchema {
     /// # Returns
     ///
     /// A schema containing the supplied metric definitions.
+    ///
+    /// # Panics
+    ///
+    /// Panics when more than one metric has the same identifier. Use
+    /// [`Self::try_new`] to handle invalid input without panicking.
     #[inline]
     pub fn new(metrics: Vec<ProgressMetric>) -> Self {
-        Self { metrics }
+        Self::try_new(metrics)
+            .expect("progress schema must have unique metric ids")
+    }
+
+    /// Tries to create a schema from metric definitions.
+    ///
+    /// # Parameters
+    ///
+    /// * `metrics` - Metric definitions available to events using this schema.
+    ///
+    /// # Returns
+    ///
+    /// A validated schema containing the supplied metric definitions.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProgressSchemaError::DuplicateMetricId`] when more than one
+    /// metric has the same identifier.
+    pub fn try_new(
+        metrics: Vec<ProgressMetric>,
+    ) -> Result<Self, ProgressSchemaError> {
+        let mut seen = HashSet::with_capacity(metrics.len());
+        for metric in &metrics {
+            if !seen.insert(metric.id()) {
+                return Err(ProgressSchemaError::DuplicateMetricId {
+                    metric_id: metric.id().to_owned(),
+                });
+            }
+        }
+        Ok(Self { metrics })
     }
 
     /// Creates a schema containing one metric.
@@ -144,6 +181,30 @@ impl ProgressSchema {
         counters.iter().all(|counter| {
             self.validate_counter(counter) && seen.insert(counter.metric_id())
         })
+    }
+}
+
+impl TryFrom<ProgressSchemaUnchecked> for ProgressSchema {
+    type Error = ProgressSchemaError;
+
+    /// Validates and converts an unchecked serialized schema.
+    ///
+    /// # Parameters
+    ///
+    /// * `unchecked` - Schema representation produced by deserialization.
+    ///
+    /// # Returns
+    ///
+    /// A validated schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when metric identifiers are duplicated.
+    #[inline(always)]
+    fn try_from(
+        unchecked: ProgressSchemaUnchecked,
+    ) -> Result<Self, Self::Error> {
+        Self::try_new(unchecked.metrics)
     }
 }
 

@@ -10,7 +10,10 @@
 use std::{
     sync::Mutex,
     thread,
-    time::Duration,
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 use qubit_progress::{
@@ -37,11 +40,15 @@ impl RecordingReporter {
 }
 
 impl ProgressReporter for RecordingReporter {
-    fn report(&self, event: &ProgressEvent) {
+    fn report(
+        &self,
+        event: &ProgressEvent,
+    ) -> Result<(), qubit_progress::ProgressReportError> {
         self.events
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(event.clone());
+        Ok(())
     }
 }
 
@@ -59,8 +66,14 @@ fn test_running_progress_signal_running_point_reports_for_zero_interval() {
             vec![ProgressCounter::new("entries").total(1).active(1)]
         });
         let point = running_progress.point_handle();
-        assert!(point.report());
-        running_progress.stop_and_join();
+        assert!(point.try_report());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while reporter.events().is_empty() && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        running_progress
+            .stop_and_join()
+            .expect("progress reporter should stop cleanly");
     });
 
     assert!(
@@ -85,7 +98,9 @@ fn test_running_progress_signal_stop_prevents_further_zero_interval_points() {
             vec![ProgressCounter::new("entries").total(1).active(1)]
         });
         let point = running_progress.point_handle();
-        running_progress.stop_and_join();
-        assert!(!point.report());
+        running_progress
+            .stop_and_join()
+            .expect("progress reporter should stop cleanly");
+        assert!(!point.try_report());
     });
 }

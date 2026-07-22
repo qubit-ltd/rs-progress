@@ -10,7 +10,10 @@ use qubit_function::ArcConsumer;
 use super::human_readable_progress_reporter::HumanReadableProgressReporter;
 use crate::{
     model::ProgressEvent,
-    reporter::ProgressReporter,
+    reporter::{
+        ProgressReportError,
+        ProgressReporter,
+    },
 };
 
 /// Progress reporter that emits human-readable metric snapshots through `log`.
@@ -110,13 +113,23 @@ impl Default for LoggerProgressReporter {
 }
 
 impl ProgressReporter for LoggerProgressReporter {
+    /// Reports whether the configured target and level are enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` when the global logger accepts this target and level.
+    #[inline(always)]
+    fn is_enabled(&self) -> bool {
+        log::log_enabled!(target: self.target.as_str(), self.level)
+    }
+
     /// Logs one line for every metric snapshot in the event.
     ///
     /// # Parameters
     ///
     /// * `event` - Progress event to log.
     #[inline]
-    fn report(&self, event: &ProgressEvent) {
-        self.inner.report(event);
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
+        self.inner.report(event)
     }
 }

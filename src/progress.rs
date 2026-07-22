@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 use std::{
+    sync::Arc,
     thread,
     time::{
         Duration,
@@ -23,7 +24,10 @@ use crate::{
         ProgressSchema,
         ProgressStage,
     },
-    reporter::ProgressReporter,
+    reporter::{
+        ProgressReportError,
+        ProgressReporter,
+    },
     running::{
         RunningProgressGuard,
         RunningProgressLoop,
@@ -54,23 +58,25 @@ use crate::{
 /// let reporter = WriterProgressReporter::from_writer(std::io::stdout());
 /// let mut progress = Progress::new(&reporter, Duration::from_secs(5), schema);
 ///
-/// let started = progress.report_started(|event| event.counter("entries", |c| c.total(2)));
+/// let started = progress
+///     .report_started(|event| event.counter("entries", |c| c.total(2)))
+///     .expect("progress output should succeed");
 /// assert!(started.elapsed().is_zero());
 ///
 /// let _reported = progress.report_running_if_due(|event| {
 ///     event.counter("entries", |counter| counter.total(2).completed(1).active(1))
-/// });
+/// }).expect("progress output should succeed");
 ///
 /// let finished = progress.report_finished(|event| {
 ///     event.counter("entries", |counter| counter.total(2).completed(2).succeeded(2))
-/// });
+/// }).expect("progress output should succeed");
 /// assert!(finished.elapsed() >= started.elapsed());
 /// ```
 pub struct Progress<'a> {
     /// Reporter receiving lifecycle callbacks for this run.
     reporter: &'a dyn ProgressReporter,
     /// Metric schema carried by events emitted from this run.
-    schema: ProgressSchema,
+    schema: Arc<ProgressSchema>,
     /// Monotonic start time used to compute elapsed durations.
     started_at: Instant,
     /// Minimum interval between due-based running callbacks.
@@ -131,35 +137,6 @@ impl<'a> Progress<'a> {
         )
     }
 
-    /// Creates a progress run from an explicit start instant.
-    ///
-    /// # Parameters
-    ///
-    /// * `reporter` - Reporter receiving progress events.
-    /// * `report_interval` - Minimum delay between due-based running events.
-    /// * `schema` - Metric schema carried by emitted events.
-    /// * `started_at` - Monotonic instant representing operation start.
-    ///
-    /// # Returns
-    ///
-    /// A progress run using `started_at` for elapsed-time calculations.
-    #[inline]
-    fn from_start(
-        reporter: &'a dyn ProgressReporter,
-        report_interval: Duration,
-        schema: ProgressSchema,
-        started_at: Instant,
-    ) -> Self {
-        Self {
-            reporter,
-            schema,
-            started_at,
-            report_interval,
-            next_running_at: next_instant(started_at, report_interval),
-            stage: None,
-        }
-    }
-
     /// Returns a copy configured with stage metadata.
     ///
     /// # Parameters
@@ -188,6 +165,35 @@ impl<'a> Progress<'a> {
         self
     }
 
+    /// Creates a progress run from an explicit start instant.
+    ///
+    /// # Parameters
+    ///
+    /// * `reporter` - Reporter receiving progress events.
+    /// * `report_interval` - Minimum delay between due-based running events.
+    /// * `schema` - Metric schema carried by emitted events.
+    /// * `started_at` - Monotonic instant representing operation start.
+    ///
+    /// # Returns
+    ///
+    /// A progress run using `started_at` for elapsed-time calculations.
+    #[inline]
+    fn from_start(
+        reporter: &'a dyn ProgressReporter,
+        report_interval: Duration,
+        schema: ProgressSchema,
+        started_at: Instant,
+    ) -> Self {
+        Self {
+            reporter,
+            schema: Arc::new(schema),
+            started_at,
+            report_interval,
+            next_running_at: next_instant(started_at, report_interval),
+            stage: None,
+        }
+    }
+
     /// Creates an event builder preconfigured with this run's schema, stage,
     /// and elapsed time.
     ///
@@ -210,11 +216,18 @@ impl<'a> Progress<'a> {
     ///
     /// The event sent to the configured reporter.
     ///
+    /// # Errors
+    ///
+    /// Returns the configured reporter's output error.
+    ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_started<F>(&self, configure: F) -> ProgressEvent
+    pub fn report_started<F>(
+        &self,
+        configure: F,
+    ) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
@@ -236,10 +249,17 @@ impl<'a> Progress<'a> {
     ///
     /// The event sent to the configured reporter.
     ///
+    /// # Errors
+    ///
+    /// Returns the configured reporter's output error.
+    ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
-    pub fn report_running<F>(&mut self, configure: F) -> ProgressEvent
+    pub fn report_running<F>(
+        &mut self,
+        configure: F,
+    ) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
@@ -248,9 +268,9 @@ impl<'a> Progress<'a> {
             ProgressPhase::Running,
             now.saturating_duration_since(self.started_at),
             configure,
-        );
+        )?;
         self.next_running_at = next_instant(now, self.report_interval);
-        event
+        Ok(event)
     }
 
     /// Reports a running lifecycle event if the configured interval has passed.
@@ -270,27 +290,31 @@ impl<'a> Progress<'a> {
     /// configured reporter. Any blocking behavior therefore comes from the
     /// reporter implementation.
     ///
+    /// # Errors
+    ///
+    /// Returns the configured reporter's output error when an event is due.
+    ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter when an event is due.
     pub fn report_running_if_due<F>(
         &mut self,
         configure: F,
-    ) -> Option<ProgressEvent>
+    ) -> Result<Option<ProgressEvent>, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
         let now = Instant::now();
         if now < self.next_running_at {
-            return None;
+            return Ok(None);
         }
         let event = self.report_with_elapsed(
             ProgressPhase::Running,
             now.saturating_duration_since(self.started_at),
             configure,
-        );
+        )?;
         self.next_running_at = next_instant(now, self.report_interval);
-        Some(event)
+        Ok(Some(event))
     }
 
     /// Reports a finished lifecycle event.
@@ -303,11 +327,18 @@ impl<'a> Progress<'a> {
     ///
     /// The event sent to the configured reporter.
     ///
+    /// # Errors
+    ///
+    /// Returns the configured reporter's output error.
+    ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_finished<F>(&self, configure: F) -> ProgressEvent
+    pub fn report_finished<F>(
+        &self,
+        configure: F,
+    ) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
@@ -329,11 +360,18 @@ impl<'a> Progress<'a> {
     ///
     /// The event sent to the configured reporter.
     ///
+    /// # Errors
+    ///
+    /// Returns the configured reporter's output error.
+    ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_failed<F>(&self, configure: F) -> ProgressEvent
+    pub fn report_failed<F>(
+        &self,
+        configure: F,
+    ) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
@@ -355,11 +393,18 @@ impl<'a> Progress<'a> {
     ///
     /// The event sent to the configured reporter.
     ///
+    /// # Errors
+    ///
+    /// Returns the configured reporter's output error.
+    ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_canceled<F>(&self, configure: F) -> ProgressEvent
+    pub fn report_canceled<F>(
+        &self,
+        configure: F,
+    ) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
@@ -403,6 +448,9 @@ impl<'a> Progress<'a> {
         'a: 'scope,
         F: FnMut() -> Vec<ProgressCounter> + Send + 'scope,
     {
+        if !self.reporter.is_enabled() {
+            return RunningProgressGuard::inactive();
+        }
         RunningProgressLoop::spawn_scoped(
             scope,
             self.fork_for_running(),
@@ -430,15 +478,17 @@ impl<'a> Progress<'a> {
         phase: ProgressPhase,
         elapsed: Duration,
         configure: F,
-    ) -> ProgressEvent
+    ) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
         let event =
             configure(self.event_builder_with_elapsed(elapsed).phase(phase))
                 .build();
-        self.reporter.report(&event);
-        event
+        if self.reporter.is_enabled() {
+            self.reporter.report(&event)?;
+        }
+        Ok(event)
     }
 
     /// Returns the metric schema for this progress run.
@@ -447,8 +497,8 @@ impl<'a> Progress<'a> {
     ///
     /// The schema cloned into every event emitted by this run.
     #[inline]
-    pub const fn schema(&self) -> &ProgressSchema {
-        &self.schema
+    pub fn schema(&self) -> &ProgressSchema {
+        self.schema.as_ref()
     }
 
     /// Returns the elapsed duration since this run started.
@@ -523,7 +573,8 @@ impl<'a> Progress<'a> {
         elapsed: Duration,
     ) -> ProgressEventBuilder {
         let builder =
-            ProgressEvent::builder(self.schema.clone()).elapsed(elapsed);
+            ProgressEventBuilder::from_shared_schema(Arc::clone(&self.schema))
+                .elapsed(elapsed);
         match self.stage.clone() {
             Some(stage) => builder.stage(stage),
             None => builder,

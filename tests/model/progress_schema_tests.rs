@@ -11,7 +11,30 @@ use qubit_progress::{
     ProgressCounter,
     ProgressMetric,
     ProgressSchema,
+    ProgressSchemaError,
 };
+
+#[test]
+fn test_progress_schema_try_new_rejects_duplicate_metric_ids() {
+    let result = ProgressSchema::try_new(vec![
+        ProgressMetric::new("entries", "Entries"),
+        ProgressMetric::new("entries", "Duplicate entries"),
+    ]);
+
+    assert_eq!(
+        result,
+        Err(ProgressSchemaError::DuplicateMetricId {
+            metric_id: "entries".to_owned(),
+        })
+    );
+}
+
+#[test]
+fn test_progress_schema_deserialization_rejects_duplicate_metric_ids() {
+    let json = r#"{"metrics":[{"id":"entries","name":"Entries"},{"id":"entries","name":"Duplicate"}]}"#;
+
+    assert!(serde_json::from_str::<ProgressSchema>(json).is_err());
+}
 
 #[test]
 fn test_progress_schema_resolves_metrics() {

@@ -12,12 +12,42 @@ use std::time::Duration;
 use qubit_progress::model::{
     ProgressCounter,
     ProgressEvent,
+    ProgressEventBuildError,
     ProgressEventBuilder,
     ProgressMetric,
     ProgressPhase,
     ProgressSchema,
     ProgressStage,
 };
+
+#[test]
+fn test_progress_event_builder_try_build_rejects_unknown_metric_id() {
+    let result = ProgressEventBuilder::new(schema())
+        .counter("missing", |counter| counter.completed(1))
+        .try_build();
+
+    assert_eq!(
+        result,
+        Err(ProgressEventBuildError::UnknownMetricId {
+            metric_id: "missing".to_owned(),
+        })
+    );
+}
+
+#[test]
+fn test_progress_event_builder_try_build_rejects_duplicate_counter_ids() {
+    let result = ProgressEventBuilder::new(schema())
+        .counter("entries", |counter| counter.completed(1))
+        .counter("entries", |counter| counter.completed(2))
+        .try_build();
+
+    assert_eq!(
+        result,
+        Err(ProgressEventBuildError::DuplicateCounterMetricId {
+            metric_id: "entries".to_owned(),
+        })
+    );
+}
 
 fn schema() -> ProgressSchema {
     ProgressSchema::new(vec![

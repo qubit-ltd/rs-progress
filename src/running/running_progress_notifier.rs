@@ -5,9 +5,17 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use std::sync::mpsc::Sender;
-
-use super::running_progress_signal::RunningProgressSignal;
+use std::sync::{
+    Arc,
+    atomic::{
+        AtomicBool,
+        Ordering,
+    },
+    mpsc::{
+        SyncSender,
+        TrySendError,
+    },
+};
 
 /// Notifies a running progress loop about progress points and completion.
 ///
@@ -25,8 +33,12 @@ use super::running_progress_signal::RunningProgressSignal;
 /// Haixing Hu
 #[derive(Clone)]
 pub(crate) struct RunningProgressNotifier {
-    /// Signal sender shared by callers and workers.
-    pub(crate) signal_sender: Sender<RunningProgressSignal>,
+    /// Capacity-one wakeup sender shared by callers and workers.
+    pub(crate) wake_sender: SyncSender<()>,
+    /// Stop state checked independently from coalesced wakeups.
+    pub(crate) stopped: Arc<AtomicBool>,
+    /// Whether at least one worker point awaits a coalesced report.
+    pub(crate) pending: Arc<AtomicBool>,
 }
 
 impl RunningProgressNotifier {
@@ -38,9 +50,14 @@ impl RunningProgressNotifier {
     /// already stopped.
     #[inline]
     pub(crate) fn running_point(&self) -> bool {
-        self.signal_sender
-            .send(RunningProgressSignal::RunningPoint)
-            .is_ok()
+        if self.stopped.load(Ordering::Acquire) {
+            return false;
+        }
+        self.pending.store(true, Ordering::Release);
+        match self.wake_sender.try_send(()) {
+            Ok(()) | Err(TrySendError::Full(())) => true,
+            Err(TrySendError::Disconnected(())) => false,
+        }
     }
 
     /// Sends a stop signal.
@@ -51,6 +68,8 @@ impl RunningProgressNotifier {
     /// already stopped.
     #[inline]
     pub(crate) fn stop(&self) -> bool {
-        self.signal_sender.send(RunningProgressSignal::Stop).is_ok()
+        let was_running = !self.stopped.swap(true, Ordering::AcqRel);
+        let _ = self.wake_sender.try_send(());
+        was_running
     }
 }
