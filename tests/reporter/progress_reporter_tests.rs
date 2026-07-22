@@ -30,8 +30,12 @@ struct CountingReporter {
 }
 
 impl ProgressReporter for CountingReporter {
-    fn report(&self, _event: &ProgressEvent) {
+    fn report(
+        &self,
+        _event: &ProgressEvent,
+    ) -> Result<(), qubit_progress::ProgressReportError> {
         self.called.fetch_add(1, Ordering::Relaxed);
+        Ok(())
     }
 }
 
@@ -47,12 +51,12 @@ fn test_progress_reporter_trait_object_dispatch() {
     };
     let reporter: &dyn ProgressReporter = &concrete;
 
-    reporter.report(&ProgressEvent::started(
+    let _ = reporter.report(&ProgressEvent::started(
         schema(),
         vec![ProgressCounter::new("entries").total(1)],
         Duration::ZERO,
     ));
-    reporter.report(&ProgressEvent::finished(
+    let _ = reporter.report(&ProgressEvent::finished(
         schema(),
         vec![ProgressCounter::new("entries").total(1).completed(1)],
         Duration::from_secs(1),

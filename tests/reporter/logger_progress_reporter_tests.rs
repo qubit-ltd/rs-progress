@@ -58,12 +58,12 @@ fn test_logger_progress_reporter_accessors_and_report_paths() {
     assert_eq!(reporter.target(), "qubit_progress_test");
     assert_eq!(reporter.level(), log::Level::Warn);
 
-    reporter.report(&ProgressEvent::running(
+    let _ = reporter.report(&ProgressEvent::running(
         schema(),
         vec![ProgressCounter::new("entries").completed(3)],
         Duration::from_secs(1),
     ));
-    reporter.report(
+    let _ = reporter.report(
         &ProgressEvent::finished(
             schema(),
             vec![ProgressCounter::new("entries").total(3).completed(3)],
@@ -74,19 +74,14 @@ fn test_logger_progress_reporter_accessors_and_report_paths() {
 }
 
 #[test]
-fn test_logger_progress_reporter_handles_empty_and_unknown_metric_paths() {
+fn test_logger_progress_reporter_handles_empty_event_path() {
     ensure_test_logger();
 
     let reporter = LoggerProgressReporter::new("qubit_progress_test")
         .with_level(log::Level::Info);
-    reporter.report(&ProgressEvent::running(
+    let _ = reporter.report(&ProgressEvent::running(
         schema(),
         Vec::new(),
         Duration::from_millis(1),
-    ));
-    reporter.report(&ProgressEvent::running(
-        schema(),
-        vec![ProgressCounter::new("missing").completed(3)],
-        Duration::from_millis(2),
     ));
 }

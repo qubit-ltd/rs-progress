@@ -37,7 +37,7 @@ fn test_json_progress_reporter_uses_default_formatter() {
     let reporter = JsonProgressReporter::new(consumer);
     let _ = reporter.inner().formatter();
 
-    reporter.report(&ProgressEvent::running(
+    let _ = reporter.report(&ProgressEvent::running(
         ProgressSchema::single("entries", "Entries"),
         vec![ProgressCounter::new("entries").total(4).completed(2)],
         Duration::from_millis(10),

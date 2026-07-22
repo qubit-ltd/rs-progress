@@ -9,9 +9,11 @@
 
 pub(crate) mod format_duration;
 mod human_readable_metric_snapshot_formatter;
+#[cfg(feature = "json")]
 mod json_metric_snapshot_formatter;
 mod metric_snapshot_formatter;
 
 pub use human_readable_metric_snapshot_formatter::HumanReadableMetricSnapshotFormatter;
+#[cfg(feature = "json")]
 pub use json_metric_snapshot_formatter::JsonMetricSnapshotFormatter;
 pub use metric_snapshot_formatter::MetricSnapshotFormatter;

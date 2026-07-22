@@ -5,11 +5,8 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+//! Internal running-progress implementation details.
 
-/// Signal sent to a running progress loop.
-pub(crate) enum RunningProgressSignal {
-    /// A worker reached an implementation-defined running progress point.
-    RunningPoint,
-    /// The operation is complete and the loop should stop.
-    Stop,
-}
+mod running_progress_wait;
+
+pub(crate) use running_progress_wait::RunningProgressWait;

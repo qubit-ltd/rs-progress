@@ -19,21 +19,33 @@ use std::{
             AtomicUsize,
             Ordering,
         },
+        mpsc::{
+            self,
+            RecvTimeoutError,
+        },
     },
     thread,
-    time::Duration,
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 use qubit_progress::{
+    NoOpProgressReporter,
     Progress,
     ProgressCounter,
     ProgressEvent,
     ProgressPhase,
+    ProgressReportError,
     ProgressReporter,
     ProgressSchema,
     RunningProgressGuard,
     RunningProgressPointHandle,
+    WriterProgressReporter,
 };
+
+use crate::support::FailingWriter;
 
 #[derive(Debug, Default)]
 struct RecordingReporter {
@@ -50,11 +62,15 @@ impl RecordingReporter {
 }
 
 impl ProgressReporter for RecordingReporter {
-    fn report(&self, event: &ProgressEvent) {
+    fn report(
+        &self,
+        event: &ProgressEvent,
+    ) -> Result<(), qubit_progress::ProgressReportError> {
         self.events
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(event.clone());
+        Ok(())
     }
 }
 
@@ -62,7 +78,10 @@ impl ProgressReporter for RecordingReporter {
 struct PanickingReporter;
 
 impl ProgressReporter for PanickingReporter {
-    fn report(&self, _event: &ProgressEvent) {
+    fn report(
+        &self,
+        _event: &ProgressEvent,
+    ) -> Result<(), qubit_progress::ProgressReportError> {
         panic!("progress reporter panic");
     }
 }
@@ -89,8 +108,14 @@ fn test_running_progress_guard_reports_zero_interval_running_points() {
             running_progress.point_handle();
 
         completed_count.store(1, Ordering::Release);
-        assert!(progress_point_handle.report());
-        running_progress.stop_and_join();
+        assert!(progress_point_handle.try_report());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while reporter.events().is_empty() && Instant::now() < deadline {
+            thread::yield_now();
+        }
+        running_progress
+            .stop_and_join()
+            .expect("progress reporter should stop cleanly");
     });
 
     let events = reporter.events();
@@ -101,6 +126,32 @@ fn test_running_progress_guard_reports_zero_interval_running_points() {
                 .map(ProgressCounter::completed_count)
                 == Some(1)
     }));
+}
+
+#[test]
+fn test_disabled_reporter_does_not_evaluate_running_snapshot() {
+    let reporter = NoOpProgressReporter;
+    let (snapshot_sender, snapshot_receiver) = mpsc::sync_channel(1);
+
+    thread::scope(|scope| {
+        let progress = Progress::new(&reporter, Duration::ZERO, schema());
+        let running_progress = progress.spawn_running_reporter(scope, || {
+            snapshot_sender
+                .send(())
+                .expect("test should observe snapshot evaluation");
+            vec![ProgressCounter::new("entries").total(1)]
+        });
+        let point = running_progress.point_handle();
+
+        point.report();
+        assert_eq!(
+            snapshot_receiver.recv_timeout(Duration::from_millis(100)),
+            Err(RecvTimeoutError::Timeout),
+        );
+        running_progress
+            .stop_and_join()
+            .expect("progress reporter should stop cleanly");
+    });
 }
 
 #[test]
@@ -115,10 +166,42 @@ fn test_running_progress_guard_stop_and_join_propagates_reporter_panic() {
                 });
             let progress_point_handle = running_progress.point_handle();
 
-            assert!(progress_point_handle.report());
-            running_progress.stop_and_join();
+            assert!(progress_point_handle.try_report());
+            let deadline = Instant::now() + Duration::from_secs(1);
+            while progress_point_handle.try_report()
+                && Instant::now() < deadline
+            {
+                thread::yield_now();
+            }
+            running_progress
+                .stop_and_join()
+                .expect("progress reporter should stop cleanly");
         });
     }));
 
     assert!(panic_result.is_err());
+}
+
+#[test]
+fn test_running_progress_guard_stop_and_join_returns_reporter_error() {
+    let reporter = WriterProgressReporter::from_writer(FailingWriter);
+
+    thread::scope(|scope| {
+        let progress = Progress::new(&reporter, Duration::ZERO, schema());
+        let running_progress = progress.spawn_running_reporter(scope, || {
+            vec![ProgressCounter::new("entries").total(1)]
+        });
+        let point = running_progress.point_handle();
+        point.report();
+
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while point.try_report() && Instant::now() < deadline {
+            thread::yield_now();
+        }
+
+        assert!(matches!(
+            running_progress.stop_and_join(),
+            Err(ProgressReportError::Io(_)),
+        ));
+    });
 }

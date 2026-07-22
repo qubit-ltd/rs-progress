@@ -12,3 +12,4 @@ mod model;
 mod progress;
 mod reporter;
 mod running;
+mod support;

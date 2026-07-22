@@ -13,12 +13,14 @@ use std::{
     },
 };
 
-use qubit_function::ArcConsumer;
-
-use super::json_progress_reporter::JsonProgressReporter;
 use crate::{
     model::ProgressEvent,
-    reporter::ProgressReporter,
+    reporter::{
+        JsonMetricSnapshotFormatter,
+        MetricSnapshotFormatter,
+        ProgressReportError,
+        ProgressReporter,
+    },
 };
 
 /// Progress reporter that writes JSON metric snapshots to a writer.
@@ -28,8 +30,6 @@ use crate::{
 pub struct JsonWriterProgressReporter<W> {
     /// Shared writer receiving JSON lines.
     writer: Arc<Mutex<W>>,
-    /// JSON reporter that consumes formatted strings.
-    inner: JsonProgressReporter,
 }
 
 impl<W> JsonWriterProgressReporter<W> {
@@ -46,7 +46,7 @@ impl<W> JsonWriterProgressReporter<W> {
 
 impl<W> JsonWriterProgressReporter<W>
 where
-    W: Write + Send + 'static,
+    W: Write + Send,
 {
     /// Creates a reporter from a shared writer.
     ///
@@ -58,18 +58,7 @@ where
     ///
     /// A JSON writer-backed progress reporter.
     pub fn new(writer: Arc<Mutex<W>>) -> Self {
-        let consumer_writer = Arc::clone(&writer);
-        let consumer = ArcConsumer::new(move |line: &String| {
-            let mut writer = consumer_writer
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            writeln!(writer, "{line}")
-                .expect("JSON progress reporter should write event");
-        });
-        Self {
-            writer,
-            inner: JsonProgressReporter::new(consumer),
-        }
+        Self { writer }
     }
 
     /// Creates a reporter from an owned writer.
@@ -89,7 +78,7 @@ where
 
 impl<W> ProgressReporter for JsonWriterProgressReporter<W>
 where
-    W: Write + Send + 'static,
+    W: Write + Send,
 {
     /// Writes one JSON line for every metric snapshot in the event.
     ///
@@ -97,12 +86,19 @@ where
     ///
     /// * `event` - Progress event to format and write.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Recovers the inner writer when the writer mutex is poisoned, and panics
-    /// only when writing to the configured writer fails.
-    #[inline]
-    fn report(&self, event: &ProgressEvent) {
-        self.inner.report(event);
+    /// Returns [`ProgressReportError::Io`] when writing a JSON line fails. A
+    /// poisoned writer mutex is recovered.
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
+        let formatter = JsonMetricSnapshotFormatter::new();
+        let mut writer = self
+            .writer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for snapshot in event.metric_snapshots_iter() {
+            writeln!(writer, "{}", formatter.format(&snapshot))?;
+        }
+        Ok(())
     }
 }

@@ -5,11 +5,15 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use std::time::Duration;
+use std::{
+    sync::Arc,
+    time::Duration,
+};
 
 use super::{
     ProgressCounter,
     ProgressEvent,
+    ProgressEventBuildError,
     ProgressPhase,
     ProgressSchema,
     ProgressStage,
@@ -47,7 +51,7 @@ use super::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProgressEventBuilder {
     /// Metric schema carried by the event being built.
-    pub(crate) schema: ProgressSchema,
+    pub(crate) schema: Arc<ProgressSchema>,
     /// Lifecycle phase of the event being built.
     pub(crate) phase: ProgressPhase,
     /// Metric counters for the event being built.
@@ -71,6 +75,21 @@ impl ProgressEventBuilder {
     /// zero, and counters are empty.
     #[inline]
     pub fn new(schema: ProgressSchema) -> Self {
+        Self::from_shared_schema(Arc::new(schema))
+    }
+
+    /// Creates a builder from a shared schema allocation.
+    ///
+    /// # Parameters
+    ///
+    /// * `schema` - Shared metric schema carried by the built event.
+    ///
+    /// # Returns
+    ///
+    /// A builder initialized as running progress with no counters and zero
+    /// elapsed time.
+    #[inline]
+    pub(crate) fn from_shared_schema(schema: Arc<ProgressSchema>) -> Self {
         Self {
             schema,
             phase: ProgressPhase::Running,
@@ -260,5 +279,20 @@ impl ProgressEventBuilder {
     #[inline]
     pub fn build(self) -> ProgressEvent {
         ProgressEvent::new(self)
+    }
+
+    /// Tries to build a progress event after validating its counters.
+    ///
+    /// # Returns
+    ///
+    /// A validated immutable [`ProgressEvent`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a counter references an undeclared metric or
+    /// duplicates another counter's metric identifier.
+    #[inline(always)]
+    pub fn try_build(self) -> Result<ProgressEvent, ProgressEventBuildError> {
+        ProgressEvent::try_new(self)
     }
 }

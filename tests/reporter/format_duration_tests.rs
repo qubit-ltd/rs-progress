@@ -41,7 +41,7 @@ fn render_line(elapsed: Duration) -> String {
         ],
         elapsed,
     );
-    reporter.report(&event);
+    let _ = reporter.report(&event);
     let bytes = output
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)

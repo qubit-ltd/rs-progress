@@ -46,7 +46,7 @@ fn test_stderr_progress_reporter_default_can_report() {
 
 fn report_failed_to_stderr() {
     let reporter = StderrProgressReporter::default();
-    reporter.report(&ProgressEvent::failed(
+    let _ = reporter.report(&ProgressEvent::failed(
         ProgressSchema::single("entries", "Entries"),
         vec![ProgressCounter::new("entries").total(2).completed(1)],
         Duration::from_millis(10),

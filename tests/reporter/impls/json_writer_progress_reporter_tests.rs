@@ -30,7 +30,7 @@ fn test_json_writer_progress_reporter_writes_one_json_line_per_metric() {
     let reporter = JsonWriterProgressReporter::new(output.clone());
 
     assert!(Arc::ptr_eq(reporter.writer(), &output));
-    reporter.report(&ProgressEvent::running(
+    let _ = reporter.report(&ProgressEvent::running(
         ProgressSchema::single("entries", "Entries"),
         vec![ProgressCounter::new("entries").total(4).completed(2)],
         Duration::from_millis(110),
@@ -58,7 +58,7 @@ fn test_json_writer_progress_reporter_writes_one_json_line_per_metric() {
 fn test_json_writer_progress_reporter_supports_owned_writer() {
     let reporter =
         JsonWriterProgressReporter::from_writer(Cursor::new(Vec::new()));
-    reporter.report(&ProgressEvent::finished(
+    let _ = reporter.report(&ProgressEvent::finished(
         ProgressSchema::single("entries", "Entries"),
         vec![ProgressCounter::new("entries").total(1).completed(1)],
         Duration::from_millis(5),

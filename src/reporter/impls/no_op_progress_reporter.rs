@@ -7,7 +7,10 @@
 // =============================================================================
 use crate::{
     model::ProgressEvent,
-    reporter::ProgressReporter,
+    reporter::{
+        ProgressReportError,
+        ProgressReporter,
+    },
 };
 
 /// Progress reporter that ignores all events.
@@ -15,11 +18,26 @@ use crate::{
 pub struct NoOpProgressReporter;
 
 impl ProgressReporter for NoOpProgressReporter {
+    /// Reports that this reporter intentionally ignores all events.
+    ///
+    /// # Returns
+    ///
+    /// Always `false`.
+    #[inline(always)]
+    fn is_enabled(&self) -> bool {
+        false
+    }
+
     /// Ignores one progress event.
     ///
     /// # Parameters
     ///
     /// * `event` - Event accepted and ignored.
     #[inline]
-    fn report(&self, _event: &ProgressEvent) {}
+    fn report(
+        &self,
+        _event: &ProgressEvent,
+    ) -> Result<(), ProgressReportError> {
+        Ok(())
+    }
 }

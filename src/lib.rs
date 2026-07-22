@@ -24,32 +24,45 @@ pub mod running;
 pub use model::{
     ProgressCounter,
     ProgressEvent,
+    ProgressEventBuildError,
     ProgressEventBuilder,
     ProgressMetric,
     ProgressMetricSnapshot,
+    ProgressMetricSnapshotError,
     ProgressPhase,
     ProgressSchema,
+    ProgressSchemaError,
     ProgressStage,
+    ProgressStageError,
 };
 pub use progress::Progress;
+#[cfg(all(feature = "json", feature = "log"))]
+pub use reporter::JsonLoggerProgressReporter;
+#[cfg(feature = "log")]
+pub use reporter::LoggerProgressReporter;
+#[cfg(feature = "consumer-reporters")]
 pub use reporter::{
     FormattedProgressReporter,
-    HumanReadableMetricSnapshotFormatter,
     HumanReadableProgressReporter,
-    JsonLoggerProgressReporter,
+    MetricSnapshotProgressReporter,
+};
+pub use reporter::{
+    HumanReadableMetricSnapshotFormatter,
+    MetricSnapshotFormatter,
+    NoOpProgressReporter,
+    ProgressReportError,
+    ProgressReporter,
+    StderrProgressReporter,
+    StdoutProgressReporter,
+    WriterProgressReporter,
+};
+#[cfg(feature = "json")]
+pub use reporter::{
     JsonMetricSnapshotFormatter,
     JsonProgressReporter,
     JsonStderrProgressReporter,
     JsonStdoutProgressReporter,
     JsonWriterProgressReporter,
-    LoggerProgressReporter,
-    MetricSnapshotFormatter,
-    MetricSnapshotProgressReporter,
-    NoOpProgressReporter,
-    ProgressReporter,
-    StderrProgressReporter,
-    StdoutProgressReporter,
-    WriterProgressReporter,
 };
 pub use running::{
     RunningProgressGuard,

@@ -6,10 +6,17 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 use std::{
-    sync::mpsc::{
-        self,
-        Receiver,
-        RecvTimeoutError,
+    sync::{
+        Arc,
+        atomic::{
+            AtomicBool,
+            Ordering,
+        },
+        mpsc::{
+            self,
+            Receiver,
+            RecvTimeoutError,
+        },
     },
     thread,
     time::Duration,
@@ -18,12 +25,13 @@ use std::{
 use crate::{
     Progress,
     model::ProgressCounter,
+    reporter::ProgressReportError,
 };
 
 use super::{
+    internal::RunningProgressWait,
     running_progress_guard::RunningProgressGuard,
     running_progress_notifier::RunningProgressNotifier,
-    running_progress_signal::RunningProgressSignal,
 };
 
 /// Runs periodic `running` progress reports for work tracked elsewhere.
@@ -34,34 +42,12 @@ use super::{
 /// and a snapshot closure that converts their domain state into metric
 /// counters.
 pub(crate) struct RunningProgressLoop {
-    /// Signal receiver owned by the reporter loop.
-    signal_receiver: Receiver<RunningProgressSignal>,
-}
-
-/// Result of waiting for a running progress loop signal.
-enum RunningProgressWait {
-    /// A worker or stop signal was received.
-    Signal(RunningProgressSignal),
-    /// No signal arrived before the positive report interval elapsed.
-    Timeout,
-    /// All senders were dropped.
-    Disconnected,
-}
-
-impl RunningProgressWait {
-    /// Returns `true` when the running progress loop should call
-    /// [`Progress::report_running_if_due`] after this wait result.
-    #[inline]
-    fn should_report(self) -> bool {
-        match self {
-            Self::Timeout => true,
-            Self::Disconnected => false,
-            Self::Signal(signal) => match signal {
-                RunningProgressSignal::RunningPoint => true,
-                RunningProgressSignal::Stop => false,
-            },
-        }
-    }
+    /// Capacity-one wakeup receiver owned by the reporter loop.
+    wake_receiver: Receiver<()>,
+    /// Stop state checked before and after every blocking wait.
+    stopped: Arc<AtomicBool>,
+    /// Coalesced worker-point state shared with every notifier.
+    pending: Arc<AtomicBool>,
 }
 
 impl RunningProgressLoop {
@@ -89,9 +75,8 @@ impl RunningProgressLoop {
     {
         let report_points = progress.report_interval().is_zero();
         let (progress_loop, notifier) = Self::channel();
-        let progress_thread = scope.spawn(move || {
-            progress_loop.run(progress, snapshot);
-        });
+        let progress_thread =
+            scope.spawn(move || progress_loop.run(progress, snapshot));
         RunningProgressGuard::new(notifier, progress_thread, report_points)
     }
 
@@ -102,10 +87,20 @@ impl RunningProgressLoop {
     /// A loop that owns the signal receiver and a notifier that sends wakeup or
     /// stop signals to that loop.
     pub(crate) fn channel() -> (Self, RunningProgressNotifier) {
-        let (signal_sender, signal_receiver) = mpsc::channel();
+        let (wake_sender, wake_receiver) = mpsc::sync_channel(1);
+        let stopped = Arc::new(AtomicBool::new(false));
+        let pending = Arc::new(AtomicBool::new(false));
         (
-            Self { signal_receiver },
-            RunningProgressNotifier { signal_sender },
+            Self {
+                wake_receiver,
+                stopped: Arc::clone(&stopped),
+                pending: Arc::clone(&pending),
+            },
+            RunningProgressNotifier {
+                wake_sender,
+                stopped,
+                pending,
+            },
         )
     }
 
@@ -117,18 +112,28 @@ impl RunningProgressLoop {
     /// * `snapshot` - Closure that returns the current counters whenever a
     ///   `running` event may be due.
     ///
+    /// # Errors
+    ///
+    /// Returns the first output error produced by the configured reporter.
+    ///
     /// # Panics
     ///
     /// Propagates panics from the configured reporter when a `running` event is
     /// due.
-    pub(crate) fn run<F>(self, mut progress: Progress<'_>, mut snapshot: F)
+    pub(crate) fn run<F>(
+        self,
+        mut progress: Progress<'_>,
+        mut snapshot: F,
+    ) -> Result<(), ProgressReportError>
     where
         F: FnMut() -> Vec<ProgressCounter>,
     {
         let report_interval = progress.report_interval();
         while self.receive_wait(report_interval).should_report() {
-            progress.report_running_if_due(|event| event.counters(snapshot()));
+            progress
+                .report_running_if_due(|event| event.counters(snapshot()))?;
         }
+        Ok(())
     }
 
     /// Waits once on the signal channel and maps the outcome to
@@ -145,14 +150,35 @@ impl RunningProgressLoop {
     ///
     /// The wait outcome used by the running loop.
     fn receive_wait(&self, report_interval: Duration) -> RunningProgressWait {
+        if self.stopped.load(Ordering::Acquire) {
+            return if self.pending.swap(false, Ordering::AcqRel) {
+                RunningProgressWait::Wake
+            } else {
+                RunningProgressWait::Stopped
+            };
+        }
         if report_interval.is_zero() {
-            return match self.signal_receiver.recv() {
-                Ok(signal) => RunningProgressWait::Signal(signal),
+            return match self.wake_receiver.recv() {
+                Ok(()) if self.pending.swap(false, Ordering::AcqRel) => {
+                    RunningProgressWait::Wake
+                }
+                Ok(()) if self.stopped.load(Ordering::Acquire) => {
+                    RunningProgressWait::Stopped
+                }
+                Ok(()) => RunningProgressWait::Wake,
                 Err(_) => RunningProgressWait::Disconnected,
             };
         }
-        match self.signal_receiver.recv_timeout(report_interval) {
-            Ok(signal) => RunningProgressWait::Signal(signal),
+        match self.wake_receiver.recv_timeout(report_interval) {
+            Ok(()) if self.stopped.load(Ordering::Acquire) => {
+                RunningProgressWait::Stopped
+            }
+            Ok(()) => RunningProgressWait::Wake,
+            Err(RecvTimeoutError::Timeout)
+                if self.stopped.load(Ordering::Acquire) =>
+            {
+                RunningProgressWait::Stopped
+            }
             Err(RecvTimeoutError::Timeout) => RunningProgressWait::Timeout,
             Err(RecvTimeoutError::Disconnected) => {
                 RunningProgressWait::Disconnected

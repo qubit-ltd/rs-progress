@@ -10,7 +10,10 @@ use qubit_function::ArcConsumer;
 use super::json_progress_reporter::JsonProgressReporter;
 use crate::{
     model::ProgressEvent,
-    reporter::ProgressReporter,
+    reporter::{
+        ProgressReportError,
+        ProgressReporter,
+    },
 };
 
 /// Progress reporter that emits JSON metric snapshots through `log`.
@@ -110,13 +113,23 @@ impl Default for JsonLoggerProgressReporter {
 }
 
 impl ProgressReporter for JsonLoggerProgressReporter {
+    /// Reports whether the configured target and level are enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` when the global logger accepts this target and level.
+    #[inline(always)]
+    fn is_enabled(&self) -> bool {
+        log::log_enabled!(target: self.target.as_str(), self.level)
+    }
+
     /// Logs one JSON line for every metric snapshot in the event.
     ///
     /// # Parameters
     ///
     /// * `event` - Progress event to log.
     #[inline]
-    fn report(&self, event: &ProgressEvent) {
-        self.inner.report(event);
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
+        self.inner.report(event)
     }
 }

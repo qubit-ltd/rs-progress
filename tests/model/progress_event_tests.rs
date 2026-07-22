@@ -161,6 +161,18 @@ fn test_progress_event_serializes_to_self_describing_json() {
     );
 }
 
+#[test]
+fn test_progress_event_deserialization_rejects_unknown_counter_metric() {
+    let event = ProgressEvent::builder(schema())
+        .counter("entries", |counter| counter.completed(1))
+        .build();
+    let json = serde_json::to_string(&event)
+        .expect("valid event should serialize")
+        .replace("\"metric_id\":\"entries\"", "\"metric_id\":\"missing\"");
+
+    assert!(serde_json::from_str::<ProgressEvent>(&json).is_err());
+}
+
 /// Test the public elapsed-duration wire format is exact and canonical.
 #[test]
 fn test_progress_event_elapsed_wire_format_is_exact_and_rejects_whitespace() {

@@ -10,6 +10,7 @@ use qubit_function::Consumer;
 use crate::{
     model::ProgressEvent,
     reporter::{
+        ProgressReportError,
         ProgressReporter,
         format::MetricSnapshotFormatter,
     },
@@ -79,10 +80,11 @@ where
     /// # Parameters
     ///
     /// * `event` - Event whose metric snapshots should be formatted.
-    fn report(&self, event: &ProgressEvent) {
-        for snapshot in event.metric_snapshots() {
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
+        for snapshot in event.metric_snapshots_iter() {
             let line = self.formatter.format(&snapshot);
             self.consumer.accept(&line);
         }
+        Ok(())
     }
 }

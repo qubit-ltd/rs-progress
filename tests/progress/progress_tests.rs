@@ -24,8 +24,14 @@ use qubit_progress::{
         ProgressSchema,
         ProgressStage,
     },
-    reporter::ProgressReporter,
+    reporter::{
+        ProgressReportError,
+        ProgressReporter,
+        WriterProgressReporter,
+    },
 };
+
+use crate::support::FailingWriter;
 
 #[derive(Debug, Default)]
 struct RecordingReporter {
@@ -42,11 +48,15 @@ impl RecordingReporter {
 }
 
 impl ProgressReporter for RecordingReporter {
-    fn report(&self, event: &ProgressEvent) {
+    fn report(
+        &self,
+        event: &ProgressEvent,
+    ) -> Result<(), qubit_progress::ProgressReportError> {
         self.events
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(event.clone());
+        Ok(())
     }
 }
 
@@ -66,14 +76,19 @@ fn test_progress_reports_lifecycle_events() {
     let reporter = RecordingReporter::default();
     let mut run = run(&reporter, Duration::from_secs(5));
 
-    let started =
-        run.report_started(|event| event.counter("entries", |c| c.total(4)));
-    let running = run.report_running(|event| {
-        event.counter("entries", |c| c.total(4).active(2))
-    });
-    let finished = run.report_finished(|event| {
-        event.counter("entries", |c| c.total(4).completed(4))
-    });
+    let started = run
+        .report_started(|event| event.counter("entries", |c| c.total(4)))
+        .expect("recording reporter should accept started event");
+    let running = run
+        .report_running(|event| {
+            event.counter("entries", |c| c.total(4).active(2))
+        })
+        .expect("recording reporter should accept running event");
+    let finished = run
+        .report_finished(|event| {
+            event.counter("entries", |c| c.total(4).completed(4))
+        })
+        .expect("recording reporter should accept finished event");
 
     let events = reporter.events();
     assert_eq!(events.len(), 3);
@@ -100,23 +115,39 @@ fn test_progress_reports_lifecycle_events() {
 }
 
 #[test]
+fn test_progress_propagates_reporter_errors() {
+    let reporter = WriterProgressReporter::from_writer(FailingWriter);
+    let progress = Progress::new(&reporter, Duration::ZERO, schema());
+
+    let result = progress.report_started(|event| {
+        event.counter("entries", |counter| counter.total(1))
+    });
+
+    assert!(matches!(result, Err(ProgressReportError::Io(_))));
+}
+
+#[test]
 fn test_progress_report_running_if_due_respects_interval() {
     let reporter = RecordingReporter::default();
     let mut not_due = run(&reporter, Duration::from_secs(60));
 
     assert_eq!(
-        not_due.report_running_if_due(
-            |event| event.counter("entries", |c| c.total(2))
-        ),
+        not_due
+            .report_running_if_due(|event| {
+                event.counter("entries", |c| c.total(2))
+            })
+            .expect("recording reporter should accept due checks"),
         None
     );
     assert!(reporter.events().is_empty());
 
     let mut due = run(&reporter, Duration::ZERO);
 
-    let reported = due.report_running_if_due(|event| {
-        event.counter("entries", |counter| counter.total(2).completed(1))
-    });
+    let reported = due
+        .report_running_if_due(|event| {
+            event.counter("entries", |counter| counter.total(2).completed(1))
+        })
+        .expect("recording reporter should accept running event");
     assert!(reported.is_some());
     let events = reporter.events();
     assert_eq!(events.len(), 1);
@@ -134,12 +165,16 @@ fn test_progress_report_running_resets_due_deadline() {
     let reporter = RecordingReporter::default();
     let mut progress = run(&reporter, Duration::from_secs(60));
 
-    let running = progress.report_running(|event| {
-        event.counter("entries", |counter| counter.total(2).completed(1))
-    });
-    let not_due = progress.report_running_if_due(|event| {
-        event.counter("entries", |counter| counter.total(2).completed(2))
-    });
+    let running = progress
+        .report_running(|event| {
+            event.counter("entries", |counter| counter.total(2).completed(1))
+        })
+        .expect("recording reporter should accept running event");
+    let not_due = progress
+        .report_running_if_due(|event| {
+            event.counter("entries", |counter| counter.total(2).completed(2))
+        })
+        .expect("recording reporter should accept due checks");
 
     assert_eq!(not_due, None);
     let events = reporter.events();
@@ -152,9 +187,11 @@ fn test_progress_attaches_stage_to_reported_events() {
     let stage = ProgressStage::new("copy", "Copy files");
     let run = run(&reporter, Duration::from_secs(5)).with_stage(stage.clone());
 
-    let failed = run.report_failed(|event| {
-        event.counter("entries", |c| c.total(1).failed(1))
-    });
+    let failed = run
+        .report_failed(|event| {
+            event.counter("entries", |c| c.total(1).failed(1))
+        })
+        .expect("recording reporter should accept failed event");
 
     let events = reporter.events();
     assert_eq!(events.len(), 1);
@@ -189,9 +226,11 @@ fn test_progress_accessors_stage_removal_and_event_builder() {
         Some(3)
     );
 
-    let canceled = run.report_canceled(|event| {
-        event.counter("entries", |c| c.total(9).completed(3))
-    });
+    let canceled = run
+        .report_canceled(|event| {
+            event.counter("entries", |c| c.total(9).completed(3))
+        })
+        .expect("recording reporter should accept canceled event");
 
     let events = reporter.events();
     assert_eq!(events.len(), 1);
@@ -212,15 +251,17 @@ fn test_progress_zero_interval_running_is_always_due() {
     let mut run = run(&reporter, Duration::ZERO);
 
     assert!(
-        run.report_running_if_due(
-            |event| event.counter("entries", |c| c.total(1))
-        )
+        run.report_running_if_due(|event| {
+            event.counter("entries", |c| c.total(1))
+        })
+        .expect("recording reporter should accept running event")
         .is_some()
     );
     assert!(
-        run.report_running_if_due(
-            |event| event.counter("entries", |c| c.total(1))
-        )
+        run.report_running_if_due(|event| {
+            event.counter("entries", |c| c.total(1))
+        })
+        .expect("recording reporter should accept running event")
         .is_some()
     );
 

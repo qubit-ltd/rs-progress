@@ -45,12 +45,14 @@ use super::running_progress_notifier::RunningProgressNotifier;
 ///     let worker = scope.spawn({
 ///         let progress_point_handle = progress_point_handle.clone();
 ///         move || {
-///             assert!(progress_point_handle.report());
+///             progress_point_handle.report();
 ///         }
 ///     });
 ///     worker.join().unwrap();
 ///
-///     running_progress.stop_and_join();
+///     running_progress
+///         .stop_and_join()
+///         .expect("progress output should succeed");
 /// });
 /// ```
 ///
@@ -78,15 +80,25 @@ impl RunningProgressPointHandle {
         Self { notifier }
     }
 
-    /// Reports one worker running progress point.
+    /// Reports one worker running progress point on a best-effort basis.
+    ///
+    /// Repeated points may be coalesced while a report is already pending. Use
+    /// [`Self::try_report`] only when the caller needs to know whether the
+    /// reporter loop is still accepting notifications.
+    #[inline(always)]
+    pub fn report(&self) {
+        let _ = self.try_report();
+    }
+
+    /// Attempts to report one worker running progress point.
     ///
     /// # Returns
     ///
-    /// `true` when the point was accepted or no point signal is required.
-    /// Returns `false` only when a required zero-interval signal could not be
-    /// sent because the reporter loop has already stopped.
-    #[inline]
-    pub fn report(&self) -> bool {
+    /// `true` when the point was accepted, coalesced with a pending point, or
+    /// no point notification is required. Returns `false` after the reporter
+    /// loop stops or disconnects.
+    #[inline(always)]
+    pub fn try_report(&self) -> bool {
         match self.notifier.as_ref() {
             Some(notifier) => notifier.running_point(),
             None => true,
