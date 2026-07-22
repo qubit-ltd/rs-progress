@@ -5,7 +5,7 @@
 [![Crates.io](https://img.shields.io/crates/v/qubit-progress.svg?color=blue)](https://crates.io/crates/qubit-progress)
 [![Rust](https://img.shields.io/badge/rust-1.94+-blue.svg?logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Chinese Document](https://img.shields.io/badge/Document-Chinese-blue.svg)](README.zh_CN.md)
+[![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
 
 Generic progress reporting abstractions for Qubit Rust libraries and applications.
 
@@ -141,19 +141,21 @@ let schema = ProgressSchema::new(vec![
 let reporter = WriterProgressReporter::from_writer(std::io::stdout());
 let mut progress = Progress::new(&reporter, Duration::from_secs(1), schema);
 
-progress.report_started(|event| event.counter("entries", |counter| counter.total(3)));
+progress
+    .report_started(|event| event.counter("entries", |counter| counter.total(3)))
+    .expect("progress output should succeed");
 
 progress.report_running(|event| {
     event
         .counter("entries", |counter| counter.total(3).completed(1).active(1))
         .counter("bytes", |counter| counter.total(1_024).completed(512))
-});
+}).expect("progress output should succeed");
 
 progress.report_finished(|event| {
     event
         .counter("entries", |counter| counter.total(3).completed(3).succeeded(3))
         .counter("bytes", |counter| counter.total(1_024).completed(1_024))
-});
+}).expect("progress output should succeed");
 ```
 
 `report_running_if_due` only invokes the builder closure when the configured
@@ -203,9 +205,9 @@ thread::scope(|scope| {
     let point = running.point_handle();
 
     completed.store(1);
-    assert!(point.report());
+    point.report();
 
-    running.stop_and_join();
+    running.stop_and_join().expect("progress output should succeed");
 });
 ```
 
@@ -214,7 +216,7 @@ thread::scope(|scope| {
 Reporters receive immutable `ProgressEvent` values through `ProgressReporter`:
 
 ```rust
-fn report(&self, event: &ProgressEvent);
+fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError>;
 ```
 
 Built-in reporters:
@@ -235,7 +237,7 @@ Built-in reporters:
 | `JsonStderrProgressReporter` | writes JSON metric snapshots to stderr |
 | `JsonLoggerProgressReporter` | emits JSON metric snapshots through the `log` crate |
 
-A reporter can call `event.metric_snapshots()` to turn each counter into a
+A reporter can call `event.metric_snapshots_iter()` to lazily turn each counter into a
 `ProgressMetricSnapshot` containing the complete metric object, phase, optional
 stage, flattened counter values, and elapsed time.
 
@@ -286,79 +288,52 @@ or long-term metrics storage.
 
 ## Runtime Dependencies
 
-This crate depends on:
+The core crate depends on:
 
 - `serde` for serializable progress models;
-- `serde_json` for built-in JSON metric snapshot formatting;
-- `log` for `LoggerProgressReporter`;
-- `qubit-function` for consumer adapters used by formatted reporters;
 - `qubit-serde` for compact `Duration` serialization.
 
-It does not require an async runtime.
+Default features additionally enable `consumer-reporters`, `json`, and `log`.
+Disable default features for the core model, lifecycle APIs, no-op reporter, and
+writer reporters without `qubit-function`, `serde_json`, or `log`:
 
-## Testing & Code Coverage
+```toml
+qubit-progress = { version = "0.6", default-features = false }
+```
 
-This project maintains test coverage for progress models, metric snapshots,
-event builders, reporting cadence, background reporting, text and JSON reporter
-implementations, and JSON serialization.
+The crate does not require an async runtime.
 
-### Running Tests
+## Testing
 
 ```bash
-# Run all tests
+# Run tests with the default feature set
 cargo test
 
-# Run with coverage report
-./coverage.sh
+# Run tests with all declared features
+cargo test --all-features
 
-# Generate text format report
-./coverage.sh text
-
-# Run CI checks (format, clippy, test, coverage, audit)
+# Project CI checks
 ./ci-check.sh
+
+# Check code coverage
+./coverage.sh
 ```
 
 ## License
 
-Copyright (c) 2026. Haixing Hu.
+Copyright (c) 2025 - 2026. Haixing Hu. All rights reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-See [LICENSE](LICENSE) for the full license text.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
+full license text.
 
 ## Contributing
 
-Contributions are welcome. Please feel free to submit a Pull Request.
-
-### Development Guidelines
-
-- Follow the Rust API guidelines.
-- Keep progress reporting concerns in `qubit-progress`.
-- Keep events immutable and self-describing.
-- Keep reporter implementations small and explicit.
-- Maintain comprehensive test coverage.
-- Document public APIs with examples when they clarify behavior.
-- Ensure `./ci-check.sh` passes before submitting a PR.
+Contributions are welcome. Please follow the Rust API guidelines, keep public
+API documentation and tests current, and run `./align-ci.sh` to format code and
+`./ci-check.sh` to satisfy CI requirements before submitting a pull request.
 
 ## Author
 
-**Haixing Hu**
-
-## Related Projects
-
-- [qubit-serde](https://github.com/qubit-ltd/rs-serde): serde helpers used by Qubit Rust crates.
-- More Rust libraries from Qubit are published under the [qubit-ltd](https://github.com/qubit-ltd) organization on GitHub.
-
----
+**Haixing Hu** - *Qubit Co. Ltd.*
 
 Repository: [https://github.com/qubit-ltd/rs-progress](https://github.com/qubit-ltd/rs-progress)

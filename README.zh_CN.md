@@ -131,19 +131,21 @@ let schema = ProgressSchema::new(vec![
 let reporter = WriterProgressReporter::from_writer(std::io::stdout());
 let mut progress = Progress::new(&reporter, Duration::from_secs(1), schema);
 
-progress.report_started(|event| event.counter("entries", |counter| counter.total(3)));
+progress
+    .report_started(|event| event.counter("entries", |counter| counter.total(3)))
+    .expect("progress output should succeed");
 
 progress.report_running(|event| {
     event
         .counter("entries", |counter| counter.total(3).completed(1).active(1))
         .counter("bytes", |counter| counter.total(1_024).completed(512))
-});
+}).expect("progress output should succeed");
 
 progress.report_finished(|event| {
     event
         .counter("entries", |counter| counter.total(3).completed(3).succeeded(3))
         .counter("bytes", |counter| counter.total(1_024).completed(1_024))
-});
+}).expect("progress output should succeed");
 ```
 
 `report_running_if_due` 只有在达到汇报间隔时才会调用 builder 闭包，因此正数间隔下的热路径开销很低。
@@ -187,9 +189,9 @@ thread::scope(|scope| {
     let point = running.point_handle();
 
     completed.store(1);
-    assert!(point.report());
+    point.report();
 
-    running.stop_and_join();
+    running.stop_and_join().expect("progress output should succeed");
 });
 ```
 
@@ -198,7 +200,7 @@ thread::scope(|scope| {
 Reporter 通过 `ProgressReporter` 接收不可变的 `ProgressEvent`：
 
 ```rust
-fn report(&self, event: &ProgressEvent);
+fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError>;
 ```
 
 内置 reporter：
@@ -219,7 +221,7 @@ fn report(&self, event: &ProgressEvent);
 | `JsonStderrProgressReporter` | 把 JSON metric snapshot 写入 stderr |
 | `JsonLoggerProgressReporter` | 通过 `log` crate 输出 JSON metric snapshot |
 
-Reporter 可以调用 `event.metric_snapshots()`，把每个 counter 转换成包含完整 metric 对象、phase、可选 stage、扁平 counter 值和 elapsed time 的 `ProgressMetricSnapshot`。
+Reporter 可以调用 `event.metric_snapshots_iter()`，惰性地把每个 counter 转换成包含完整 metric 对象、phase、可选 stage、扁平 counter 值和 elapsed time 的 `ProgressMetricSnapshot`。
 
 ## JSON 序列化
 
@@ -263,75 +265,50 @@ assert_eq!(
 
 ## 运行时依赖
 
-本 crate 依赖：
+本 crate 的核心功能依赖：
 
 - `serde`：用于可序列化的 progress model；
-- `serde_json`：用于内置 JSON metric snapshot 格式化；
-- `log`：用于 `LoggerProgressReporter`；
-- `qubit-function`：用于 formatted reporter 的 consumer adapter；
 - `qubit-serde`：用于紧凑的 `Duration` 序列化。
 
-它不要求 async runtime。
+默认 feature 还会启用 `consumer-reporters`、`json` 和 `log`。如果只需要
+核心 model、生命周期 API、no-op reporter 与 writer reporter，可以关闭默认 feature：
 
-## 测试与代码覆盖率
+```toml
+qubit-progress = { version = "0.6", default-features = false }
+```
 
-本项目为 progress model、metric snapshot、event builder、汇报间隔、后台汇报、text / JSON reporter 实现和 JSON 序列化保持测试覆盖。
+本 crate 不要求 async runtime。
 
-### 运行测试
+## 测试
 
 ```bash
-# 运行所有测试
+# 使用默认 feature 集运行测试
 cargo test
 
-# 运行覆盖率报告
-./coverage.sh
+# 使用项目声明的全部 feature 运行测试
+cargo test --all-features
 
-# 生成文本格式报告
-./coverage.sh text
-
-# 运行 CI 检查（格式化、clippy、测试、覆盖率、audit）
+# 运行项目 CI 检查
 ./ci-check.sh
+
+# 检查代码覆盖率
+./coverage.sh
 ```
 
 ## 许可证
 
-Copyright (c) 2026. Haixing Hu.
+Copyright (c) 2025 - 2026. Haixing Hu. All rights reserved.
 
-根据 Apache 许可证 2.0 版（"许可证"）授权；
-除非遵守许可证，否则您不得使用此文件。
-您可以在以下位置获取许可证副本：
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-除非适用法律要求或书面同意，否则根据许可证分发的软件
-按"原样"分发，不附带任何明示或暗示的担保或条件。
-有关许可证下的特定语言管理权限和限制，请参阅许可证。
-
-完整的许可证文本请参阅 [LICENSE](LICENSE)。
+本项目基于 Apache License 2.0 授权。完整许可证文本请参阅
+[LICENSE](LICENSE)。
 
 ## 贡献
 
-欢迎贡献。请随时提交 Pull Request。
-
-### 开发指南
-
-- 遵循 Rust API 指南。
-- 将 progress reporting 相关能力保留在 `qubit-progress` 中。
-- 保持 event 不可变和自描述。
-- 保持 reporter 实现小而明确。
-- 保持全面的测试覆盖。
-- 公共 API 在有助于说明行为时应提供文档和示例。
-- 提交 PR 前确保 `./ci-check.sh` 通过。
+欢迎贡献。请遵循 Rust API 指南，及时更新公共 API 文档与测试，并在提交
+Pull Request 前运行 `./align-ci.sh`格式化代码，运行`./ci-check.sh`对齐CI要求。
 
 ## 作者
 
-**Haixing Hu**
-
-## 相关项目
-
-- [qubit-serde](https://github.com/qubit-ltd/rs-serde)：Qubit Rust crate 使用的 serde helper。
-- Qubit 旗下的更多 Rust 库发布在 GitHub 组织 [qubit-ltd](https://github.com/qubit-ltd)。
-
----
+**Haixing Hu** - *Qubit Co. Ltd.*
 
 仓库地址：[https://github.com/qubit-ltd/rs-progress](https://github.com/qubit-ltd/rs-progress)
