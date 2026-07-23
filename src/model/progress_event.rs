@@ -71,7 +71,7 @@ pub struct ProgressEvent {
     /// Metric counters for this event.
     counters: Vec<ProgressCounter>,
     /// Monotonic elapsed duration.
-    #[serde(with = "qubit_serde::serde::duration_with_unit")]
+    #[serde(with = "qubit_datatype::serde::duration_with_unit")]
     elapsed: Duration,
 }
 

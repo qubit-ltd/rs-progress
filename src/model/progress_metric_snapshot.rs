@@ -46,7 +46,7 @@ pub struct ProgressMetricSnapshot {
     /// Failed work-unit count.
     failed_count: u64,
     /// Monotonic elapsed duration inherited from the source progress event.
-    #[serde(with = "qubit_serde::serde::duration_with_unit")]
+    #[serde(with = "qubit_datatype::serde::duration_with_unit")]
     elapsed: Duration,
 }
 

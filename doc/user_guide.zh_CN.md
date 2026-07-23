@@ -432,7 +432,7 @@ assert!(text.contains("Entries 2/2"));
 
 ## JSON 序列化
 
-`ProgressEvent`、`ProgressSchema`、`ProgressMetric`、`ProgressCounter`、`ProgressPhase` 和 `ProgressStage` 都支持 serde 序列化。`elapsed` 字段使用 `qubit-serde` 的 duration 字符串，例如 `110ms`。
+`ProgressEvent`、`ProgressSchema`、`ProgressMetric`、`ProgressCounter`、`ProgressPhase` 和 `ProgressStage` 都支持 serde 序列化。`elapsed` 字段使用 `qubit-datatype` 的 duration 字符串，例如 `110ms`。
 
 ```rust
 use std::time::Duration;
