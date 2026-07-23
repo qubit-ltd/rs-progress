@@ -31,6 +31,6 @@ pub(crate) struct ProgressEventUnchecked {
     /// Metric counters supplied by serialized input.
     pub(crate) counters: Vec<ProgressCounter>,
     /// Elapsed duration supplied by serialized input.
-    #[serde(with = "qubit_serde::serde::duration_with_unit")]
+    #[serde(with = "qubit_datatype::serde::duration_with_unit")]
     pub(crate) elapsed: Duration,
 }

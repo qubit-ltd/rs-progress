@@ -468,7 +468,7 @@ assert!(text.contains("Entries 2/2"));
 
 `ProgressEvent`, `ProgressSchema`, `ProgressMetric`, `ProgressCounter`,
 `ProgressPhase`, and `ProgressStage` are serde-serializable. The `elapsed`
-field uses `qubit-serde` duration strings such as `110ms`.
+field uses `qubit-datatype` duration strings such as `110ms`.
 
 ```rust
 use std::time::Duration;

@@ -42,7 +42,7 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", optional = true }
 
 qubit-function = { version = "0.16", optional = true }
-qubit-serde = { version = "0.4", path = "../rs-serde" }
+qubit-datatype = { version = "0.9", path = "../rs-datatype", default-features = false, features = ["duration"] }
 
 [dev-dependencies]
 serde_json = "1.0"

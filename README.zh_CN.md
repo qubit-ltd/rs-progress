@@ -88,7 +88,7 @@ assert_eq!(event.counter("entries").map(|c| c.completed_count()), Some(4));
 | `phase` | 生命周期状态：`started`、`running`、`finished`、`failed` 或 `canceled` |
 | `stage` | 可选的多阶段操作元数据 |
 | `counters` | 一个或多个按 `metric_id` 分组的 `ProgressCounter` |
-| `elapsed` | elapsed `Duration`，通过 `qubit-serde` 序列化为 `110ms` 这类字符串 |
+| `elapsed` | elapsed `Duration`，通过 `qubit-datatype` 序列化为 `110ms` 这类字符串 |
 
 可以直接使用 `ProgressEvent::builder(schema)` 构造事件：
 
@@ -225,7 +225,7 @@ Reporter 可以调用 `event.metric_snapshots_iter()`，惰性地把每个 count
 
 ## JSON 序列化
 
-Progress event 支持 serde 序列化。`elapsed` 使用 `qubit-serde` 的 `duration_with_unit` 适配器，因此 JSON 更紧凑，也更适合 agent 读取。
+Progress event 支持 serde 序列化。`elapsed` 使用 `qubit-datatype` 的 `duration_with_unit` 适配器，因此 JSON 更紧凑，也更适合 agent 读取。
 该适配器会自动选择能够精确表示数值的最大单位，因此亚毫秒 elapsed 也能无损
 round-trip。反序列化要求规范的 duration 文本，不会 trim 两侧空白。
 
@@ -268,7 +268,7 @@ assert_eq!(
 本 crate 的核心功能依赖：
 
 - `serde`：用于可序列化的 progress model；
-- `qubit-serde`：用于紧凑的 `Duration` 序列化。
+- `qubit-datatype`：用于紧凑的 `Duration` 序列化。
 
 默认 feature 还会启用 `consumer-reporters`、`json` 和 `log`。如果只需要
 核心 model、生命周期 API、no-op reporter 与 writer reporter，可以关闭默认 feature：

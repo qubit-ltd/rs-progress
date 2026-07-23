@@ -95,7 +95,7 @@ A `ProgressEvent` is an immutable snapshot. It contains:
 | `phase` | lifecycle state: `started`, `running`, `finished`, `failed`, or `canceled` |
 | `stage` | optional multi-stage operation metadata |
 | `counters` | one or more `ProgressCounter` values grouped by `metric_id` |
-| `elapsed` | elapsed `Duration`, serialized by `qubit-serde` as strings such as `110ms` |
+| `elapsed` | elapsed `Duration`, serialized by `qubit-datatype` as strings such as `110ms` |
 
 Use `ProgressEvent::builder(schema)` to build events directly:
 
@@ -244,7 +244,7 @@ stage, flattened counter values, and elapsed time.
 ## JSON Serialization
 
 Progress events are serde-serializable. `elapsed` uses the `duration_with_unit`
-adapter from `qubit-serde`, so JSON is compact and agent-friendly.
+adapter from `qubit-datatype`, so JSON is compact and agent-friendly.
 The adapter selects the largest unit that preserves the value exactly, so
 sub-millisecond elapsed times round-trip without precision loss. Deserialization
 requires canonical duration text and does not trim surrounding whitespace.
@@ -291,7 +291,7 @@ or long-term metrics storage.
 The core crate depends on:
 
 - `serde` for serializable progress models;
-- `qubit-serde` for compact `Duration` serialization.
+- `qubit-datatype` for compact `Duration` serialization.
 
 Default features additionally enable `consumer-reporters`, `json`, and `log`.
 Disable default features for the core model, lifecycle APIs, no-op reporter, and
