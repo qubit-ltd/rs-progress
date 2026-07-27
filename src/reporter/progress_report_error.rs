@@ -20,6 +20,24 @@ use std::{
 pub enum ProgressReportError {
     /// Writing a formatted progress record failed.
     Io(io::Error),
+    /// A custom reporter rejected the progress event.
+    Message(String),
+}
+
+impl ProgressReportError {
+    /// Creates an error reported by a non-I/O progress sink.
+    ///
+    /// # Parameters
+    ///
+    /// * `message` - Human-readable explanation supplied by the reporter.
+    ///
+    /// # Returns
+    ///
+    /// A progress reporter error preserving `message`.
+    #[inline]
+    pub fn message(message: &str) -> Self {
+        Self::Message(message.to_owned())
+    }
 }
 
 impl Clone for ProgressReportError {
@@ -29,6 +47,7 @@ impl Clone for ProgressReportError {
             Self::Io(error) => {
                 Self::Io(io::Error::new(error.kind(), error.to_string()))
             }
+            Self::Message(message) => Self::Message(message.clone()),
         }
     }
 }
@@ -41,6 +60,8 @@ impl PartialEq for ProgressReportError {
                 left.kind() == right.kind()
                     && left.to_string() == right.to_string()
             }
+            (Self::Message(left), Self::Message(right)) => left == right,
+            _ => false,
         }
     }
 }
@@ -54,6 +75,9 @@ impl Display for ProgressReportError {
             Self::Io(error) => {
                 write!(formatter, "progress output failed: {error}")
             }
+            Self::Message(message) => {
+                write!(formatter, "progress reporter failed: {message}")
+            }
         }
     }
 }
@@ -63,6 +87,7 @@ impl Error for ProgressReportError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Io(error) => Some(error),
+            Self::Message(_) => None,
         }
     }
 }
