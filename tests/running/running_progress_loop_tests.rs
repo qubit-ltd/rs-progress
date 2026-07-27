@@ -17,14 +17,19 @@ use std::{
         },
     },
     thread,
-    time::Duration,
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 use qubit_progress::{
     Progress,
     ProgressCounter,
     ProgressEvent,
+    ProgressEventBuildError,
     ProgressPhase,
+    ProgressReportError,
     ProgressReporter,
     ProgressSchema,
 };
@@ -186,6 +191,40 @@ fn test_running_progress_loop_exits_when_positive_interval_guard_is_dropped() {
             vec![ProgressCounter::new("entries").total(1)]
         });
         drop(running_progress);
+    });
+
+    assert!(reporter.events().is_empty());
+}
+
+#[test]
+fn test_running_progress_loop_propagates_snapshot_build_errors() {
+    let reporter = RecordingReporter::default();
+    let progress = Progress::new(
+        &reporter,
+        Duration::ZERO,
+        ProgressSchema::single("entries", "Entries"),
+    );
+
+    thread::scope(|scope| {
+        let running_progress = progress.spawn_running_reporter(scope, || {
+            vec![ProgressCounter::new("missing").total(1)]
+        });
+        let status = running_progress.status();
+        let point = running_progress.point_handle();
+
+        assert!(point.try_report());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !status.is_failed() && Instant::now() < deadline {
+            thread::yield_now();
+        }
+
+        assert!(status.is_failed());
+        assert!(matches!(
+            running_progress.stop_and_join(),
+            Err(ProgressReportError::EventBuild(
+                ProgressEventBuildError::UnknownMetricId { metric_id },
+            )) if metric_id == "missing",
+        ));
     });
 
     assert!(reporter.events().is_empty());
