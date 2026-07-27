@@ -7,8 +7,10 @@
 // =============================================================================
 use std::time::Duration;
 
+#[cfg(feature = "serde")]
 use serde::{
     Deserialize,
+    Deserializer,
     Serialize,
 };
 
@@ -27,17 +29,27 @@ use super::{
 /// such as entries and bytes. `ProgressMetricSnapshot` flattens one counter
 /// together with the event-level phase, stage, and elapsed time so formatters
 /// and consumers can handle one metric record at a time.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProgressMetricSnapshot {
     /// Complete metric metadata for this snapshot.
     metric: ProgressMetric,
     /// Identifier inherited from the source logical operation.
-    #[serde(default = "next_operation_id")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            default = "next_operation_id",
+            deserialize_with = "deserialize_nonzero_operation_id"
+        )
+    )]
     operation_id: u64,
     /// Lifecycle phase inherited from the source progress event.
     phase: ProgressPhase,
     /// Optional stage inherited from the source progress event.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     stage: Option<ProgressStage>,
     /// Total work-unit count when known.
     total_count: Option<u64>,
@@ -50,8 +62,41 @@ pub struct ProgressMetricSnapshot {
     /// Failed work-unit count.
     failed_count: u64,
     /// Monotonic elapsed duration inherited from the source progress event.
-    #[serde(with = "qubit_datatype::serde::duration_with_unit")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "qubit_datatype::serde::duration_with_unit")
+    )]
     elapsed: Duration,
+}
+
+/// Deserializes a legacy operation identifier while preserving the nonzero
+/// identifier invariant.
+///
+/// # Parameters
+///
+/// * `deserializer` - Serde deserializer providing the encoded identifier.
+///
+/// # Returns
+///
+/// The encoded identifier when nonzero, or a fresh process-local identifier
+/// when legacy data supplies zero.
+///
+/// # Errors
+///
+/// Returns the deserializer's error when the encoded value is not a `u64`.
+#[cfg(feature = "serde")]
+fn deserialize_nonzero_operation_id<'de, D>(
+    deserializer: D,
+) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let operation_id = u64::deserialize(deserializer)?;
+    Ok(if operation_id != 0 {
+        operation_id
+    } else {
+        next_operation_id()
+    })
 }
 
 impl ProgressMetricSnapshot {

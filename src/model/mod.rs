@@ -7,6 +7,7 @@
 // =============================================================================
 //! Progress event data model.
 
+#[cfg(feature = "serde")]
 mod internal;
 mod progress_counter;
 mod progress_event;

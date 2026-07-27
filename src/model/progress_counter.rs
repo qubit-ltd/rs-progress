@@ -5,6 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+#[cfg(feature = "serde")]
 use serde::{
     Deserialize,
     Serialize,
@@ -32,7 +33,8 @@ use serde::{
 /// assert_eq!(counter.total_count(), Some(10_000));
 /// assert_eq!(counter.progress_percent(), Some(40.0));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProgressCounter {
     /// Identifier of the metric this counter reports.
     metric_id: String,

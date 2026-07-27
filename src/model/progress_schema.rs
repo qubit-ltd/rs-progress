@@ -7,16 +7,18 @@
 // =============================================================================
 use std::collections::HashSet;
 
+#[cfg(feature = "serde")]
 use serde::{
     Deserialize,
     Serialize,
 };
 
+#[cfg(feature = "serde")]
+use super::internal::ProgressSchemaUnchecked;
 use super::{
     ProgressCounter,
     ProgressMetric,
     ProgressSchemaError,
-    internal::ProgressSchemaUnchecked,
 };
 
 /// Metric dictionary for one logical progress operation.
@@ -24,8 +26,9 @@ use super::{
 /// A schema defines which metric ids are valid for the operation. Events carry
 /// a schema so every serialized progress event is self-describing and reporters
 /// can resolve metric ids to display names without external state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "ProgressSchemaUnchecked")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "ProgressSchemaUnchecked"))]
 pub struct ProgressSchema {
     /// Metric definitions available in this progress stream.
     metrics: Vec<ProgressMetric>,
@@ -184,6 +187,7 @@ impl ProgressSchema {
     }
 }
 
+#[cfg(feature = "serde")]
 impl TryFrom<ProgressSchemaUnchecked> for ProgressSchema {
     type Error = ProgressSchemaError;
 

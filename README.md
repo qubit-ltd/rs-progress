@@ -244,8 +244,9 @@ stage, flattened counter values, and elapsed time.
 
 ## JSON Serialization
 
-Progress events are serde-serializable. `elapsed` uses the `duration_with_unit`
-adapter from `qubit-datatype`, so JSON is compact and agent-friendly.
+Enable the `serde` feature to serialize progress events. `elapsed` uses the
+`duration_with_unit` adapter from `qubit-datatype`, so JSON is compact and
+agent-friendly.
 The adapter selects the largest unit that preserves the value exactly, so
 sub-millisecond elapsed times round-trip without precision loss. Deserialization
 requires canonical duration text and does not trim surrounding whitespace.
@@ -282,14 +283,13 @@ or long-term metrics storage.
 
 ## Runtime Dependencies
 
-The core crate depends on:
+The `serde` feature enables serializable progress models and compact `Duration`
+serialization through `qubit-datatype`. It is enabled by default. The `json`
+feature implies `serde`; default features additionally enable
+`consumer-reporters` and `log`.
 
-- `serde` for serializable progress models;
-- `qubit-datatype` for compact `Duration` serialization.
-
-Default features additionally enable `consumer-reporters`, `json`, and `log`.
-Disable default features for the core model, lifecycle APIs, no-op reporter, and
-writer reporters without `qubit-function`, `serde_json`, or `log`:
+Disable default features for a dependency-free core model, lifecycle APIs,
+no-op reporter, and writer reporters:
 
 ```toml
 qubit-progress = { version = "0.6", default-features = false }

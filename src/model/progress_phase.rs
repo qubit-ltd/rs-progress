@@ -7,14 +7,16 @@
 // =============================================================================
 use std::fmt;
 
+#[cfg(feature = "serde")]
 use serde::{
     Deserialize,
     Serialize,
 };
 
 /// Lifecycle phase of a progress event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum ProgressPhase {
     /// Operation has started.
     Started,

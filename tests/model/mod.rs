@@ -7,6 +7,7 @@
 // =============================================================================
 //! Tests for progress data model.
 
+#[cfg(feature = "serde")]
 mod internal;
 mod progress_counter_tests;
 mod progress_event_build_error_tests;

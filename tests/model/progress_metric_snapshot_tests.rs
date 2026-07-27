@@ -137,6 +137,7 @@ fn test_progress_event_metric_snapshots_iterates_without_collecting() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn test_progress_metric_snapshot_serializes_elapsed_with_unit() {
     let snapshot = ProgressMetricSnapshot::new(
         ProgressMetric::new("entries", "Entries"),
@@ -155,4 +156,28 @@ fn test_progress_metric_snapshot_serializes_elapsed_with_unit() {
     assert!(json.contains("\"phase\":\"finished\""));
     assert!(json.contains("\"operation_id\":"));
     assert!(json.contains("\"elapsed\":\"110ms\""));
+}
+
+#[test]
+#[cfg(feature = "serde")]
+fn test_progress_metric_snapshot_deserialization_replaces_zero_operation_id() {
+    let snapshot = ProgressMetricSnapshot::new(
+        ProgressMetric::new("entries", "Entries"),
+        ProgressPhase::Finished,
+        None,
+        &ProgressCounter::new("entries").total(1).completed(1),
+        Duration::ZERO,
+    );
+    let json = serde_json::to_string(&snapshot)
+        .expect("snapshot should serialize")
+        .replacen(
+            &format!("\"operation_id\":{}", snapshot.operation_id()),
+            "\"operation_id\":0",
+            1,
+        );
+
+    let decoded: ProgressMetricSnapshot = serde_json::from_str(&json)
+        .expect("snapshot with zero operation id should deserialize");
+
+    assert_ne!(decoded.operation_id(), 0);
 }

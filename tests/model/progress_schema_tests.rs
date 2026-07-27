@@ -30,6 +30,7 @@ fn test_progress_schema_try_new_rejects_duplicate_metric_ids() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn test_progress_schema_deserialization_rejects_duplicate_metric_ids() {
     let json = r#"{"metrics":[{"id":"entries","name":"Entries"},{"id":"entries","name":"Duplicate"}]}"#;
 
