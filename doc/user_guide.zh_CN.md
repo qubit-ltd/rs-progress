@@ -83,19 +83,19 @@ progress.report_started(|event| {
     event
         .counter("entries", |counter| counter.total(3))
         .counter("bytes", |counter| counter.total(1_024))
-});
+}).expect("progress output should succeed");
 
 progress.report_running(|event| {
     event
         .counter("entries", |counter| counter.total(3).completed(1).active(1))
         .counter("bytes", |counter| counter.total(1_024).completed(512))
-});
+}).expect("progress output should succeed");
 
 progress.report_finished(|event| {
     event
         .counter("entries", |counter| counter.total(3).completed(3).succeeded(3))
         .counter("bytes", |counter| counter.total(1_024).completed(1_024))
-});
+}).expect("progress output should succeed");
 ```
 
 ## 定义 Metric 和 Schema
@@ -261,7 +261,9 @@ let progress = Progress::new(
         .with_weight(0.7),
 );
 
-let event = progress.report_started(|event| event.counter("files", |counter| counter.total(10)));
+let event = progress
+    .report_started(|event| event.counter("files", |counter| counter.total(10)))
+    .expect("progress output should succeed");
 assert_eq!(event.stage().map(|stage| stage.id()), Some("copy"));
 ```
 
@@ -275,12 +277,12 @@ Stage 可以绑定到整个 `Progress` run，也可以在 event builder 中按 e
 use std::time::Duration;
 
 use qubit_progress::{
-    NoOpProgressReporter,
     Progress,
     ProgressSchema,
+    WriterProgressReporter,
 };
 
-let reporter = NoOpProgressReporter;
+let reporter = WriterProgressReporter::from_writer(Vec::new());
 let mut progress = Progress::new(
     &reporter,
     Duration::from_secs(60),
@@ -289,12 +291,12 @@ let mut progress = Progress::new(
 
 let not_due = progress.report_running_if_due(|event| {
     event.counter("entries", |counter| counter.total(10).completed(1))
-});
-assert!(not_due.is_none());
+}).expect("progress output should succeed");
+assert_eq!(not_due, None);
 
 let emitted = progress.report_running(|event| {
     event.counter("entries", |counter| counter.total(10).completed(1))
-});
+}).expect("progress output should succeed");
 assert_eq!(emitted.counter("entries").map(|counter| counter.completed_count()), Some(1));
 ```
 
@@ -332,13 +334,13 @@ use std::{
 
 use qubit_atomic::ArcAtomic;
 use qubit_progress::{
-    NoOpProgressReporter,
     Progress,
     ProgressCounter,
     ProgressSchema,
+    WriterProgressReporter,
 };
 
-let reporter = NoOpProgressReporter;
+let reporter = WriterProgressReporter::from_writer(Vec::new());
 let completed = ArcAtomic::new(0u64);
 let progress = Progress::new(
     &reporter,
@@ -356,18 +358,20 @@ thread::scope(|scope| {
             .completed(snapshot_completed.load())]
     });
     let point = running.point_handle();
+    let status = running.status();
 
     let worker = scope.spawn({
         let completed = completed.clone();
         let point = point.clone();
         move || {
             completed.fetch_add(1);
-            assert!(point.report());
+            point.report();
         }
     });
     worker.join().expect("worker should complete");
 
-    running.stop_and_join();
+    assert!(!status.is_failed());
+    running.stop_and_join().expect("progress output should succeed");
 });
 ```
 
@@ -377,6 +381,8 @@ thread::scope(|scope| {
 - worker handle 只能汇报 point，不能停止 reporter loop。
 - interval 为零时，`RunningProgressPointHandle::report` 会唤醒 reporter loop。
 - interval 为正数时，worker point reporting 是低成本 no-op，loop 通过 timeout 自行唤醒。
+- 可通过 RunningProgressGuard::status 在 join 前观察输出失败；仍必须调用
+  stop_and_join 以获取错误或继续传播 panic。
 - reporter 线程中的 panic 会在 `stop_and_join` 中继续传播。
 
 ## 内置 Reporter
@@ -422,7 +428,7 @@ let progress = Progress::new(
 
 progress.report_finished(|event| {
     event.counter("entries", |counter| counter.total(2).completed(2).succeeded(2))
-});
+}).expect("progress output should succeed");
 
 let text = String::from_utf8(
     output.lock().expect("output should lock").get_ref().clone(),
@@ -486,7 +492,7 @@ reporter.report(&ProgressEvent::running(
     ProgressSchema::single("entries", "Entries"),
     vec![ProgressCounter::new("entries").total(5).completed(2)],
     Duration::from_millis(110),
-));
+)).expect("JSON reporter should accept event");
 
 let text = String::from_utf8(
     output.lock().expect("output should lock").get_ref().clone(),
@@ -532,7 +538,7 @@ reporter.report(&ProgressEvent::running(
     ProgressSchema::single("entries", "Entries"),
     vec![ProgressCounter::new("entries").total(5).completed(2)],
     Duration::from_millis(110),
-));
+)).expect("snapshot reporter should accept event");
 
 let snapshots = snapshots.lock().expect("snapshot list should lock");
 assert_eq!(snapshots[0].metric_id(), "entries");
@@ -546,14 +552,16 @@ Reporter 只需要实现一个 trait：
 ```rust
 use qubit_progress::{
     ProgressEvent,
+    ProgressReportError,
     ProgressReporter,
 };
 
 struct MyReporter;
 
 impl ProgressReporter for MyReporter {
-    fn report(&self, event: &ProgressEvent) {
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
         println!("phase={}", event.phase());
+        Ok(())
     }
 }
 ```
@@ -567,6 +575,7 @@ use std::sync::Mutex;
 
 use qubit_progress::{
     ProgressEvent,
+    ProgressReportError,
     ProgressReporter,
 };
 
@@ -585,11 +594,12 @@ impl RecordingReporter {
 }
 
 impl ProgressReporter for RecordingReporter {
-    fn report(&self, event: &ProgressEvent) {
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
         self.events
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(event.clone());
+        Ok(())
     }
 }
 ```
@@ -608,6 +618,7 @@ use std::{
 
 use qubit_progress::{
     ProgressEvent,
+    ProgressReportError,
     ProgressReporter,
 };
 
@@ -627,13 +638,15 @@ impl<W> ProgressReporter for JsonLinesProgressReporter<W>
 where
     W: Write + Send,
 {
-    fn report(&self, event: &ProgressEvent) {
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
         let mut writer = self
             .writer
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        serde_json::to_writer(&mut *writer, event).expect("progress event should serialize");
-        writeln!(writer).expect("progress event should write");
+        serde_json::to_writer(&mut *writer, event)
+            .map_err(|error| ProgressReportError::message(&error.to_string()))?;
+        writeln!(writer)?;
+        Ok(())
     }
 }
 ```
@@ -652,6 +665,7 @@ use std::sync::mpsc::Sender;
 use qubit_progress::{
     ProgressEvent,
     ProgressPhase,
+    ProgressReportError,
     ProgressReporter,
 };
 
@@ -680,9 +694,9 @@ impl GuiProgressReporter {
 }
 
 impl ProgressReporter for GuiProgressReporter {
-    fn report(&self, event: &ProgressEvent) {
+    fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError> {
         let Some(counter) = event.counter(&self.primary_metric_id) else {
-            return;
+            return Ok(());
         };
         let message = GuiProgressMessage {
             phase: event.phase(),
@@ -691,7 +705,9 @@ impl ProgressReporter for GuiProgressReporter {
             total: counter.total_count(),
             percent: counter.progress_percent(),
         };
-        let _ = self.sender.send(message);
+        self.sender
+            .send(message)
+            .map_err(|error| ProgressReportError::message(&error.to_string()))
     }
 }
 ```

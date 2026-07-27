@@ -170,6 +170,9 @@ shared state, then call `RunningProgressPointHandle::report()` to wake the
 background reporter thread when the interval is `Duration::ZERO`.
 `RunningProgressGuard` owns that background reporter thread, and
 `RunningProgressPointHandle` is the cloneable worker-side wakeup handle.
+Call `RunningProgressGuard::status` to observe a background output failure
+before joining. The returned `RunningProgressStatus` is cloneable;
+`stop_and_join` still returns its error or resumes its panic.
 
 The example below uses `qubit-atomic`'s `ArcAtomic`; add
 `qubit-atomic = "0.13"` if you copy this pattern into your own crate.
@@ -182,13 +185,13 @@ use std::{
 
 use qubit_atomic::ArcAtomic;
 use qubit_progress::{
-    NoOpProgressReporter,
     Progress,
     ProgressCounter,
     ProgressSchema,
+    WriterProgressReporter,
 };
 
-let reporter = NoOpProgressReporter;
+let reporter = WriterProgressReporter::from_writer(Vec::new());
 let completed = ArcAtomic::new(0u64);
 let progress = Progress::new(
     &reporter,
@@ -204,10 +207,12 @@ thread::scope(|scope| {
             .completed(snapshot_completed.load())]
     });
     let point = running.point_handle();
+    let status = running.status();
 
     completed.store(1);
     point.report();
 
+    assert!(!status.is_failed());
     running.stop_and_join().expect("progress output should succeed");
 });
 ```

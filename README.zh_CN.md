@@ -155,6 +155,8 @@ progress.report_finished(|event| {
 
 当 worker 线程更新业务状态，而协调线程需要周期性发出 `running` 事件时，可以使用 `Progress::spawn_running_reporter`。worker 更新共享状态后调用 `RunningProgressPointHandle::report()`；当间隔为 `Duration::ZERO` 时，这个调用会唤醒后台汇报线程。
 `RunningProgressGuard` 持有这个后台汇报线程，`RunningProgressPointHandle` 是可克隆的 worker 侧唤醒句柄。
+可通过 `RunningProgressGuard::status` 在 join 前观察后台输出失败；
+返回的 `RunningProgressStatus` 可克隆；`stop_and_join` 仍会返回其错误或继续传播 panic。
 
 下面的示例使用 `qubit-atomic` 的 `ArcAtomic`；如果复制这个模式到自己的 crate，需要额外添加 `qubit-atomic = "0.13"`。
 
@@ -166,13 +168,13 @@ use std::{
 
 use qubit_atomic::ArcAtomic;
 use qubit_progress::{
-    NoOpProgressReporter,
     Progress,
     ProgressCounter,
     ProgressSchema,
+    WriterProgressReporter,
 };
 
-let reporter = NoOpProgressReporter;
+let reporter = WriterProgressReporter::from_writer(Vec::new());
 let completed = ArcAtomic::new(0u64);
 let progress = Progress::new(
     &reporter,
@@ -188,10 +190,12 @@ thread::scope(|scope| {
             .completed(snapshot_completed.load())]
     });
     let point = running.point_handle();
+    let status = running.status();
 
     completed.store(1);
     point.report();
 
+    assert!(!status.is_failed());
     running.stop_and_join().expect("progress output should succeed");
 });
 ```
