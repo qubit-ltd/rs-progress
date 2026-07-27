@@ -13,3 +13,4 @@ mod running_progress_loop_tests;
 mod running_progress_notifier_tests;
 mod running_progress_point_handle_tests;
 mod running_progress_signal_tests;
+mod running_progress_status_tests;

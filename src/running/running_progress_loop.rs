@@ -6,32 +6,22 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 use std::{
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::{
         Arc,
-        atomic::{
-            AtomicBool,
-            Ordering,
-        },
-        mpsc::{
-            self,
-            Receiver,
-            RecvTimeoutError,
-        },
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver, RecvTimeoutError},
     },
     thread,
     time::Duration,
 };
 
-use crate::{
-    Progress,
-    model::ProgressCounter,
-    reporter::ProgressReportError,
-};
+use crate::{Progress, model::ProgressCounter, reporter::ProgressReportError};
 
 use super::{
-    internal::RunningProgressWait,
-    running_progress_guard::RunningProgressGuard,
+    internal::RunningProgressWait, running_progress_guard::RunningProgressGuard,
     running_progress_notifier::RunningProgressNotifier,
+    running_progress_status::RunningProgressStatus,
 };
 
 /// Runs periodic `running` progress reports for work tracked elsewhere.
@@ -74,10 +64,23 @@ impl RunningProgressLoop {
         F: FnMut() -> Vec<ProgressCounter> + Send + 'scope,
     {
         let report_points = progress.report_interval().is_zero();
-        let (progress_loop, notifier) = Self::channel();
-        let progress_thread =
-            scope.spawn(move || progress_loop.run(progress, snapshot));
-        RunningProgressGuard::new(notifier, progress_thread, report_points)
+        let (progress_loop, notifier, status) = Self::channel();
+        let loop_status = status.clone();
+        let progress_thread = scope.spawn(move || {
+            match catch_unwind(AssertUnwindSafe(|| progress_loop.run(progress, snapshot))) {
+                Ok(result) => {
+                    if result.is_err() {
+                        loop_status.mark_failed();
+                    }
+                    result
+                }
+                Err(payload) => {
+                    loop_status.mark_failed();
+                    resume_unwind(payload)
+                }
+            }
+        });
+        RunningProgressGuard::new(notifier, progress_thread, report_points, status)
     }
 
     /// Creates a paired running progress loop and notifier.
@@ -86,10 +89,11 @@ impl RunningProgressLoop {
     ///
     /// A loop that owns the signal receiver and a notifier that sends wakeup or
     /// stop signals to that loop.
-    pub(crate) fn channel() -> (Self, RunningProgressNotifier) {
+    pub(crate) fn channel() -> (Self, RunningProgressNotifier, RunningProgressStatus) {
         let (wake_sender, wake_receiver) = mpsc::sync_channel(1);
         let stopped = Arc::new(AtomicBool::new(false));
         let pending = Arc::new(AtomicBool::new(false));
+        let status = RunningProgressStatus::inactive();
         (
             Self {
                 wake_receiver,
@@ -101,6 +105,7 @@ impl RunningProgressLoop {
                 stopped,
                 pending,
             },
+            status,
         )
     }
 
@@ -130,8 +135,7 @@ impl RunningProgressLoop {
     {
         let report_interval = progress.report_interval();
         while self.receive_wait(report_interval).should_report() {
-            progress
-                .report_running_if_due(|event| event.counters(snapshot()))?;
+            progress.report_running_if_due(|event| event.counters(snapshot()))?;
         }
         Ok(())
     }
@@ -159,9 +163,7 @@ impl RunningProgressLoop {
         }
         if report_interval.is_zero() {
             return match self.wake_receiver.recv() {
-                Ok(()) if self.pending.swap(false, Ordering::AcqRel) => {
-                    RunningProgressWait::Wake
-                }
+                Ok(()) if self.pending.swap(false, Ordering::AcqRel) => RunningProgressWait::Wake,
                 Ok(()) => RunningProgressWait::Stopped,
                 Err(_) => RunningProgressWait::Disconnected,
             };
@@ -169,9 +171,7 @@ impl RunningProgressLoop {
         match self.wake_receiver.recv_timeout(report_interval) {
             Ok(()) => RunningProgressWait::Stopped,
             Err(RecvTimeoutError::Timeout) => RunningProgressWait::Timeout,
-            Err(RecvTimeoutError::Disconnected) => {
-                RunningProgressWait::Disconnected
-            }
+            Err(RecvTimeoutError::Disconnected) => RunningProgressWait::Disconnected,
         }
     }
 }

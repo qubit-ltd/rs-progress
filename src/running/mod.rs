@@ -18,7 +18,9 @@ mod running_progress_guard;
 mod running_progress_loop;
 mod running_progress_notifier;
 mod running_progress_point_handle;
+mod running_progress_status;
 
 pub use running_progress_guard::RunningProgressGuard;
 pub(crate) use running_progress_loop::RunningProgressLoop;
 pub use running_progress_point_handle::RunningProgressPointHandle;
+pub use running_progress_status::RunningProgressStatus;

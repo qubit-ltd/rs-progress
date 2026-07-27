@@ -7,11 +7,7 @@
 // =============================================================================
 use std::{
     error::Error,
-    fmt::{
-        self,
-        Display,
-        Formatter,
-    },
+    fmt::{self, Display, Formatter},
 };
 
 /// Error produced when metric metadata and counter values do not correspond.

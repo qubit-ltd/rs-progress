@@ -10,10 +10,7 @@ use qubit_function::ArcConsumer;
 use super::json_progress_reporter::JsonProgressReporter;
 use crate::{
     model::ProgressEvent,
-    reporter::{
-        ProgressReportError,
-        ProgressReporter,
-    },
+    reporter::{ProgressReportError, ProgressReporter},
 };
 
 /// Progress reporter that emits JSON metric snapshots through `log`.

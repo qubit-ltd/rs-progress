@@ -9,30 +9,19 @@ use std::{
     collections::HashSet,
     sync::{
         Arc,
-        atomic::{
-            AtomicU64,
-            Ordering,
-        },
+        atomic::{AtomicU64, Ordering},
     },
     time::Duration,
 };
 
 #[cfg(feature = "serde")]
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "serde")]
 use super::internal::ProgressEventUnchecked;
 use super::{
-    ProgressCounter,
-    ProgressEventBuildError,
-    ProgressEventBuilder,
-    ProgressMetricSnapshot,
-    ProgressPhase,
-    ProgressSchema,
-    ProgressStage,
+    ProgressCounter, ProgressEventBuildError, ProgressEventBuilder, ProgressMetricSnapshot,
+    ProgressPhase, ProgressSchema, ProgressStage,
 };
 
 /// Immutable progress event delivered to reporters.
@@ -77,10 +66,7 @@ pub struct ProgressEvent {
     /// Lifecycle phase of the reported operation.
     phase: ProgressPhase,
     /// Optional current stage.
-    #[cfg_attr(
-        feature = "serde",
-        serde(skip_serializing_if = "Option::is_none")
-    )]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     stage: Option<ProgressStage>,
     /// Metric counters for this event.
     counters: Vec<ProgressCounter>,
@@ -124,8 +110,7 @@ impl ProgressEvent {
     /// another counter's metric id. Use [`Self::try_new`] for fallible input.
     #[inline]
     pub fn new(builder: ProgressEventBuilder) -> Self {
-        Self::try_new(builder)
-            .expect("progress event counters must match schema")
+        Self::try_new(builder).expect("progress event counters must match schema")
     }
 
     /// Tries to create a progress event from a builder.
@@ -143,9 +128,7 @@ impl ProgressEvent {
     /// Returns [`ProgressEventBuildError::UnknownMetricId`] for undeclared
     /// counter metrics and
     /// [`ProgressEventBuildError::DuplicateCounterMetricId`] for duplicates.
-    pub fn try_new(
-        builder: ProgressEventBuilder,
-    ) -> Result<Self, ProgressEventBuildError> {
+    pub fn try_new(builder: ProgressEventBuilder) -> Result<Self, ProgressEventBuildError> {
         Self::validate_counters(&builder.schema, &builder.counters)?;
         Ok(Self::from_validated_parts(
             builder.schema,
@@ -477,11 +460,9 @@ impl ProgressEvent {
                 });
             }
             if !seen.insert(metric_id) {
-                return Err(
-                    ProgressEventBuildError::DuplicateCounterMetricId {
-                        metric_id: metric_id.to_owned(),
-                    },
-                );
+                return Err(ProgressEventBuildError::DuplicateCounterMetricId {
+                    metric_id: metric_id.to_owned(),
+                });
             }
         }
         Ok(())
@@ -505,13 +486,8 @@ impl TryFrom<ProgressEventUnchecked> for ProgressEvent {
     /// # Errors
     ///
     /// Returns an error when counter ids are undeclared or duplicated.
-    fn try_from(
-        unchecked: ProgressEventUnchecked,
-    ) -> Result<Self, Self::Error> {
-        Self::validate_counters(
-            unchecked.schema.as_ref(),
-            &unchecked.counters,
-        )?;
+    fn try_from(unchecked: ProgressEventUnchecked) -> Result<Self, Self::Error> {
+        Self::validate_counters(unchecked.schema.as_ref(), &unchecked.counters)?;
         Ok(Self::from_validated_parts(
             unchecked.schema,
             unchecked

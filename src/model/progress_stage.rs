@@ -6,10 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 #[cfg(feature = "serde")]
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 use super::ProgressStageError;
 #[cfg(feature = "serde")]
@@ -40,22 +37,13 @@ pub struct ProgressStage {
     /// Human-readable stage name.
     name: String,
     /// Zero-based stage index when known.
-    #[cfg_attr(
-        feature = "serde",
-        serde(skip_serializing_if = "Option::is_none")
-    )]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     index: Option<usize>,
     /// Total number of stages when known.
-    #[cfg_attr(
-        feature = "serde",
-        serde(skip_serializing_if = "Option::is_none")
-    )]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     total_stages: Option<usize>,
     /// Relative stage weight when the caller uses weighted progress.
-    #[cfg_attr(
-        feature = "serde",
-        serde(skip_serializing_if = "Option::is_none")
-    )]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     weight: Option<f64>,
 }
 
@@ -153,10 +141,7 @@ impl ProgressStage {
     /// Returns [`ProgressStageError::NonFiniteWeight`] for NaN or infinity,
     /// and [`ProgressStageError::NegativeWeight`] for a finite negative value.
     #[inline]
-    pub fn try_with_weight(
-        mut self,
-        weight: f64,
-    ) -> Result<Self, ProgressStageError> {
+    pub fn try_with_weight(mut self, weight: f64) -> Result<Self, ProgressStageError> {
         if !weight.is_finite() {
             return Err(ProgressStageError::NonFiniteWeight);
         }
@@ -236,9 +221,7 @@ impl TryFrom<ProgressStageUnchecked> for ProgressStage {
     /// # Errors
     ///
     /// Returns an error when the serialized weight is non-finite or negative.
-    fn try_from(
-        unchecked: ProgressStageUnchecked,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(unchecked: ProgressStageUnchecked) -> Result<Self, Self::Error> {
         let stage = Self {
             id: unchecked.id,
             name: unchecked.name,

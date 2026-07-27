@@ -5,19 +5,12 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use qubit_function::{
-    ArcConsumer,
-    Consumer,
-};
+use qubit_function::{ArcConsumer, Consumer};
 
 use super::formatted_progress_reporter::FormattedProgressReporter;
 use crate::{
     model::ProgressEvent,
-    reporter::{
-        ProgressReportError,
-        ProgressReporter,
-        format::JsonMetricSnapshotFormatter,
-    },
+    reporter::{ProgressReportError, ProgressReporter, format::JsonMetricSnapshotFormatter},
 };
 
 /// Progress reporter that emits JSON metric snapshot strings to a consumer.
@@ -39,10 +32,7 @@ impl<C> JsonProgressReporter<C> {
     #[inline]
     pub fn new(consumer: C) -> Self {
         Self {
-            inner: FormattedProgressReporter::new(
-                JsonMetricSnapshotFormatter::new(),
-                consumer,
-            ),
+            inner: FormattedProgressReporter::new(JsonMetricSnapshotFormatter::new(), consumer),
         }
     }
 
@@ -52,9 +42,7 @@ impl<C> JsonProgressReporter<C> {
     ///
     /// A shared reference to the inner reporter.
     #[inline]
-    pub const fn inner(
-        &self,
-    ) -> &FormattedProgressReporter<JsonMetricSnapshotFormatter, C> {
+    pub const fn inner(&self) -> &FormattedProgressReporter<JsonMetricSnapshotFormatter, C> {
         &self.inner
     }
 }

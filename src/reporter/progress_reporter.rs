@@ -5,10 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use crate::{
-    model::ProgressEvent,
-    reporter::ProgressReportError,
-};
+use crate::{model::ProgressEvent, reporter::ProgressReportError};
 
 /// Receives immutable progress events for one logical operation.
 ///

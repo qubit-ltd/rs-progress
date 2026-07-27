@@ -8,31 +8,16 @@
 use std::{
     sync::Arc,
     thread,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 use crate::{
     model::{
-        ProgressCounter,
-        ProgressEvent,
-        ProgressEventBuilder,
-        ProgressMetric,
-        ProgressPhase,
-        ProgressSchema,
-        ProgressStage,
-        next_operation_id,
+        ProgressCounter, ProgressEvent, ProgressEventBuilder, ProgressMetric, ProgressPhase,
+        ProgressSchema, ProgressStage, next_operation_id,
     },
-    reporter::{
-        ProgressReportError,
-        ProgressReporter,
-    },
-    running::{
-        RunningProgressGuard,
-        RunningProgressLoop,
-    },
+    reporter::{ProgressReportError, ProgressReporter},
+    running::{RunningProgressGuard, RunningProgressLoop},
 };
 
 /// Tracks one logical progress-producing operation and reports events.
@@ -85,7 +70,9 @@ pub struct Progress<'a> {
     /// Minimum interval between due-based running callbacks.
     report_interval: Duration,
     /// Next monotonic instant at which a due-based running callback may fire.
-    next_running_at: Instant,
+    ///
+    /// None when the configured interval cannot be added to the base instant.
+    next_running_at: Option<Instant>,
     /// Optional stage metadata attached to every event emitted by this run.
     stage: Option<ProgressStage>,
 }
@@ -133,10 +120,7 @@ impl<'a> Progress<'a> {
         Self::new(
             reporter,
             report_interval,
-            ProgressSchema::new(vec![ProgressMetric::new(
-                metric_id,
-                metric_name,
-            )]),
+            ProgressSchema::new(vec![ProgressMetric::new(metric_id, metric_name)]),
         )
     }
 
@@ -230,18 +214,11 @@ impl<'a> Progress<'a> {
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_started<F>(
-        &self,
-        configure: F,
-    ) -> Result<ProgressEvent, ProgressReportError>
+    pub fn report_started<F>(&self, configure: F) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_with_elapsed(
-            ProgressPhase::Started,
-            Duration::ZERO,
-            configure,
-        )
+        self.report_with_elapsed(ProgressPhase::Started, Duration::ZERO, configure)
     }
 
     /// Reports a started lifecycle event only when reporting is enabled.
@@ -272,11 +249,7 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_if_enabled_with_elapsed(
-            ProgressPhase::Started,
-            Duration::ZERO,
-            configure,
-        )
+        self.report_if_enabled_with_elapsed(ProgressPhase::Started, Duration::ZERO, configure)
     }
 
     /// Reports a running lifecycle event immediately.
@@ -299,10 +272,7 @@ impl<'a> Progress<'a> {
     /// # Panics
     ///
     /// Propagates panics from the configured reporter.
-    pub fn report_running<F>(
-        &mut self,
-        configure: F,
-    ) -> Result<ProgressEvent, ProgressReportError>
+    pub fn report_running<F>(&mut self, configure: F) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
@@ -348,7 +318,7 @@ impl<'a> Progress<'a> {
             return Ok(None);
         }
         let now = Instant::now();
-        let event = self.report_with_elapsed(
+        let event = self.report_with_elapsed_enabled(
             ProgressPhase::Running,
             now.saturating_duration_since(self.started_at),
             configure,
@@ -393,10 +363,13 @@ impl<'a> Progress<'a> {
             return Ok(None);
         }
         let now = Instant::now();
-        if now < self.next_running_at {
+        let Some(next_running_at) = self.next_running_at else {
+            return Ok(None);
+        };
+        if now < next_running_at {
             return Ok(None);
         }
-        let event = self.report_with_elapsed(
+        let event = self.report_with_elapsed_enabled(
             ProgressPhase::Running,
             now.saturating_duration_since(self.started_at),
             configure,
@@ -425,18 +398,11 @@ impl<'a> Progress<'a> {
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_finished<F>(
-        &self,
-        configure: F,
-    ) -> Result<ProgressEvent, ProgressReportError>
+    pub fn report_finished<F>(&self, configure: F) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_with_elapsed(
-            ProgressPhase::Finished,
-            self.elapsed(),
-            configure,
-        )
+        self.report_with_elapsed(ProgressPhase::Finished, self.elapsed(), configure)
     }
 
     /// Reports a finished lifecycle event only when reporting is enabled.
@@ -467,11 +433,7 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_if_enabled_with_elapsed(
-            ProgressPhase::Finished,
-            self.elapsed(),
-            configure,
-        )
+        self.report_if_enabled_with_elapsed(ProgressPhase::Finished, self.elapsed(), configure)
     }
 
     /// Reports a failed lifecycle event.
@@ -495,18 +457,11 @@ impl<'a> Progress<'a> {
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_failed<F>(
-        &self,
-        configure: F,
-    ) -> Result<ProgressEvent, ProgressReportError>
+    pub fn report_failed<F>(&self, configure: F) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_with_elapsed(
-            ProgressPhase::Failed,
-            self.elapsed(),
-            configure,
-        )
+        self.report_with_elapsed(ProgressPhase::Failed, self.elapsed(), configure)
     }
 
     /// Reports a failed lifecycle event only when reporting is enabled.
@@ -537,11 +492,7 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_if_enabled_with_elapsed(
-            ProgressPhase::Failed,
-            self.elapsed(),
-            configure,
-        )
+        self.report_if_enabled_with_elapsed(ProgressPhase::Failed, self.elapsed(), configure)
     }
 
     /// Reports a canceled lifecycle event.
@@ -565,18 +516,11 @@ impl<'a> Progress<'a> {
     ///
     /// Propagates panics from the configured reporter.
     #[inline]
-    pub fn report_canceled<F>(
-        &self,
-        configure: F,
-    ) -> Result<ProgressEvent, ProgressReportError>
+    pub fn report_canceled<F>(&self, configure: F) -> Result<ProgressEvent, ProgressReportError>
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_with_elapsed(
-            ProgressPhase::Canceled,
-            self.elapsed(),
-            configure,
-        )
+        self.report_with_elapsed(ProgressPhase::Canceled, self.elapsed(), configure)
     }
 
     /// Reports a canceled lifecycle event only when reporting is enabled.
@@ -607,11 +551,7 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        self.report_if_enabled_with_elapsed(
-            ProgressPhase::Canceled,
-            self.elapsed(),
-            configure,
-        )
+        self.report_if_enabled_with_elapsed(ProgressPhase::Canceled, self.elapsed(), configure)
     }
 
     /// Spawns a scoped background reporter for periodic running events.
@@ -650,11 +590,7 @@ impl<'a> Progress<'a> {
         if !self.reporting_enabled() {
             return RunningProgressGuard::inactive();
         }
-        RunningProgressLoop::spawn_scoped(
-            scope,
-            self.fork_for_running(),
-            snapshot,
-        )
+        RunningProgressLoop::spawn_scoped(scope, self.fork_for_running(), snapshot)
     }
 
     /// Reports a lifecycle event with an explicit elapsed duration.
@@ -682,10 +618,47 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        let builder = self.event_builder_with_elapsed(elapsed).phase(phase);
         if !self.reporting_enabled() {
-            return builder.try_build().map_err(Into::into);
+            return self
+                .event_builder_with_elapsed(elapsed)
+                .phase(phase)
+                .try_build()
+                .map_err(Into::into);
         }
+        self.report_with_elapsed_enabled(phase, elapsed, configure)
+    }
+
+    /// Reports a lifecycle event after the caller has checked that reporting is
+    /// enabled.
+    ///
+    /// # Parameters
+    ///
+    /// * phase - Lifecycle phase attached to the event.
+    /// * elapsed - Elapsed duration carried by the event.
+    /// * configure - Closure that adds counters or stage overrides.
+    ///
+    /// # Returns
+    ///
+    /// The configured event after it has been delivered to the reporter.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
+    ///
+    /// # Panics
+    ///
+    /// Propagates panics from the configured reporter.
+    fn report_with_elapsed_enabled<F>(
+        &self,
+        phase: ProgressPhase,
+        elapsed: Duration,
+        configure: F,
+    ) -> Result<ProgressEvent, ProgressReportError>
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        let builder = self.event_builder_with_elapsed(elapsed).phase(phase);
         let event = configure(builder).try_build()?;
         self.reporter.report(&event)?;
         Ok(event)
@@ -725,7 +698,7 @@ impl<'a> Progress<'a> {
         if !self.reporting_enabled() {
             return Ok(None);
         }
-        self.report_with_elapsed(phase, elapsed, configure)
+        self.report_with_elapsed_enabled(phase, elapsed, configure)
             .map(Some)
     }
 
@@ -833,16 +806,12 @@ impl<'a> Progress<'a> {
     /// # Returns
     ///
     /// A builder carrying this run's schema and optional stage.
-    fn event_builder_with_elapsed(
-        &self,
-        elapsed: Duration,
-    ) -> ProgressEventBuilder {
-        let builder =
-            ProgressEventBuilder::from_shared_schema_with_operation_id(
-                Arc::clone(&self.schema),
-                self.operation_id,
-            )
-            .elapsed(elapsed);
+    fn event_builder_with_elapsed(&self, elapsed: Duration) -> ProgressEventBuilder {
+        let builder = ProgressEventBuilder::from_shared_schema_with_operation_id(
+            Arc::clone(&self.schema),
+            self.operation_id,
+        )
+        .elapsed(elapsed);
         match self.stage.clone() {
             Some(stage) => builder.stage(stage),
             None => builder,
@@ -859,7 +828,7 @@ impl<'a> Progress<'a> {
 ///
 /// # Returns
 ///
-/// `base + interval`, or `base` when the addition overflows.
-fn next_instant(base: Instant, interval: Duration) -> Instant {
-    base.checked_add(interval).unwrap_or(base)
+/// `Some(base + interval)`, or `None` when the addition overflows.
+fn next_instant(base: Instant, interval: Duration) -> Option<Instant> {
+    base.checked_add(interval)
 }

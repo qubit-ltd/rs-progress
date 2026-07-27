@@ -5,19 +5,11 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use std::{
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use serde::Deserialize;
 
-use crate::{
-    ProgressCounter,
-    ProgressPhase,
-    ProgressSchema,
-    ProgressStage,
-};
+use crate::{ProgressCounter, ProgressPhase, ProgressSchema, ProgressStage};
 /// Deserialized event representation before counter validation.
 #[derive(Deserialize)]
 pub(crate) struct ProgressEventUnchecked {

@@ -7,11 +7,7 @@
 // =============================================================================
 use std::{
     error::Error,
-    fmt::{
-        self,
-        Display,
-        Formatter,
-    },
+    fmt::{self, Display, Formatter},
 };
 
 /// Error produced when a progress schema violates structural constraints.

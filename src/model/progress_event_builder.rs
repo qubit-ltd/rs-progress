@@ -5,19 +5,11 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use std::{
-    sync::Arc,
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use super::{
-    ProgressCounter,
-    ProgressEvent,
-    ProgressEventBuildError,
-    ProgressPhase,
-    ProgressSchema,
-    ProgressStage,
-    next_operation_id,
+    ProgressCounter, ProgressEvent, ProgressEventBuildError, ProgressPhase, ProgressSchema,
+    ProgressStage, next_operation_id,
 };
 
 /// Builder for [`ProgressEvent`].
