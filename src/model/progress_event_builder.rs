@@ -11,13 +11,13 @@ use std::{
 };
 
 use super::{
-    next_operation_id,
     ProgressCounter,
     ProgressEvent,
     ProgressEventBuildError,
     ProgressPhase,
     ProgressSchema,
     ProgressStage,
+    next_operation_id,
 };
 
 /// Builder for [`ProgressEvent`].

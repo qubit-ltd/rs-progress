@@ -9,17 +9,30 @@
 
 use std::time::Duration;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{
+    Criterion,
+    criterion_group,
+    criterion_main,
+};
 use qubit_progress::{
-    NoOpProgressReporter, Progress, ProgressCounter, ProgressEvent, ProgressMetric, ProgressSchema,
+    NoOpProgressReporter,
+    Progress,
+    ProgressCounter,
+    ProgressEvent,
+    ProgressMetric,
+    ProgressSchema,
 };
 use std::hint::black_box;
 
 /// Benchmarks a due-check that must avoid constructing counters and events.
 fn benchmark_running_report_due_check(c: &mut Criterion) {
     let reporter = NoOpProgressReporter;
-    let mut progress =
-        Progress::single_metric(&reporter, Duration::from_secs(60), "entries", "Entries");
+    let mut progress = Progress::single_metric(
+        &reporter,
+        Duration::from_secs(60),
+        "entries",
+        "Entries",
+    );
 
     c.bench_function("running_report_due_check_not_due", |b| {
         b.iter(|| {

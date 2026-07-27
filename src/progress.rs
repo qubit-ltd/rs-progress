@@ -16,7 +16,6 @@ use std::{
 
 use crate::{
     model::{
-        next_operation_id,
         ProgressCounter,
         ProgressEvent,
         ProgressEventBuilder,
@@ -24,6 +23,7 @@ use crate::{
         ProgressPhase,
         ProgressSchema,
         ProgressStage,
+        next_operation_id,
     },
     reporter::{
         ProgressReportError,
