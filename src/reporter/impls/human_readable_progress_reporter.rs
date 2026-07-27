@@ -5,13 +5,18 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use qubit_function::{ArcConsumer, Consumer};
+use qubit_function::{
+    ArcConsumer,
+    Consumer,
+};
 
 use super::formatted_progress_reporter::FormattedProgressReporter;
 use crate::{
     model::ProgressEvent,
     reporter::{
-        ProgressReportError, ProgressReporter, format::HumanReadableMetricSnapshotFormatter,
+        ProgressReportError,
+        ProgressReporter,
+        format::HumanReadableMetricSnapshotFormatter,
     },
 };
 
@@ -49,7 +54,8 @@ impl<C> HumanReadableProgressReporter<C> {
     #[inline]
     pub const fn inner(
         &self,
-    ) -> &FormattedProgressReporter<HumanReadableMetricSnapshotFormatter, C> {
+    ) -> &FormattedProgressReporter<HumanReadableMetricSnapshotFormatter, C>
+    {
         &self.inner
     }
 }

@@ -8,7 +8,10 @@
 use std::fmt;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 /// Lifecycle phase of a progress event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

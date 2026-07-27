@@ -7,7 +7,11 @@
 // =============================================================================
 use crate::{
     model::ProgressEvent,
-    reporter::{JsonWriterProgressReporter, ProgressReportError, ProgressReporter},
+    reporter::{
+        JsonWriterProgressReporter,
+        ProgressReportError,
+        ProgressReporter,
+    },
 };
 
 /// Progress reporter that writes JSON metric snapshots to stderr.

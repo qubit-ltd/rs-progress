@@ -7,8 +7,14 @@
 // =============================================================================
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
-    mpsc::{SyncSender, TrySendError},
+    atomic::{
+        AtomicBool,
+        Ordering,
+    },
+    mpsc::{
+        SyncSender,
+        TrySendError,
+    },
 };
 
 /// Notifies a running progress loop about progress points and completion.

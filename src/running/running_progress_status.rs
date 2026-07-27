@@ -7,7 +7,10 @@
 // =============================================================================
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{
+        AtomicBool,
+        Ordering,
+    },
 };
 
 /// Shared status for a background running-progress reporter.

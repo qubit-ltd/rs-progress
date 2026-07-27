@@ -8,10 +8,18 @@
 use std::time::Duration;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{
+    Deserialize,
+    Deserializer,
+    Serialize,
+};
 
 use super::{
-    ProgressCounter, ProgressMetric, ProgressMetricSnapshotError, ProgressPhase, ProgressStage,
+    ProgressCounter,
+    ProgressMetric,
+    ProgressMetricSnapshotError,
+    ProgressPhase,
+    ProgressStage,
     next_operation_id,
 };
 
@@ -38,7 +46,10 @@ pub struct ProgressMetricSnapshot {
     /// Lifecycle phase inherited from the source progress event.
     phase: ProgressPhase,
     /// Optional stage inherited from the source progress event.
-    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     stage: Option<ProgressStage>,
     /// Total work-unit count when known.
     total_count: Option<u64>,
@@ -74,7 +85,9 @@ pub struct ProgressMetricSnapshot {
 ///
 /// Returns the deserializer's error when the encoded value is not a `u64`.
 #[cfg(feature = "serde")]
-fn deserialize_nonzero_operation_id<'de, D>(deserializer: D) -> Result<u64, D::Error>
+fn deserialize_nonzero_operation_id<'de, D>(
+    deserializer: D,
+) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -144,8 +157,15 @@ impl ProgressMetricSnapshot {
         counter: &ProgressCounter,
         elapsed: Duration,
     ) -> Self {
-        Self::try_new_with_operation_id(operation_id, metric, phase, stage, counter, elapsed)
-            .expect("progress metric and counter ids must match")
+        Self::try_new_with_operation_id(
+            operation_id,
+            metric,
+            phase,
+            stage,
+            counter,
+            elapsed,
+        )
+        .expect("progress metric and counter ids must match")
     }
 
     /// Tries to create a metric snapshot from explicit values.
@@ -173,7 +193,14 @@ impl ProgressMetricSnapshot {
         counter: &ProgressCounter,
         elapsed: Duration,
     ) -> Result<Self, ProgressMetricSnapshotError> {
-        Self::try_new_with_operation_id(next_operation_id(), metric, phase, stage, counter, elapsed)
+        Self::try_new_with_operation_id(
+            next_operation_id(),
+            metric,
+            phase,
+            stage,
+            counter,
+            elapsed,
+        )
     }
 
     /// Validates a metric snapshot with a source operation identifier.
@@ -365,7 +392,8 @@ impl ProgressMetricSnapshot {
             if total_count == 0 {
                 1.0
             } else {
-                (self.completed_count as f64 / total_count as f64).clamp(0.0, 1.0)
+                (self.completed_count as f64 / total_count as f64)
+                    .clamp(0.0, 1.0)
             }
         })
     }

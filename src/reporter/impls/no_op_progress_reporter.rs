@@ -7,7 +7,10 @@
 // =============================================================================
 use crate::{
     model::ProgressEvent,
-    reporter::{ProgressReportError, ProgressReporter},
+    reporter::{
+        ProgressReportError,
+        ProgressReporter,
+    },
 };
 
 /// Progress reporter that ignores all events.
@@ -31,7 +34,10 @@ impl ProgressReporter for NoOpProgressReporter {
     ///
     /// * `event` - Event accepted and ignored.
     #[inline]
-    fn report(&self, _event: &ProgressEvent) -> Result<(), ProgressReportError> {
+    fn report(
+        &self,
+        _event: &ProgressEvent,
+    ) -> Result<(), ProgressReportError> {
         Ok(())
     }
 }

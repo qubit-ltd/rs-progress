@@ -5,7 +5,10 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use std::{panic::resume_unwind, thread::ScopedJoinHandle};
+use std::{
+    panic::resume_unwind,
+    thread::ScopedJoinHandle,
+};
 
 use super::{
     running_progress_notifier::RunningProgressNotifier,
@@ -88,7 +91,8 @@ pub struct RunningProgressGuard<'scope> {
     /// Notifier used to stop the reporter thread.
     notifier: Option<RunningProgressNotifier>,
     /// Scoped reporter thread handle.
-    progress_thread: Option<ScopedJoinHandle<'scope, Result<(), ProgressReportError>>>,
+    progress_thread:
+        Option<ScopedJoinHandle<'scope, Result<(), ProgressReportError>>>,
     /// Whether worker point notifications should wake the reporter loop.
     report_points: bool,
     /// Shared failure state for the reporter thread.
@@ -110,7 +114,10 @@ impl<'scope> RunningProgressGuard<'scope> {
     #[inline]
     pub(crate) const fn new(
         notifier: RunningProgressNotifier,
-        progress_thread: ScopedJoinHandle<'scope, Result<(), ProgressReportError>>,
+        progress_thread: ScopedJoinHandle<
+            'scope,
+            Result<(), ProgressReportError>,
+        >,
         report_points: bool,
         status: RunningProgressStatus,
     ) -> Self {

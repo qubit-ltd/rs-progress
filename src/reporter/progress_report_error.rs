@@ -7,7 +7,11 @@
 // =============================================================================
 use std::{
     error::Error,
-    fmt::{self, Display, Formatter},
+    fmt::{
+        self,
+        Display,
+        Formatter,
+    },
     io,
 };
 
@@ -45,7 +49,9 @@ impl Clone for ProgressReportError {
     fn clone(&self) -> Self {
         match self {
             Self::EventBuild(error) => Self::EventBuild(error.clone()),
-            Self::Io(error) => Self::Io(io::Error::new(error.kind(), error.to_string())),
+            Self::Io(error) => {
+                Self::Io(io::Error::new(error.kind(), error.to_string()))
+            }
             Self::Message(message) => Self::Message(message.clone()),
         }
     }
@@ -57,7 +63,8 @@ impl PartialEq for ProgressReportError {
         match (self, other) {
             (Self::EventBuild(left), Self::EventBuild(right)) => left == right,
             (Self::Io(left), Self::Io(right)) => {
-                left.kind() == right.kind() && left.to_string() == right.to_string()
+                left.kind() == right.kind()
+                    && left.to_string() == right.to_string()
             }
             (Self::Message(left), Self::Message(right)) => left == right,
             _ => false,

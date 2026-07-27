@@ -7,13 +7,19 @@
 // =============================================================================
 use std::{
     io::Write,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc,
+        Mutex,
+    },
 };
 
 use crate::{
     model::ProgressEvent,
     reporter::{
-        JsonMetricSnapshotFormatter, MetricSnapshotFormatter, ProgressReportError, ProgressReporter,
+        JsonMetricSnapshotFormatter,
+        MetricSnapshotFormatter,
+        ProgressReportError,
+        ProgressReporter,
     },
 };
 
