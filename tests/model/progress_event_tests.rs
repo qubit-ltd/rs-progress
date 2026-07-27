@@ -147,11 +147,13 @@ fn test_progress_event_assigns_unique_nonzero_operation_ids() {
 }
 
 #[test]
-fn test_progress_event_deserialization_generates_an_operation_id_when_missing_or_zero() {
+fn test_progress_event_deserialization_generates_an_operation_id_when_missing_or_zero()
+ {
     let event = ProgressEvent::builder(schema()).build();
     let json = serde_json::to_string(&event).expect("event should serialize");
 
-    let missing_id = json.replacen("\"operation_id\":", "\"legacy_operation_id\":", 1);
+    let missing_id =
+        json.replacen("\"operation_id\":", "\"legacy_operation_id\":", 1);
     let decoded_missing_id: ProgressEvent = serde_json::from_str(&missing_id)
         .expect("legacy event should deserialize");
     assert_ne!(decoded_missing_id.operation_id(), 0);

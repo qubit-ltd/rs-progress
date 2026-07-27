@@ -13,12 +13,12 @@ use serde::{
 };
 
 use super::{
-    next_operation_id,
     ProgressCounter,
     ProgressMetric,
     ProgressMetricSnapshotError,
     ProgressPhase,
     ProgressStage,
+    next_operation_id,
 };
 
 /// Snapshot of one metric counter within a progress event.

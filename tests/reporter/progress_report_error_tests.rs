@@ -25,7 +25,8 @@ fn test_progress_report_error_preserves_io_context() {
 
 #[test]
 fn test_progress_report_error_preserves_custom_reporter_message() {
-    let error = ProgressReportError::message("remote progress sink rejected event");
+    let error =
+        ProgressReportError::message("remote progress sink rejected event");
 
     assert_eq!(
         error.to_string(),
