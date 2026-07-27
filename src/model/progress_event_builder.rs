@@ -11,6 +11,7 @@ use std::{
 };
 
 use super::{
+    next_operation_id,
     ProgressCounter,
     ProgressEvent,
     ProgressEventBuildError,
@@ -52,6 +53,8 @@ use super::{
 pub struct ProgressEventBuilder {
     /// Metric schema carried by the event being built.
     pub(crate) schema: Arc<ProgressSchema>,
+    /// Identifier of the logical operation carried by the event being built.
+    pub(crate) operation_id: u64,
     /// Lifecycle phase of the event being built.
     pub(crate) phase: ProgressPhase,
     /// Metric counters for the event being built.
@@ -90,8 +93,28 @@ impl ProgressEventBuilder {
     /// elapsed time.
     #[inline]
     pub(crate) fn from_shared_schema(schema: Arc<ProgressSchema>) -> Self {
+        Self::from_shared_schema_with_operation_id(schema, next_operation_id())
+    }
+
+    /// Creates a builder from a shared schema and operation identifier.
+    ///
+    /// # Parameters
+    ///
+    /// * `schema` - Shared metric schema carried by the built event.
+    /// * `operation_id` - Process-local identifier for the logical operation.
+    ///
+    /// # Returns
+    ///
+    /// A builder initialized as running progress with no counters and zero
+    /// elapsed time.
+    #[inline]
+    pub(crate) fn from_shared_schema_with_operation_id(
+        schema: Arc<ProgressSchema>,
+        operation_id: u64,
+    ) -> Self {
         Self {
             schema,
+            operation_id,
             phase: ProgressPhase::Running,
             counters: Vec::new(),
             stage: None,

@@ -85,6 +85,7 @@ assert_eq!(event.counter("entries").map(|c| c.completed_count()), Some(4));
 | 字段 | 用途 |
 | --- | --- |
 | `schema` | event 自带的 metric 定义 |
+| `operation_id` | 一个逻辑操作共享的进程内标识 |
 | `phase` | 生命周期状态：`started`、`running`、`finished`、`failed` 或 `canceled` |
 | `stage` | 可选的多阶段操作元数据 |
 | `counters` | 一个或多个按 `metric_id` 分组的 `ProgressCounter` |
@@ -246,17 +247,10 @@ let event = ProgressEvent::builder(schema)
     .build();
 
 let json = serde_json::to_string(&event).expect("event should serialize");
-assert_eq!(
-    json,
-    concat!(
-        r#"{"schema":{"metrics":["#,
-        r#"{"id":"entries","name":"Entries"}"#,
-        r#"]},"phase":"running","counters":["#,
-        r#"{"metric_id":"entries","total_count":5,"completed_count":2,"#,
-        r#""active_count":0,"succeeded_count":0,"failed_count":0}"#,
-        r#"],"elapsed":"110ms"}"#,
-    ),
-);
+let value: serde_json::Value = serde_json::from_str(&json)
+    .expect("serialized event should be valid JSON");
+assert!(value["operation_id"].as_u64().is_some_and(|id| id > 0));
+assert_eq!(value["elapsed"], "110ms");
 ```
 
 ## Crate 边界

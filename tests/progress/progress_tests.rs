@@ -96,6 +96,9 @@ fn test_progress_reports_lifecycle_events() {
     assert_eq!(events[1], running);
     assert_eq!(events[2], finished);
     assert_eq!(events[0].phase(), ProgressPhase::Started);
+    assert_eq!(events[0].operation_id(), run.operation_id());
+    assert_eq!(events[1].operation_id(), run.operation_id());
+    assert_eq!(events[2].operation_id(), run.operation_id());
     assert_eq!(events[0].elapsed(), Duration::ZERO);
     assert_eq!(events[1].phase(), ProgressPhase::Running);
     assert_eq!(

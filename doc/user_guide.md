@@ -488,21 +488,16 @@ let event = ProgressEvent::builder(ProgressSchema::new(vec![
 .build();
 
 let json = serde_json::to_string(&event).expect("event should serialize");
-assert_eq!(
-    json,
-    concat!(
-        r#"{"schema":{"metrics":["#,
-        r#"{"id":"entries","name":"Entries"}"#,
-        r#"]},"phase":"running","counters":["#,
-        r#"{"metric_id":"entries","total_count":5,"completed_count":2,"#,
-        r#""active_count":0,"succeeded_count":0,"failed_count":0}"#,
-        r#"],"elapsed":"110ms"}"#,
-    ),
-);
+let value: serde_json::Value = serde_json::from_str(&json)
+    .expect("serialized event should be valid JSON");
+assert!(value["operation_id"].as_u64().is_some_and(|id| id > 0));
+assert_eq!(value["elapsed"], "110ms");
 ```
 
 This representation is useful for agent-readable logs because each event
-contains both the metric ids and their display names.
+contains both the metric ids and their display names. `operation_id` is a
+nonzero, process-local correlation key shared by all events from one `Progress`
+run; do not treat it as a persistent global identifier.
 
 For line-oriented structured output, prefer the built-in JSON metric snapshot
 reporters. They write one JSON object per metric counter:

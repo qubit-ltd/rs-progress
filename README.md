@@ -92,6 +92,7 @@ A `ProgressEvent` is an immutable snapshot. It contains:
 | Field | Purpose |
 | --- | --- |
 | `schema` | metric definitions carried with the event |
+| `operation_id` | process-local identifier shared by one logical operation |
 | `phase` | lifecycle state: `started`, `running`, `finished`, `failed`, or `canceled` |
 | `stage` | optional multi-stage operation metadata |
 | `counters` | one or more `ProgressCounter` values grouped by `metric_id` |
@@ -266,17 +267,10 @@ let event = ProgressEvent::builder(schema)
     .build();
 
 let json = serde_json::to_string(&event).expect("event should serialize");
-assert_eq!(
-    json,
-    concat!(
-        r#"{"schema":{"metrics":["#,
-        r#"{"id":"entries","name":"Entries"}"#,
-        r#"]},"phase":"running","counters":["#,
-        r#"{"metric_id":"entries","total_count":5,"completed_count":2,"#,
-        r#""active_count":0,"succeeded_count":0,"failed_count":0}"#,
-        r#"],"elapsed":"110ms"}"#,
-    ),
-);
+let value: serde_json::Value = serde_json::from_str(&json)
+    .expect("serialized event should be valid JSON");
+assert!(value["operation_id"].as_u64().is_some_and(|id| id > 0));
+assert_eq!(value["elapsed"], "110ms");
 ```
 
 ## Crate Boundary
