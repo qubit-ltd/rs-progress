@@ -23,6 +23,7 @@ mod progress_stage_error;
 
 pub use progress_counter::ProgressCounter;
 pub use progress_event::ProgressEvent;
+pub(crate) use progress_event::next_operation_id;
 pub use progress_event_build_error::ProgressEventBuildError;
 pub use progress_event_builder::ProgressEventBuilder;
 pub use progress_metric::ProgressMetric;

@@ -18,12 +18,14 @@ use crate::{
     ProgressSchema,
     ProgressStage,
 };
-
 /// Deserialized event representation before counter validation.
 #[derive(Deserialize)]
 pub(crate) struct ProgressEventUnchecked {
     /// Validated metric schema supplied by serialized input.
     pub(crate) schema: Arc<ProgressSchema>,
+    /// Optional operation identifier supplied by serialized input.
+    #[serde(default)]
+    pub(crate) operation_id: Option<u64>,
     /// Lifecycle phase supplied by serialized input.
     pub(crate) phase: ProgressPhase,
     /// Optional current stage supplied by serialized input.

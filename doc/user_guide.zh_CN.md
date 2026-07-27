@@ -452,20 +452,14 @@ let event = ProgressEvent::builder(ProgressSchema::new(vec![
 .build();
 
 let json = serde_json::to_string(&event).expect("event should serialize");
-assert_eq!(
-    json,
-    concat!(
-        r#"{"schema":{"metrics":["#,
-        r#"{"id":"entries","name":"Entries"}"#,
-        r#"]},"phase":"running","counters":["#,
-        r#"{"metric_id":"entries","total_count":5,"completed_count":2,"#,
-        r#""active_count":0,"succeeded_count":0,"failed_count":0}"#,
-        r#"],"elapsed":"110ms"}"#,
-    ),
-);
+let value: serde_json::Value = serde_json::from_str(&json)
+    .expect("serialized event should be valid JSON");
+assert!(value["operation_id"].as_u64().is_some_and(|id| id > 0));
+assert_eq!(value["elapsed"], "110ms");
 ```
 
 这种表示方式适合 agent 读取的日志，因为每个 event 同时包含 metric id 和对应展示名称。
+`operation_id` 是同一 `Progress` 运行中所有 event 共享的非零进程内关联键；不要把它当作持久化的全局标识。
 
 如果需要面向行的结构化输出，优先使用内置 JSON metric snapshot reporter。它们会为每个 metric counter 写出一个 JSON object：
 

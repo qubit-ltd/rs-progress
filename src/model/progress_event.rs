@@ -7,7 +7,13 @@
 // =============================================================================
 use std::{
     collections::HashSet,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{
+            AtomicU64,
+            Ordering,
+        },
+    },
     time::Duration,
 };
 
@@ -63,6 +69,8 @@ use super::{
 pub struct ProgressEvent {
     /// Metric schema that describes every counter in this event.
     schema: Arc<ProgressSchema>,
+    /// Monotonic identifier shared by events from one logical operation.
+    operation_id: u64,
     /// Lifecycle phase of the reported operation.
     phase: ProgressPhase,
     /// Optional current stage.
@@ -132,6 +140,7 @@ impl ProgressEvent {
         Self::validate_counters(&builder.schema, &builder.counters)?;
         Ok(Self::from_validated_parts(
             builder.schema,
+            builder.operation_id,
             builder.phase,
             builder.stage,
             builder.counters,
@@ -286,6 +295,7 @@ impl ProgressEvent {
     /// # Parameters
     ///
     /// * `schema` - Validated event schema.
+    /// * `operation_id` - Process-local identifier for the logical operation.
     /// * `phase` - Event lifecycle phase.
     /// * `stage` - Optional current stage.
     /// * `counters` - Validated event counters.
@@ -297,6 +307,7 @@ impl ProgressEvent {
     #[inline]
     fn from_validated_parts(
         schema: Arc<ProgressSchema>,
+        operation_id: u64,
         phase: ProgressPhase,
         stage: Option<ProgressStage>,
         counters: Vec<ProgressCounter>,
@@ -304,6 +315,7 @@ impl ProgressEvent {
     ) -> Self {
         Self {
             schema,
+            operation_id,
             phase,
             stage,
             counters,
@@ -319,6 +331,18 @@ impl ProgressEvent {
     #[inline]
     pub fn schema(&self) -> &ProgressSchema {
         self.schema.as_ref()
+    }
+
+    /// Returns the identifier of the logical operation that emitted this event.
+    ///
+    /// # Returns
+    ///
+    /// A nonzero process-local identifier shared by all events emitted through
+    /// the same [`crate::Progress`] instance. It is intended for correlating
+    /// in-process event streams, not for persistent global identity.
+    #[inline]
+    pub const fn operation_id(&self) -> u64 {
+        self.operation_id
     }
 
     /// Returns the event phase.
@@ -401,7 +425,8 @@ impl ProgressEvent {
                 .metric(counter.metric_id())
                 .expect("event counters are validated against the schema")
                 .clone();
-            ProgressMetricSnapshot::new(
+            ProgressMetricSnapshot::new_with_operation_id(
+                self.operation_id,
                 metric,
                 self.phase,
                 self.stage.clone(),
@@ -480,10 +505,31 @@ impl TryFrom<ProgressEventUnchecked> for ProgressEvent {
         )?;
         Ok(Self::from_validated_parts(
             unchecked.schema,
+            unchecked
+                .operation_id
+                .filter(|operation_id| *operation_id != 0)
+                .unwrap_or_else(next_operation_id),
             unchecked.phase,
             unchecked.stage,
             unchecked.counters,
             unchecked.elapsed,
         ))
+    }
+}
+
+/// Generates the next process-local operation identifier.
+///
+/// # Returns
+///
+/// A nonzero identifier. The counter wraps only after exhausting all `u64`
+/// values, at which point zero is skipped.
+pub(crate) fn next_operation_id() -> u64 {
+    static NEXT_OPERATION_ID: AtomicU64 = AtomicU64::new(1);
+
+    let operation_id = NEXT_OPERATION_ID.fetch_add(1, Ordering::Relaxed);
+    if operation_id == 0 {
+        NEXT_OPERATION_ID.fetch_add(1, Ordering::Relaxed)
+    } else {
+        operation_id
     }
 }

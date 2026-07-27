@@ -110,6 +110,7 @@ fn test_progress_event_metric_snapshots_resolve_schema_metrics() {
 
     assert_eq!(snapshots.len(), 1);
     assert_eq!(snapshots[0].metric_id(), "entries");
+    assert_eq!(snapshots[0].operation_id(), event.operation_id());
     assert_eq!(snapshots[0].metric_name(), "Entries");
     assert_eq!(snapshots[0].completed_count(), 2);
     assert_eq!(
@@ -152,5 +153,6 @@ fn test_progress_metric_snapshot_serializes_elapsed_with_unit() {
         json.contains("\"metric\":{\"id\":\"entries\",\"name\":\"Entries\"}")
     );
     assert!(json.contains("\"phase\":\"finished\""));
+    assert!(json.contains("\"operation_id\":"));
     assert!(json.contains("\"elapsed\":\"110ms\""));
 }

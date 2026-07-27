@@ -138,6 +138,35 @@ fn test_progress_event_builder_and_new_constructor() {
 }
 
 #[test]
+fn test_progress_event_assigns_unique_nonzero_operation_ids() {
+    let first = ProgressEvent::builder(schema()).build();
+    let second = ProgressEvent::builder(schema()).build();
+
+    assert_ne!(first.operation_id(), 0);
+    assert_ne!(first.operation_id(), second.operation_id());
+}
+
+#[test]
+fn test_progress_event_deserialization_generates_an_operation_id_when_missing_or_zero() {
+    let event = ProgressEvent::builder(schema()).build();
+    let json = serde_json::to_string(&event).expect("event should serialize");
+
+    let missing_id = json.replacen("\"operation_id\":", "\"legacy_operation_id\":", 1);
+    let decoded_missing_id: ProgressEvent = serde_json::from_str(&missing_id)
+        .expect("legacy event should deserialize");
+    assert_ne!(decoded_missing_id.operation_id(), 0);
+
+    let zero_id = json.replacen(
+        &format!("\"operation_id\":{}", event.operation_id()),
+        "\"operation_id\":0",
+        1,
+    );
+    let decoded_zero_id: ProgressEvent = serde_json::from_str(&zero_id)
+        .expect("event with a zero operation id should deserialize");
+    assert_ne!(decoded_zero_id.operation_id(), 0);
+}
+
+#[test]
 fn test_progress_event_serializes_to_self_describing_json() {
     let event = ProgressEvent::builder(schema())
         .running()
@@ -147,6 +176,7 @@ fn test_progress_event_serializes_to_self_describing_json() {
 
     let json = serde_json::to_string(&event).expect("event should serialize");
     assert!(json.contains("\"schema\""));
+    assert!(json.contains("\"operation_id\""));
     assert!(json.contains("\"metric_id\":\"entries\""));
     assert!(json.contains("\"elapsed\":\"110ms\""));
 

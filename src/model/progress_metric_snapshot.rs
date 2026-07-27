@@ -13,6 +13,7 @@ use serde::{
 };
 
 use super::{
+    next_operation_id,
     ProgressCounter,
     ProgressMetric,
     ProgressMetricSnapshotError,
@@ -30,6 +31,9 @@ use super::{
 pub struct ProgressMetricSnapshot {
     /// Complete metric metadata for this snapshot.
     metric: ProgressMetric,
+    /// Identifier inherited from the source logical operation.
+    #[serde(default = "next_operation_id")]
+    operation_id: u64,
     /// Lifecycle phase inherited from the source progress event.
     phase: ProgressPhase,
     /// Optional stage inherited from the source progress event.
@@ -81,6 +85,44 @@ impl ProgressMetricSnapshot {
             .expect("progress metric and counter ids must match")
     }
 
+    /// Creates a metric snapshot that preserves a source operation identifier.
+    ///
+    /// # Parameters
+    ///
+    /// * `operation_id` - Identifier shared by the source event stream.
+    /// * `metric` - Complete metric metadata.
+    /// * `phase` - Lifecycle phase inherited from the source event.
+    /// * `stage` - Optional stage inherited from the source event.
+    /// * `counter` - Counter values copied into the snapshot.
+    /// * `elapsed` - Elapsed duration inherited from the source event.
+    ///
+    /// # Returns
+    ///
+    /// A flattened metric snapshot preserving `operation_id`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `metric.id()` differs from `counter.metric_id()`.
+    #[inline]
+    pub(crate) fn new_with_operation_id(
+        operation_id: u64,
+        metric: ProgressMetric,
+        phase: ProgressPhase,
+        stage: Option<ProgressStage>,
+        counter: &ProgressCounter,
+        elapsed: Duration,
+    ) -> Self {
+        Self::try_new_with_operation_id(
+            operation_id,
+            metric,
+            phase,
+            stage,
+            counter,
+            elapsed,
+        )
+        .expect("progress metric and counter ids must match")
+    }
+
     /// Tries to create a metric snapshot from explicit values.
     ///
     /// # Parameters
@@ -106,6 +148,43 @@ impl ProgressMetricSnapshot {
         counter: &ProgressCounter,
         elapsed: Duration,
     ) -> Result<Self, ProgressMetricSnapshotError> {
+        Self::try_new_with_operation_id(
+            next_operation_id(),
+            metric,
+            phase,
+            stage,
+            counter,
+            elapsed,
+        )
+    }
+
+    /// Validates a metric snapshot with a source operation identifier.
+    ///
+    /// # Parameters
+    ///
+    /// * `operation_id` - Identifier shared by the source event stream.
+    /// * `metric` - Complete metric metadata.
+    /// * `phase` - Lifecycle phase inherited from the source event.
+    /// * `stage` - Optional stage inherited from the source event.
+    /// * `counter` - Counter values copied into the snapshot.
+    /// * `elapsed` - Elapsed duration inherited from the source event.
+    ///
+    /// # Returns
+    ///
+    /// A validated flattened metric snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProgressMetricSnapshotError::MetricIdMismatch`] when metric
+    /// and counter identifiers differ.
+    fn try_new_with_operation_id(
+        operation_id: u64,
+        metric: ProgressMetric,
+        phase: ProgressPhase,
+        stage: Option<ProgressStage>,
+        counter: &ProgressCounter,
+        elapsed: Duration,
+    ) -> Result<Self, ProgressMetricSnapshotError> {
         if metric.id() != counter.metric_id() {
             return Err(ProgressMetricSnapshotError::MetricIdMismatch {
                 metric_id: metric.id().to_owned(),
@@ -114,6 +193,7 @@ impl ProgressMetricSnapshot {
         }
         Ok(Self {
             metric,
+            operation_id,
             phase,
             stage,
             total_count: counter.total_count(),
@@ -133,6 +213,16 @@ impl ProgressMetricSnapshot {
     #[inline]
     pub const fn metric(&self) -> &ProgressMetric {
         &self.metric
+    }
+
+    /// Returns the identifier inherited from the source logical operation.
+    ///
+    /// # Returns
+    ///
+    /// The process-local operation identifier associated with this snapshot.
+    #[inline]
+    pub const fn operation_id(&self) -> u64 {
+        self.operation_id
     }
 
     /// Returns the stable metric id.

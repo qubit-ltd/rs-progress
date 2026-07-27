@@ -16,6 +16,7 @@ use std::{
 
 use crate::{
     model::{
+        next_operation_id,
         ProgressCounter,
         ProgressEvent,
         ProgressEventBuilder,
@@ -77,6 +78,8 @@ pub struct Progress<'a> {
     reporter: &'a dyn ProgressReporter,
     /// Metric schema carried by events emitted from this run.
     schema: Arc<ProgressSchema>,
+    /// Process-local identifier attached to every event from this run.
+    operation_id: u64,
     /// Monotonic start time used to compute elapsed durations.
     started_at: Instant,
     /// Minimum interval between due-based running callbacks.
@@ -187,6 +190,7 @@ impl<'a> Progress<'a> {
         Self {
             reporter,
             schema: Arc::new(schema),
+            operation_id: next_operation_id(),
             started_at,
             report_interval,
             next_running_at: next_instant(started_at, report_interval),
@@ -501,6 +505,16 @@ impl<'a> Progress<'a> {
         self.schema.as_ref()
     }
 
+    /// Returns the identifier shared by events emitted from this progress run.
+    ///
+    /// # Returns
+    ///
+    /// A nonzero process-local operation identifier.
+    #[inline]
+    pub const fn operation_id(&self) -> u64 {
+        self.operation_id
+    }
+
     /// Returns the elapsed duration since this run started.
     ///
     /// # Returns
@@ -552,6 +566,7 @@ impl<'a> Progress<'a> {
         Self {
             reporter: self.reporter,
             schema: self.schema.clone(),
+            operation_id: self.operation_id,
             started_at: self.started_at,
             report_interval: self.report_interval,
             next_running_at: self.next_running_at,
@@ -573,8 +588,11 @@ impl<'a> Progress<'a> {
         elapsed: Duration,
     ) -> ProgressEventBuilder {
         let builder =
-            ProgressEventBuilder::from_shared_schema(Arc::clone(&self.schema))
-                .elapsed(elapsed);
+            ProgressEventBuilder::from_shared_schema_with_operation_id(
+                Arc::clone(&self.schema),
+                self.operation_id,
+            )
+            .elapsed(elapsed);
         match self.stage.clone() {
             Some(stage) => builder.stage(stage),
             None => builder,
