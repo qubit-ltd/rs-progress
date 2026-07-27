@@ -8,11 +8,18 @@
 use std::collections::HashSet;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 #[cfg(feature = "serde")]
 use super::internal::ProgressSchemaUnchecked;
-use super::{ProgressCounter, ProgressMetric, ProgressSchemaError};
+use super::{
+    ProgressCounter,
+    ProgressMetric,
+    ProgressSchemaError,
+};
 
 /// Metric dictionary for one logical progress operation.
 ///
@@ -44,7 +51,8 @@ impl ProgressSchema {
     /// [`Self::try_new`] to handle invalid input without panicking.
     #[inline]
     pub fn new(metrics: Vec<ProgressMetric>) -> Self {
-        Self::try_new(metrics).expect("progress schema must have unique metric ids")
+        Self::try_new(metrics)
+            .expect("progress schema must have unique metric ids")
     }
 
     /// Tries to create a schema from metric definitions.
@@ -61,7 +69,9 @@ impl ProgressSchema {
     ///
     /// Returns [`ProgressSchemaError::DuplicateMetricId`] when more than one
     /// metric has the same identifier.
-    pub fn try_new(metrics: Vec<ProgressMetric>) -> Result<Self, ProgressSchemaError> {
+    pub fn try_new(
+        metrics: Vec<ProgressMetric>,
+    ) -> Result<Self, ProgressSchemaError> {
         let mut seen = HashSet::with_capacity(metrics.len());
         for metric in &metrics {
             if !seen.insert(metric.id()) {
@@ -171,9 +181,9 @@ impl ProgressSchema {
     /// duplicated.
     pub fn validate_counters(&self, counters: &[ProgressCounter]) -> bool {
         let mut seen = HashSet::with_capacity(counters.len());
-        counters
-            .iter()
-            .all(|counter| self.validate_counter(counter) && seen.insert(counter.metric_id()))
+        counters.iter().all(|counter| {
+            self.validate_counter(counter) && seen.insert(counter.metric_id())
+        })
     }
 }
 
@@ -195,7 +205,9 @@ impl TryFrom<ProgressSchemaUnchecked> for ProgressSchema {
     ///
     /// Returns an error when metric identifiers are duplicated.
     #[inline(always)]
-    fn try_from(unchecked: ProgressSchemaUnchecked) -> Result<Self, Self::Error> {
+    fn try_from(
+        unchecked: ProgressSchemaUnchecked,
+    ) -> Result<Self, Self::Error> {
         Self::try_new(unchecked.metrics)
     }
 }

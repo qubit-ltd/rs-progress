@@ -9,11 +9,17 @@
 
 use std::{
     thread,
-    time::{Duration, Instant},
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 use qubit_progress::{
-    Progress, ProgressCounter, ProgressReportError, ProgressSchema,
+    Progress,
+    ProgressCounter,
+    ProgressReportError,
+    ProgressSchema,
     WriterProgressReporter,
 };
 
@@ -29,8 +35,9 @@ fn test_running_progress_status_reports_output_failure() {
             Duration::ZERO,
             ProgressSchema::single("entries", "Entries"),
         );
-        let running_progress = progress
-            .spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1)]);
+        let running_progress = progress.spawn_running_reporter(scope, || {
+            vec![ProgressCounter::new("entries").total(1)]
+        });
         let status = running_progress.status();
         let point = running_progress.point_handle();
 

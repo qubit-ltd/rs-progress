@@ -10,7 +10,10 @@ use qubit_function::ArcConsumer;
 use super::human_readable_progress_reporter::HumanReadableProgressReporter;
 use crate::{
     model::ProgressEvent,
-    reporter::{ProgressReportError, ProgressReporter},
+    reporter::{
+        ProgressReportError,
+        ProgressReporter,
+    },
 };
 
 /// Progress reporter that emits human-readable metric snapshots through `log`.

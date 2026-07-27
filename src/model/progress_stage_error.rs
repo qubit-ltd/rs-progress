@@ -7,7 +7,11 @@
 // =============================================================================
 use std::{
     error::Error,
-    fmt::{self, Display, Formatter},
+    fmt::{
+        self,
+        Display,
+        Formatter,
+    },
 };
 
 /// Error produced when a progress stage has an invalid relative weight.
@@ -23,10 +27,11 @@ impl Display for ProgressStageError {
     /// Formats a concise stage weight validation error.
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NonFiniteWeight => formatter.write_str("progress stage weight must be finite"),
-            Self::NegativeWeight => {
-                formatter.write_str("progress stage weight must be non-negative")
+            Self::NonFiniteWeight => {
+                formatter.write_str("progress stage weight must be finite")
             }
+            Self::NegativeWeight => formatter
+                .write_str("progress stage weight must be non-negative"),
         }
     }
 }

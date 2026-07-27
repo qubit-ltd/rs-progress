@@ -22,9 +22,18 @@ pub mod reporter;
 pub mod running;
 
 pub use model::{
-    ProgressCounter, ProgressEvent, ProgressEventBuildError, ProgressEventBuilder, ProgressMetric,
-    ProgressMetricSnapshot, ProgressMetricSnapshotError, ProgressPhase, ProgressSchema,
-    ProgressSchemaError, ProgressStage, ProgressStageError,
+    ProgressCounter,
+    ProgressEvent,
+    ProgressEventBuildError,
+    ProgressEventBuilder,
+    ProgressMetric,
+    ProgressMetricSnapshot,
+    ProgressMetricSnapshotError,
+    ProgressPhase,
+    ProgressSchema,
+    ProgressSchemaError,
+    ProgressStage,
+    ProgressStageError,
 };
 pub use progress::Progress;
 #[cfg(all(feature = "json", feature = "log"))]
@@ -33,16 +42,30 @@ pub use reporter::JsonLoggerProgressReporter;
 pub use reporter::LoggerProgressReporter;
 #[cfg(feature = "consumer-reporters")]
 pub use reporter::{
-    FormattedProgressReporter, HumanReadableProgressReporter, MetricSnapshotProgressReporter,
+    FormattedProgressReporter,
+    HumanReadableProgressReporter,
+    MetricSnapshotProgressReporter,
 };
 pub use reporter::{
-    HumanReadableMetricSnapshotFormatter, MetricSnapshotFormatter, NoOpProgressReporter,
-    ProgressReportError, ProgressReporter, StderrProgressReporter, StdoutProgressReporter,
+    HumanReadableMetricSnapshotFormatter,
+    MetricSnapshotFormatter,
+    NoOpProgressReporter,
+    ProgressReportError,
+    ProgressReporter,
+    StderrProgressReporter,
+    StdoutProgressReporter,
     WriterProgressReporter,
 };
 #[cfg(feature = "json")]
 pub use reporter::{
-    JsonMetricSnapshotFormatter, JsonProgressReporter, JsonStderrProgressReporter,
-    JsonStdoutProgressReporter, JsonWriterProgressReporter,
+    JsonMetricSnapshotFormatter,
+    JsonProgressReporter,
+    JsonStderrProgressReporter,
+    JsonStdoutProgressReporter,
+    JsonWriterProgressReporter,
 };
-pub use running::{RunningProgressGuard, RunningProgressPointHandle, RunningProgressStatus};
+pub use running::{
+    RunningProgressGuard,
+    RunningProgressPointHandle,
+    RunningProgressStatus,
+};

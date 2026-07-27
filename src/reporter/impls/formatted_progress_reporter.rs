@@ -9,7 +9,11 @@ use qubit_function::Consumer;
 
 use crate::{
     model::ProgressEvent,
-    reporter::{ProgressReportError, ProgressReporter, format::MetricSnapshotFormatter},
+    reporter::{
+        ProgressReportError,
+        ProgressReporter,
+        format::MetricSnapshotFormatter,
+    },
 };
 
 /// Progress reporter that formats each metric snapshot and sends it to a
