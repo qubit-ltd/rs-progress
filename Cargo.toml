@@ -32,18 +32,19 @@ name = "qubit_progress"
 doctest = true
 
 [features]
-default = ["consumer-reporters", "json", "log"]
+default = ["serde", "consumer-reporters", "json", "log"]
+serde = ["dep:serde", "dep:qubit-datatype"]
 consumer-reporters = ["dep:qubit-function"]
-json = ["consumer-reporters", "dep:serde_json"]
+json = ["consumer-reporters", "serde", "dep:serde_json"]
 log = ["consumer-reporters", "dep:log"]
 
 [dependencies]
 log = { version = "0.4", optional = true }
-serde = { version = "1.0", features = ["derive", "rc"] }
+serde = { version = "1.0", features = ["derive", "rc"], optional = true }
 serde_json = { version = "1.0", optional = true }
 
 qubit-function = { version = "0.16", optional = true }
-qubit-datatype = { version = "0.9", default-features = false, features = ["duration"] }
+qubit-datatype = { version = "0.9", default-features = false, features = ["duration"], optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false }

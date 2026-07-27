@@ -147,6 +147,7 @@ fn test_progress_event_assigns_unique_nonzero_operation_ids() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn test_progress_event_deserialization_generates_an_operation_id_when_missing_or_zero()
  {
     let event = ProgressEvent::builder(schema()).build();
@@ -169,6 +170,7 @@ fn test_progress_event_deserialization_generates_an_operation_id_when_missing_or
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn test_progress_event_serializes_to_self_describing_json() {
     let event = ProgressEvent::builder(schema())
         .running()
@@ -194,6 +196,7 @@ fn test_progress_event_serializes_to_self_describing_json() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn test_progress_event_deserialization_rejects_unknown_counter_metric() {
     let event = ProgressEvent::builder(schema())
         .counter("entries", |counter| counter.completed(1))
@@ -207,6 +210,7 @@ fn test_progress_event_deserialization_rejects_unknown_counter_metric() {
 
 /// Test the public elapsed-duration wire format is exact and canonical.
 #[test]
+#[cfg(feature = "serde")]
 fn test_progress_event_elapsed_wire_format_is_exact_and_rejects_whitespace() {
     let event =
         ProgressEvent::running(schema(), counters(), Duration::from_nanos(42));

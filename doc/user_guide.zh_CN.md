@@ -11,10 +11,12 @@
 qubit-progress = "0.5"
 ```
 
-如果你需要自己序列化 progress event，可以同时加入 `serde_json` 或其他 serde 兼容格式库：
+Serde 默认启用。若关闭默认 feature，需要先启用 `serde` feature，再加入
+`serde_json` 或其他 serde 兼容格式库：
 
 ```toml
 [dependencies]
+qubit-progress = { version = "0.6", default-features = false, features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -432,7 +434,7 @@ assert!(text.contains("Entries 2/2"));
 
 ## JSON 序列化
 
-`ProgressEvent`、`ProgressSchema`、`ProgressMetric`、`ProgressCounter`、`ProgressPhase` 和 `ProgressStage` 都支持 serde 序列化。`elapsed` 字段使用 `qubit-datatype` 的 duration 字符串，例如 `110ms`。
+启用 `serde` feature 后，`ProgressEvent`、`ProgressSchema`、`ProgressMetric`、`ProgressCounter`、`ProgressPhase` 和 `ProgressStage` 支持 serde 序列化。`elapsed` 字段使用 `qubit-datatype` 的 duration 字符串，例如 `110ms`。
 
 ```rust
 use std::time::Duration;

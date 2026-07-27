@@ -226,7 +226,9 @@ Reporter 可以调用 `event.metric_snapshots_iter()`，惰性地把每个 count
 
 ## JSON 序列化
 
-Progress event 支持 serde 序列化。`elapsed` 使用 `qubit-datatype` 的 `duration_with_unit` 适配器，因此 JSON 更紧凑，也更适合 agent 读取。
+启用 `serde` feature 后，progress event 支持 serde 序列化。`elapsed` 使用
+`qubit-datatype` 的 `duration_with_unit` 适配器，因此 JSON 更紧凑，也更适合
+agent 读取。
 该适配器会自动选择能够精确表示数值的最大单位，因此亚毫秒 elapsed 也能无损
 round-trip。反序列化要求规范的 duration 文本，不会 trim 两侧空白。
 
@@ -259,13 +261,11 @@ assert_eq!(value["elapsed"], "110ms");
 
 ## 运行时依赖
 
-本 crate 的核心功能依赖：
-
-- `serde`：用于可序列化的 progress model；
-- `qubit-datatype`：用于紧凑的 `Duration` 序列化。
-
-默认 feature 还会启用 `consumer-reporters`、`json` 和 `log`。如果只需要
-核心 model、生命周期 API、no-op reporter 与 writer reporter，可以关闭默认 feature：
+`serde` feature 提供可序列化的 progress model，并通过 `qubit-datatype`
+提供紧凑的 `Duration` 序列化；默认启用。`json` feature 会隐含启用 `serde`，
+默认 feature 还会启用 `consumer-reporters` 与 `log`。如果只需要无依赖的
+核心 model、生命周期 API、no-op reporter 与 writer reporter，可以关闭默认
+feature：
 
 ```toml
 qubit-progress = { version = "0.6", default-features = false }

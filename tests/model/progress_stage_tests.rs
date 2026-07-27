@@ -56,6 +56,7 @@ fn test_progress_stage_try_with_weight_rejects_invalid_values() {
 }
 
 #[test]
+#[cfg(feature = "serde")]
 fn test_progress_stage_deserialization_rejects_negative_weight() {
     let json = r#"{"id":"copy","name":"Copy files","weight":-0.1}"#;
 

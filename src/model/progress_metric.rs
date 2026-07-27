@@ -5,6 +5,7 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+#[cfg(feature = "serde")]
 use serde::{
     Deserialize,
     Serialize,
@@ -16,7 +17,8 @@ use serde::{
 /// [`ProgressCounter`](crate::ProgressCounter) values and therefore appears in
 /// JSON progress events. The `name` is human-readable and is intended for text
 /// reporters.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ProgressMetric {
     /// Stable machine-readable metric identifier.
     id: String,

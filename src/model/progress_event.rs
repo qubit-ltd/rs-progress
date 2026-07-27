@@ -17,11 +17,14 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "serde")]
 use serde::{
     Deserialize,
     Serialize,
 };
 
+#[cfg(feature = "serde")]
+use super::internal::ProgressEventUnchecked;
 use super::{
     ProgressCounter,
     ProgressEventBuildError,
@@ -30,7 +33,6 @@ use super::{
     ProgressPhase,
     ProgressSchema,
     ProgressStage,
-    internal::ProgressEventUnchecked,
 };
 
 /// Immutable progress event delivered to reporters.
@@ -64,8 +66,9 @@ use super::{
 /// assert_eq!(event.phase(), ProgressPhase::Running);
 /// assert_eq!(event.counter("entries").map(|c| c.completed_count()), Some(2));
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "ProgressEventUnchecked")]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "ProgressEventUnchecked"))]
 pub struct ProgressEvent {
     /// Metric schema that describes every counter in this event.
     schema: Arc<ProgressSchema>,
@@ -74,12 +77,18 @@ pub struct ProgressEvent {
     /// Lifecycle phase of the reported operation.
     phase: ProgressPhase,
     /// Optional current stage.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     stage: Option<ProgressStage>,
     /// Metric counters for this event.
     counters: Vec<ProgressCounter>,
     /// Monotonic elapsed duration.
-    #[serde(with = "qubit_datatype::serde::duration_with_unit")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(with = "qubit_datatype::serde::duration_with_unit")
+    )]
     elapsed: Duration,
 }
 
@@ -396,9 +405,8 @@ impl ProgressEvent {
     /// Creates metric snapshots for all counters in this event.
     ///
     /// Each snapshot flattens one counter with the event phase, stage, elapsed
-    /// duration, and complete metric metadata. If a counter references a metric
-    /// id that is not present in the schema, the snapshot uses the metric id as
-    /// both the fallback id and display name.
+    /// duration, and complete metric metadata. Event validation guarantees that
+    /// every counter references a metric declared by the schema.
     ///
     /// # Returns
     ///
@@ -480,6 +488,7 @@ impl ProgressEvent {
     }
 }
 
+#[cfg(feature = "serde")]
 impl TryFrom<ProgressEventUnchecked> for ProgressEvent {
     type Error = ProgressEventBuildError;
 

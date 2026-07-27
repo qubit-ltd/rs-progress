@@ -16,11 +16,13 @@ reporters.
 qubit-progress = "0.5"
 ```
 
-If you want to serialize progress events yourself, also add `serde_json` or
-another serde-compatible format crate:
+Serde support is enabled by default. If you disable default features, enable
+the `serde` feature before adding `serde_json` or another serde-compatible
+format crate:
 
 ```toml
 [dependencies]
+qubit-progress = { version = "0.6", default-features = false, features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -467,8 +469,9 @@ assert!(text.contains("Entries 2/2"));
 ## JSON Serialization
 
 `ProgressEvent`, `ProgressSchema`, `ProgressMetric`, `ProgressCounter`,
-`ProgressPhase`, and `ProgressStage` are serde-serializable. The `elapsed`
-field uses `qubit-datatype` duration strings such as `110ms`.
+`ProgressPhase`, and `ProgressStage` are serde-serializable when the `serde`
+feature is enabled. The `elapsed` field uses `qubit-datatype` duration strings
+such as `110ms`.
 
 ```rust
 use std::time::Duration;

@@ -5,15 +5,15 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
+#[cfg(feature = "serde")]
 use serde::{
     Deserialize,
     Serialize,
 };
 
-use super::{
-    ProgressStageError,
-    internal::ProgressStageUnchecked,
-};
+use super::ProgressStageError;
+#[cfg(feature = "serde")]
+use super::internal::ProgressStageUnchecked;
 
 /// Describes the current stage of a multi-stage operation.
 ///
@@ -31,21 +31,31 @@ use super::{
 /// assert_eq!(stage.name(), "Verify files");
 /// assert_eq!(stage.index(), Some(2));
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "ProgressStageUnchecked")]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "ProgressStageUnchecked"))]
 pub struct ProgressStage {
     /// Stable machine-readable stage identifier.
     id: String,
     /// Human-readable stage name.
     name: String,
     /// Zero-based stage index when known.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     index: Option<usize>,
     /// Total number of stages when known.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     total_stages: Option<usize>,
     /// Relative stage weight when the caller uses weighted progress.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(skip_serializing_if = "Option::is_none")
+    )]
     weight: Option<f64>,
 }
 
@@ -209,6 +219,7 @@ impl ProgressStage {
     }
 }
 
+#[cfg(feature = "serde")]
 impl TryFrom<ProgressStageUnchecked> for ProgressStage {
     type Error = ProgressStageError;
 
