@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "name": "minimal",
+      "commands": ["check", "test", "doc"],
+      "defaultFeatures": false,
+      "features": []
+    },
+    {
+      "name": "consumer-reporters",
+      "commands": ["check", "test", "doc"],
+      "defaultFeatures": false,
+      "features": ["consumer-reporters"]
+    },
+    {
+      "name": "json",
+      "commands": ["check", "test", "doc"],
+      "defaultFeatures": false,
+      "features": ["json"]
+    },
+    {
+      "name": "log",
+      "commands": ["check", "test", "doc"],
+      "defaultFeatures": false,
+      "features": ["log"]
+    },
+    {
+      "name": "json-log",
+      "commands": ["check", "test", "doc", "clippy"],
+      "defaultFeatures": false,
+      "features": ["json", "log"]
+    }
+  ]
+}

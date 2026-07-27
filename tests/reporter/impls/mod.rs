@@ -7,8 +7,11 @@
 // =============================================================================
 //! Tests for concrete built-in reporter implementations.
 
+#[cfg(feature = "json")]
 mod json_stderr_progress_reporter_tests;
+#[cfg(feature = "json")]
 mod json_stdout_progress_reporter_tests;
+#[cfg(feature = "json")]
 mod json_writer_progress_reporter_tests;
 mod stderr_progress_reporter_tests;
 mod stdout_progress_reporter_tests;
