@@ -40,7 +40,6 @@ impl MetricSnapshotFormatter for JsonMetricSnapshotFormatter {
     /// Panics if serde serialization unexpectedly fails.
     #[inline]
     fn format(&self, snapshot: &ProgressMetricSnapshot) -> String {
-        serde_json::to_string(snapshot)
-            .expect("progress metric snapshot should serialize")
+        serde_json::to_string(snapshot).expect("progress metric snapshot should serialize")
     }
 }

@@ -5,14 +5,12 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use std::{
-    panic::resume_unwind,
-    thread::ScopedJoinHandle,
-};
+use std::{panic::resume_unwind, thread::ScopedJoinHandle};
 
 use super::{
     running_progress_notifier::RunningProgressNotifier,
     running_progress_point_handle::RunningProgressPointHandle,
+    running_progress_status::RunningProgressStatus,
 };
 use crate::ProgressReportError;
 
@@ -90,10 +88,11 @@ pub struct RunningProgressGuard<'scope> {
     /// Notifier used to stop the reporter thread.
     notifier: Option<RunningProgressNotifier>,
     /// Scoped reporter thread handle.
-    progress_thread:
-        Option<ScopedJoinHandle<'scope, Result<(), ProgressReportError>>>,
+    progress_thread: Option<ScopedJoinHandle<'scope, Result<(), ProgressReportError>>>,
     /// Whether worker point notifications should wake the reporter loop.
     report_points: bool,
+    /// Shared failure state for the reporter thread.
+    status: RunningProgressStatus,
 }
 
 impl<'scope> RunningProgressGuard<'scope> {
@@ -111,16 +110,15 @@ impl<'scope> RunningProgressGuard<'scope> {
     #[inline]
     pub(crate) const fn new(
         notifier: RunningProgressNotifier,
-        progress_thread: ScopedJoinHandle<
-            'scope,
-            Result<(), ProgressReportError>,
-        >,
+        progress_thread: ScopedJoinHandle<'scope, Result<(), ProgressReportError>>,
         report_points: bool,
+        status: RunningProgressStatus,
     ) -> Self {
         Self {
             notifier: Some(notifier),
             progress_thread: Some(progress_thread),
             report_points,
+            status,
         }
     }
 
@@ -130,11 +128,12 @@ impl<'scope> RunningProgressGuard<'scope> {
     ///
     /// A guard that owns no notifier or reporter thread.
     #[inline]
-    pub(crate) const fn inactive() -> Self {
+    pub(crate) fn inactive() -> Self {
         Self {
             notifier: None,
             progress_thread: None,
             report_points: false,
+            status: RunningProgressStatus::inactive(),
         }
     }
 
@@ -151,6 +150,17 @@ impl<'scope> RunningProgressGuard<'scope> {
             .then(|| self.notifier.as_ref().cloned())
             .flatten();
         RunningProgressPointHandle::new(notifier)
+    }
+
+    /// Returns a shared status for the background reporter.
+    ///
+    /// # Returns
+    ///
+    /// A cloneable status that reports whether background progress delivery has
+    /// failed. Use [`Self::stop_and_join`] to retrieve the concrete error.
+    #[inline]
+    pub fn status(&self) -> RunningProgressStatus {
+        self.status.clone()
     }
 
     /// Stops the reporter loop and joins the scoped reporter thread.

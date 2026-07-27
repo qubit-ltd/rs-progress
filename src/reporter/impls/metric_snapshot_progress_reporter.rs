@@ -5,29 +5,18 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use qubit_function::{
-    ArcConsumer,
-    Consumer,
-};
+use qubit_function::{ArcConsumer, Consumer};
 
 use crate::{
-    model::{
-        ProgressEvent,
-        ProgressMetricSnapshot,
-    },
-    reporter::{
-        ProgressReportError,
-        ProgressReporter,
-    },
+    model::{ProgressEvent, ProgressMetricSnapshot},
+    reporter::{ProgressReportError, ProgressReporter},
 };
 
 /// Progress reporter that sends metric snapshot objects to a consumer.
 ///
 /// This reporter is useful for GUI, database, metrics, and monitoring adapters
 /// that want structured metric snapshots instead of preformatted strings.
-pub struct MetricSnapshotProgressReporter<
-    C = ArcConsumer<ProgressMetricSnapshot>,
-> {
+pub struct MetricSnapshotProgressReporter<C = ArcConsumer<ProgressMetricSnapshot>> {
     /// Consumer receiving metric snapshots.
     consumer: C,
 }

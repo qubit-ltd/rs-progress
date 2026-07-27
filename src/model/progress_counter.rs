@@ -6,10 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 #[cfg(feature = "serde")]
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 /// Counters for one metric in a progress event.
 ///
@@ -329,8 +326,7 @@ impl ProgressCounter {
             if total_count == 0 {
                 1.0
             } else {
-                (self.completed_count as f64 / total_count as f64)
-                    .clamp(0.0, 1.0)
+                (self.completed_count as f64 / total_count as f64).clamp(0.0, 1.0)
             }
         })
     }

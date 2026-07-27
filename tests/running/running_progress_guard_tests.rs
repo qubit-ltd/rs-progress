@@ -8,41 +8,20 @@
 //! Tests for `RunningProgressGuard`.
 
 use std::{
-    panic::{
-        AssertUnwindSafe,
-        catch_unwind,
-    },
+    panic::{AssertUnwindSafe, catch_unwind},
     sync::{
-        Arc,
-        Mutex,
-        atomic::{
-            AtomicUsize,
-            Ordering,
-        },
-        mpsc::{
-            self,
-            RecvTimeoutError,
-        },
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+        mpsc::{self, RecvTimeoutError},
     },
     thread,
-    time::{
-        Duration,
-        Instant,
-    },
+    time::{Duration, Instant},
 };
 
 use qubit_progress::{
-    NoOpProgressReporter,
-    Progress,
-    ProgressCounter,
-    ProgressEvent,
-    ProgressPhase,
-    ProgressReportError,
-    ProgressReporter,
-    ProgressSchema,
-    RunningProgressGuard,
-    RunningProgressPointHandle,
-    WriterProgressReporter,
+    NoOpProgressReporter, Progress, ProgressCounter, ProgressEvent, ProgressPhase,
+    ProgressReportError, ProgressReporter, ProgressSchema, RunningProgressGuard,
+    RunningProgressPointHandle, WriterProgressReporter,
 };
 
 use crate::support::FailingWriter;
@@ -62,10 +41,7 @@ impl RecordingReporter {
 }
 
 impl ProgressReporter for RecordingReporter {
-    fn report(
-        &self,
-        event: &ProgressEvent,
-    ) -> Result<(), qubit_progress::ProgressReportError> {
+    fn report(&self, event: &ProgressEvent) -> Result<(), qubit_progress::ProgressReportError> {
         self.events
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -78,10 +54,7 @@ impl ProgressReporter for RecordingReporter {
 struct PanickingReporter;
 
 impl ProgressReporter for PanickingReporter {
-    fn report(
-        &self,
-        _event: &ProgressEvent,
-    ) -> Result<(), qubit_progress::ProgressReportError> {
+    fn report(&self, _event: &ProgressEvent) -> Result<(), qubit_progress::ProgressReportError> {
         panic!("progress reporter panic");
     }
 }
@@ -98,14 +71,15 @@ fn test_running_progress_guard_reports_zero_interval_running_points() {
     thread::scope(|scope| {
         let loop_completed_count = Arc::clone(&completed_count);
         let progress = Progress::new(&reporter, Duration::ZERO, schema());
-        let running_progress: RunningProgressGuard<'_> = progress
-            .spawn_running_reporter(scope, move || {
-                vec![ProgressCounter::new("entries").total(2).completed(
-                    loop_completed_count.load(Ordering::Acquire) as u64,
-                )]
+        let running_progress: RunningProgressGuard<'_> =
+            progress.spawn_running_reporter(scope, move || {
+                vec![
+                    ProgressCounter::new("entries")
+                        .total(2)
+                        .completed(loop_completed_count.load(Ordering::Acquire) as u64),
+                ]
             });
-        let progress_point_handle: RunningProgressPointHandle =
-            running_progress.point_handle();
+        let progress_point_handle: RunningProgressPointHandle = running_progress.point_handle();
 
         completed_count.store(1, Ordering::Release);
         assert!(progress_point_handle.try_report());
@@ -144,6 +118,7 @@ fn test_disabled_reporter_does_not_evaluate_running_snapshot() {
         let point = running_progress.point_handle();
 
         point.report();
+        assert!(!running_progress.status().is_failed());
         assert_eq!(
             snapshot_receiver.recv_timeout(Duration::from_millis(100)),
             Err(RecvTimeoutError::Timeout),
@@ -161,18 +136,19 @@ fn test_running_progress_guard_stop_and_join_propagates_reporter_panic() {
         thread::scope(|scope| {
             let progress = Progress::new(&reporter, Duration::ZERO, schema());
             let running_progress = progress
-                .spawn_running_reporter(scope, || {
-                    vec![ProgressCounter::new("entries").total(1)]
-                });
+                .spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1)]);
+            let status = running_progress.status();
             let progress_point_handle = running_progress.point_handle();
 
             assert!(progress_point_handle.try_report());
             let deadline = Instant::now() + Duration::from_secs(1);
-            while progress_point_handle.try_report()
-                && Instant::now() < deadline
-            {
+            while progress_point_handle.try_report() && Instant::now() < deadline {
                 thread::yield_now();
             }
+            while !status.is_failed() && Instant::now() < deadline {
+                thread::yield_now();
+            }
+            assert!(status.is_failed());
             running_progress
                 .stop_and_join()
                 .expect("progress reporter should stop cleanly");
@@ -188,9 +164,8 @@ fn test_running_progress_guard_stop_and_join_returns_reporter_error() {
 
     thread::scope(|scope| {
         let progress = Progress::new(&reporter, Duration::ZERO, schema());
-        let running_progress = progress.spawn_running_reporter(scope, || {
-            vec![ProgressCounter::new("entries").total(1)]
-        });
+        let running_progress = progress
+            .spawn_running_reporter(scope, || vec![ProgressCounter::new("entries").total(1)]);
         let point = running_progress.point_handle();
         point.report();
 

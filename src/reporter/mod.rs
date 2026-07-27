@@ -14,32 +14,22 @@ mod progress_reporter;
 
 #[cfg(feature = "json")]
 pub use format::JsonMetricSnapshotFormatter;
-pub use format::{
-    HumanReadableMetricSnapshotFormatter,
-    MetricSnapshotFormatter,
-};
+pub use format::{HumanReadableMetricSnapshotFormatter, MetricSnapshotFormatter};
 #[cfg(all(feature = "json", feature = "log"))]
 pub use impls::JsonLoggerProgressReporter;
 #[cfg(feature = "log")]
 pub use impls::LoggerProgressReporter;
 #[cfg(feature = "consumer-reporters")]
 pub use impls::{
-    FormattedProgressReporter,
-    HumanReadableProgressReporter,
-    MetricSnapshotProgressReporter,
+    FormattedProgressReporter, HumanReadableProgressReporter, MetricSnapshotProgressReporter,
 };
 #[cfg(feature = "json")]
 pub use impls::{
-    JsonProgressReporter,
-    JsonStderrProgressReporter,
-    JsonStdoutProgressReporter,
+    JsonProgressReporter, JsonStderrProgressReporter, JsonStdoutProgressReporter,
     JsonWriterProgressReporter,
 };
 pub use impls::{
-    NoOpProgressReporter,
-    StderrProgressReporter,
-    StdoutProgressReporter,
-    WriterProgressReporter,
+    NoOpProgressReporter, StderrProgressReporter, StdoutProgressReporter, WriterProgressReporter,
 };
 pub use progress_report_error::ProgressReportError;
 pub use progress_reporter::ProgressReporter;

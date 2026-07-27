@@ -7,11 +7,7 @@
 // =============================================================================
 use crate::{
     model::ProgressEvent,
-    reporter::{
-        ProgressReportError,
-        ProgressReporter,
-        WriterProgressReporter,
-    },
+    reporter::{ProgressReportError, ProgressReporter, WriterProgressReporter},
 };
 
 /// Progress reporter that writes human-readable metric snapshots to stderr.
