@@ -24,22 +24,55 @@ use qubit_progress::{
 };
 use std::hint::black_box;
 
-/// Benchmarks a due-check that must avoid constructing counters and events.
-fn benchmark_running_report_due_check(c: &mut Criterion) {
+/// Benchmarks a disabled due-check that must avoid constructing counters and
+/// events even with a zero reporting interval.
+fn benchmark_disabled_running_report_due_check(c: &mut Criterion) {
     let reporter = NoOpProgressReporter;
     let mut progress = Progress::single_metric(
+        &reporter,
+        Duration::ZERO,
+        "entries",
+        "Entries",
+    );
+
+    c.bench_function("disabled_running_report_due_check", |b| {
+        b.iter(|| {
+            black_box(
+                progress
+                    .report_running_if_due(|event| {
+                        event.counter("entries", |counter| counter.total(1))
+                    })
+                    .expect("no-op reporter should not fail"),
+            );
+        });
+    });
+}
+
+/// Benchmarks disabled lifecycle calls that must avoid event construction.
+fn benchmark_disabled_lifecycle_reporting(c: &mut Criterion) {
+    let reporter = NoOpProgressReporter;
+    let progress = Progress::single_metric(
         &reporter,
         Duration::from_secs(60),
         "entries",
         "Entries",
     );
 
-    c.bench_function("running_report_due_check_not_due", |b| {
+    c.bench_function("disabled_lifecycle_reporting", |b| {
         b.iter(|| {
             black_box(
                 progress
-                    .report_running_if_due(|event| {
+                    .report_started_if_enabled(|event| {
                         event.counter("entries", |counter| counter.total(1))
+                    })
+                    .expect("no-op reporter should not fail"),
+            );
+            black_box(
+                progress
+                    .report_finished_if_enabled(|event| {
+                        event.counter("entries", |counter| {
+                            counter.total(1).completed(1)
+                        })
                     })
                     .expect("no-op reporter should not fail"),
             );
@@ -83,7 +116,8 @@ fn benchmark_multi_metric_snapshots(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    benchmark_running_report_due_check,
+    benchmark_disabled_running_report_due_check,
+    benchmark_disabled_lifecycle_reporting,
     benchmark_single_metric_event_build,
     benchmark_multi_metric_snapshots,
 );

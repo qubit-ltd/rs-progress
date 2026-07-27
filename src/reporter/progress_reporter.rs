@@ -12,10 +12,10 @@ use crate::{
 
 /// Receives immutable progress events for one logical operation.
 ///
-/// A reporter normally receives one logical operation's event stream. If an
-/// implementation multiplexes multiple operations into one sink, that routing
-/// information is reporter-specific metadata and is intentionally not part of
-/// [`ProgressEvent`].
+/// A reporter normally receives one logical operation's event stream. When an
+/// implementation multiplexes multiple operations into one sink, it can use
+/// [`ProgressEvent::operation_id`] to correlate events from the same logical
+/// operation. Sink-specific routing metadata remains the reporter's concern.
 ///
 /// # Examples
 ///

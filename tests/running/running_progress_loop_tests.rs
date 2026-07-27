@@ -171,3 +171,22 @@ fn test_running_progress_loop_exits_when_all_notifiers_are_dropped() {
 
     assert!(reporter.events().is_empty());
 }
+
+#[test]
+fn test_running_progress_loop_exits_when_positive_interval_guard_is_dropped() {
+    let reporter = RecordingReporter::default();
+    let progress = Progress::new(
+        &reporter,
+        Duration::from_secs(1),
+        ProgressSchema::single("entries", "Entries"),
+    );
+
+    thread::scope(|scope| {
+        let running_progress = progress.spawn_running_reporter(scope, || {
+            vec![ProgressCounter::new("entries").total(1)]
+        });
+        drop(running_progress);
+    });
+
+    assert!(reporter.events().is_empty());
+}
