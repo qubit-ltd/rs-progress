@@ -16,3 +16,11 @@ fn test_progress_stage_error_displays_weight_constraint() {
         "progress stage weight must be non-negative",
     );
 }
+
+#[test]
+fn test_progress_stage_error_displays_non_finite_constraint() {
+    assert_eq!(
+        ProgressStageError::NonFiniteWeight.to_string(),
+        "progress stage weight must be finite",
+    );
+}

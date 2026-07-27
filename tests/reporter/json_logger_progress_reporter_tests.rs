@@ -48,6 +48,7 @@ fn test_json_logger_progress_reporter_accessors_and_report_paths() {
         .with_level(log::Level::Warn);
     assert_eq!(reporter.target(), "qubit_progress_json_test");
     assert_eq!(reporter.level(), log::Level::Warn);
+    assert!(reporter.is_enabled());
 
     let _ = reporter.report(&ProgressEvent::running(
         ProgressSchema::single("entries", "Entries"),

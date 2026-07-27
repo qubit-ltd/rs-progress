@@ -218,11 +218,13 @@ impl<'a> Progress<'a> {
     ///
     /// # Returns
     ///
-    /// The event sent to the configured reporter.
+    /// The event prepared for the configured reporter. Disabled reporters
+    /// receive no event and skip the configuration closure.
     ///
     /// # Errors
     ///
-    /// Returns the configured reporter's output error.
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
     ///
     /// # Panics
     ///
@@ -242,6 +244,41 @@ impl<'a> Progress<'a> {
         )
     }
 
+    /// Reports a started lifecycle event only when reporting is enabled.
+    ///
+    /// # Parameters
+    ///
+    /// * `configure` - Closure that adds counters or stage overrides to the
+    ///   event builder when reporting is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `Some(event)` when the configured reporter accepts events, or `None`
+    /// when reporting is disabled. The closure is not called when disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
+    ///
+    /// # Panics
+    ///
+    /// Propagates panics from the configured reporter.
+    #[inline]
+    pub fn report_started_if_enabled<F>(
+        &self,
+        configure: F,
+    ) -> Result<Option<ProgressEvent>, ProgressReportError>
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        self.report_if_enabled_with_elapsed(
+            ProgressPhase::Started,
+            Duration::ZERO,
+            configure,
+        )
+    }
+
     /// Reports a running lifecycle event immediately.
     ///
     /// # Parameters
@@ -251,11 +288,13 @@ impl<'a> Progress<'a> {
     ///
     /// # Returns
     ///
-    /// The event sent to the configured reporter.
+    /// The event prepared for the configured reporter. Disabled reporters
+    /// receive no event and skip the configuration closure.
     ///
     /// # Errors
     ///
-    /// Returns the configured reporter's output error.
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
     ///
     /// # Panics
     ///
@@ -277,6 +316,47 @@ impl<'a> Progress<'a> {
         Ok(event)
     }
 
+    /// Reports a running lifecycle event only when reporting is enabled.
+    ///
+    /// # Parameters
+    ///
+    /// * `configure` - Closure that adds counters or stage overrides to the
+    ///   event builder when reporting is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `Some(event)` when the configured reporter accepts events, or `None`
+    /// when reporting is disabled. The closure is not called when disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
+    ///
+    /// # Panics
+    ///
+    /// Propagates panics from the configured reporter.
+    #[inline]
+    pub fn report_running_if_enabled<F>(
+        &mut self,
+        configure: F,
+    ) -> Result<Option<ProgressEvent>, ProgressReportError>
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        if !self.reporting_enabled() {
+            return Ok(None);
+        }
+        let now = Instant::now();
+        let event = self.report_with_elapsed(
+            ProgressPhase::Running,
+            now.saturating_duration_since(self.started_at),
+            configure,
+        )?;
+        self.next_running_at = next_instant(now, self.report_interval);
+        Ok(Some(event))
+    }
+
     /// Reports a running lifecycle event if the configured interval has passed.
     ///
     /// # Parameters
@@ -296,7 +376,8 @@ impl<'a> Progress<'a> {
     ///
     /// # Errors
     ///
-    /// Returns the configured reporter's output error when an event is due.
+    /// Returns an error when due event counters violate the metric schema or
+    /// when the configured reporter rejects the event.
     ///
     /// # Panics
     ///
@@ -308,6 +389,9 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
+        if !self.reporting_enabled() {
+            return Ok(None);
+        }
         let now = Instant::now();
         if now < self.next_running_at {
             return Ok(None);
@@ -329,11 +413,13 @@ impl<'a> Progress<'a> {
     ///
     /// # Returns
     ///
-    /// The event sent to the configured reporter.
+    /// The event prepared for the configured reporter. Disabled reporters
+    /// receive no event and skip the configuration closure.
     ///
     /// # Errors
     ///
-    /// Returns the configured reporter's output error.
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
     ///
     /// # Panics
     ///
@@ -353,6 +439,41 @@ impl<'a> Progress<'a> {
         )
     }
 
+    /// Reports a finished lifecycle event only when reporting is enabled.
+    ///
+    /// # Parameters
+    ///
+    /// * `configure` - Closure that adds final counters or stage overrides to
+    ///   the event builder when reporting is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `Some(event)` when the configured reporter accepts events, or `None`
+    /// when reporting is disabled. The closure is not called when disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
+    ///
+    /// # Panics
+    ///
+    /// Propagates panics from the configured reporter.
+    #[inline]
+    pub fn report_finished_if_enabled<F>(
+        &self,
+        configure: F,
+    ) -> Result<Option<ProgressEvent>, ProgressReportError>
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        self.report_if_enabled_with_elapsed(
+            ProgressPhase::Finished,
+            self.elapsed(),
+            configure,
+        )
+    }
+
     /// Reports a failed lifecycle event.
     ///
     /// # Parameters
@@ -362,11 +483,13 @@ impl<'a> Progress<'a> {
     ///
     /// # Returns
     ///
-    /// The event sent to the configured reporter.
+    /// The event prepared for the configured reporter. Disabled reporters
+    /// receive no event and skip the configuration closure.
     ///
     /// # Errors
     ///
-    /// Returns the configured reporter's output error.
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
     ///
     /// # Panics
     ///
@@ -386,6 +509,41 @@ impl<'a> Progress<'a> {
         )
     }
 
+    /// Reports a failed lifecycle event only when reporting is enabled.
+    ///
+    /// # Parameters
+    ///
+    /// * `configure` - Closure that adds final counters or stage overrides to
+    ///   the event builder when reporting is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `Some(event)` when the configured reporter accepts events, or `None`
+    /// when reporting is disabled. The closure is not called when disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
+    ///
+    /// # Panics
+    ///
+    /// Propagates panics from the configured reporter.
+    #[inline]
+    pub fn report_failed_if_enabled<F>(
+        &self,
+        configure: F,
+    ) -> Result<Option<ProgressEvent>, ProgressReportError>
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        self.report_if_enabled_with_elapsed(
+            ProgressPhase::Failed,
+            self.elapsed(),
+            configure,
+        )
+    }
+
     /// Reports a canceled lifecycle event.
     ///
     /// # Parameters
@@ -395,11 +553,13 @@ impl<'a> Progress<'a> {
     ///
     /// # Returns
     ///
-    /// The event sent to the configured reporter.
+    /// The event prepared for the configured reporter. Disabled reporters
+    /// receive no event and skip the configuration closure.
     ///
     /// # Errors
     ///
-    /// Returns the configured reporter's output error.
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
     ///
     /// # Panics
     ///
@@ -413,6 +573,41 @@ impl<'a> Progress<'a> {
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
         self.report_with_elapsed(
+            ProgressPhase::Canceled,
+            self.elapsed(),
+            configure,
+        )
+    }
+
+    /// Reports a canceled lifecycle event only when reporting is enabled.
+    ///
+    /// # Parameters
+    ///
+    /// * `configure` - Closure that adds final counters or stage overrides to
+    ///   the event builder when reporting is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `Some(event)` when the configured reporter accepts events, or `None`
+    /// when reporting is disabled. The closure is not called when disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
+    ///
+    /// # Panics
+    ///
+    /// Propagates panics from the configured reporter.
+    #[inline]
+    pub fn report_canceled_if_enabled<F>(
+        &self,
+        configure: F,
+    ) -> Result<Option<ProgressEvent>, ProgressReportError>
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        self.report_if_enabled_with_elapsed(
             ProgressPhase::Canceled,
             self.elapsed(),
             configure,
@@ -452,7 +647,7 @@ impl<'a> Progress<'a> {
         'a: 'scope,
         F: FnMut() -> Vec<ProgressCounter> + Send + 'scope,
     {
-        if !self.reporter.is_enabled() {
+        if !self.reporting_enabled() {
             return RunningProgressGuard::inactive();
         }
         RunningProgressLoop::spawn_scoped(
@@ -472,7 +667,8 @@ impl<'a> Progress<'a> {
     ///
     /// # Returns
     ///
-    /// The event sent to the configured reporter.
+    /// The event prepared for the configured reporter. Disabled reporters
+    /// receive no event and skip the configuration closure.
     ///
     /// # Panics
     ///
@@ -486,13 +682,67 @@ impl<'a> Progress<'a> {
     where
         F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
     {
-        let event =
-            configure(self.event_builder_with_elapsed(elapsed).phase(phase))
-                .build();
-        if self.reporter.is_enabled() {
-            self.reporter.report(&event)?;
+        let builder = self.event_builder_with_elapsed(elapsed).phase(phase);
+        if !self.reporting_enabled() {
+            return builder.try_build().map_err(Into::into);
         }
+        let event = configure(builder).try_build()?;
+        self.reporter.report(&event)?;
         Ok(event)
+    }
+
+    /// Reports a lifecycle event with an explicit elapsed duration only when
+    /// the configured reporter is enabled.
+    ///
+    /// # Parameters
+    ///
+    /// * `phase` - Lifecycle phase attached to the event.
+    /// * `elapsed` - Elapsed duration carried by the event.
+    /// * `configure` - Closure that adds counters or stage overrides when
+    ///   reporting is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `Some(event)` after delivery, or `None` when reporting is disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when event counters violate the metric schema or when
+    /// the configured reporter rejects the event.
+    ///
+    /// # Panics
+    ///
+    /// Propagates panics from the configured reporter.
+    fn report_if_enabled_with_elapsed<F>(
+        &self,
+        phase: ProgressPhase,
+        elapsed: Duration,
+        configure: F,
+    ) -> Result<Option<ProgressEvent>, ProgressReportError>
+    where
+        F: FnOnce(ProgressEventBuilder) -> ProgressEventBuilder,
+    {
+        if !self.reporting_enabled() {
+            return Ok(None);
+        }
+        self.report_with_elapsed(phase, elapsed, configure)
+            .map(Some)
+    }
+
+    /// Reports whether the configured reporter currently accepts events.
+    ///
+    /// # Returns
+    ///
+    /// `true` when lifecycle reporting is enabled; otherwise, `false`.
+    #[inline(always)]
+    pub fn is_enabled(&self) -> bool {
+        self.reporting_enabled()
+    }
+
+    /// Returns whether the configured reporter currently accepts events.
+    #[inline(always)]
+    fn reporting_enabled(&self) -> bool {
+        self.reporter.is_enabled()
     }
 
     /// Returns the metric schema for this progress run.

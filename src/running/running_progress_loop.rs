@@ -162,23 +162,12 @@ impl RunningProgressLoop {
                 Ok(()) if self.pending.swap(false, Ordering::AcqRel) => {
                     RunningProgressWait::Wake
                 }
-                Ok(()) if self.stopped.load(Ordering::Acquire) => {
-                    RunningProgressWait::Stopped
-                }
-                Ok(()) => RunningProgressWait::Wake,
+                Ok(()) => RunningProgressWait::Stopped,
                 Err(_) => RunningProgressWait::Disconnected,
             };
         }
         match self.wake_receiver.recv_timeout(report_interval) {
-            Ok(()) if self.stopped.load(Ordering::Acquire) => {
-                RunningProgressWait::Stopped
-            }
-            Ok(()) => RunningProgressWait::Wake,
-            Err(RecvTimeoutError::Timeout)
-                if self.stopped.load(Ordering::Acquire) =>
-            {
-                RunningProgressWait::Stopped
-            }
+            Ok(()) => RunningProgressWait::Stopped,
             Err(RecvTimeoutError::Timeout) => RunningProgressWait::Timeout,
             Err(RecvTimeoutError::Disconnected) => {
                 RunningProgressWait::Disconnected

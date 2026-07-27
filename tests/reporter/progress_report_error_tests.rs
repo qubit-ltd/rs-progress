@@ -12,7 +12,10 @@ use std::{
     io,
 };
 
-use qubit_progress::ProgressReportError;
+use qubit_progress::{
+    ProgressEventBuildError,
+    ProgressReportError,
+};
 
 #[test]
 fn test_progress_report_error_preserves_io_context() {
@@ -34,4 +37,20 @@ fn test_progress_report_error_preserves_custom_reporter_message() {
     );
     assert!(error.source().is_none());
     assert_eq!(error, error.clone());
+}
+
+#[test]
+fn test_progress_report_error_preserves_event_build_context() {
+    let error =
+        ProgressReportError::from(ProgressEventBuildError::UnknownMetricId {
+            metric_id: "missing".to_owned(),
+        });
+
+    assert_eq!(
+        error.to_string(),
+        "progress event is invalid: unknown progress metric id: missing",
+    );
+    assert!(error.source().is_some());
+    assert_eq!(error, error.clone());
+    assert_ne!(error, ProgressReportError::message("missing"));
 }
