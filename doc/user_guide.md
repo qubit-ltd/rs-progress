@@ -5,15 +5,45 @@ applications. It does not own your work state. Instead, your code keeps domain
 state, converts it into progress counters, and sends immutable progress events
 to a reporter.
 
-This guide explains how to use the crate, how to choose the right API, and how
-to extend it with custom reporters such as GUI progress bars or JSON-lines
-reporters.
+This guide starts with the problem the crate solves, then follows a command-line
+file-copy operation from its business state to a progress consumer. Later
+sections cover the data model, cadence, built-in reporters, and custom reporters
+such as GUI progress bars or JSON-lines reporters.
+
+## Why Qubit Progress?
+
+Long-running work needs progress output, but a reusable operation should not
+have to choose between stderr, a logger, a JSON stream, or a GUI widget. Direct
+printing couples the work loop to one presentation. Ad-hoc callback arguments
+also make it difficult for consumers to interpret units, lifecycle state,
+optional stages, and elapsed time consistently.
+
+For example, a command that copies files needs to tell a person how many files
+and bytes have been copied. The same copy operation may later run in a server,
+where a JSON stream is useful, or behind a GUI, where structured values are more
+useful than formatted text. The copy logic should not need to change for those
+consumers.
+
+## How It Works
+
+Your code owns the domain state. `qubit-progress` gives that state a stable
+progress protocol:
+
+```text
+business state → ProgressCounter snapshot → ProgressEvent → ProgressReporter → stderr / log / JSON / GUI
+```
+
+Define the stable metric ids once in a `ProgressSchema`. At lifecycle points,
+use `Progress` to turn the current counters into an immutable,
+self-describing `ProgressEvent`. The injected `ProgressReporter` consumes the
+event immediately. Replacing the reporter changes the destination, not the
+work loop.
 
 ## Installation
 
 ```toml
 [dependencies]
-qubit-progress = "0.5"
+qubit-progress = "0.6"
 ```
 
 Serde support is enabled by default. If you disable default features, enable
@@ -41,9 +71,90 @@ standard-library memory ordering parameters:
 qubit-atomic = "0.13"
 ```
 
+## Quick Start: Copy Files in a CLI
+
+This command copies two files into a backup directory. `files` and `bytes` are
+separate metrics because they answer different questions: a large file can make
+byte progress advance while file progress stays unchanged.
+
+```rust
+use std::{
+    error::Error,
+    time::Duration,
+};
+
+use qubit_progress::{
+    Progress,
+    ProgressMetric,
+    ProgressSchema,
+    StderrProgressReporter,
+};
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let files = [
+        ("input/january.csv", "backup/january.csv"),
+        ("input/february.csv", "backup/february.csv"),
+    ];
+    let total_files = u64::try_from(files.len())?;
+    let total_bytes = files.iter().try_fold(0_u64, |total, (source, _)| {
+        Ok::<_, std::io::Error>(total + std::fs::metadata(*source)?.len())
+    })?;
+
+    let schema = ProgressSchema::new(vec![
+        ProgressMetric::new("files", "Files"),
+        ProgressMetric::new("bytes", "Bytes"),
+    ]);
+    let reporter = StderrProgressReporter::new();
+    let mut progress = Progress::new(&reporter, Duration::from_millis(500), schema);
+
+    progress.report_started(|event| {
+        event
+            .counter("files", |counter| counter.total(total_files))
+            .counter("bytes", |counter| counter.total(total_bytes))
+    })?;
+
+    std::fs::create_dir_all("backup")?;
+    let mut completed_files = 0_u64;
+    let mut completed_bytes = 0_u64;
+    for (source, destination) in files {
+        completed_bytes += std::fs::copy(source, destination)?;
+        completed_files += 1;
+        progress.report_running_if_due(|event| {
+            event
+                .counter("files", |counter| counter.total(total_files).completed(completed_files))
+                .counter("bytes", |counter| counter.total(total_bytes).completed(completed_bytes))
+        })?;
+    }
+
+    progress.report_finished(|event| {
+        event
+            .counter("files", |counter| counter.total(total_files).completed(total_files).succeeded(total_files))
+            .counter("bytes", |counter| counter.total(total_bytes).completed(total_bytes).succeeded(total_bytes))
+    })?;
+    Ok(())
+}
+```
+
+`report_started` emits the initial snapshot before copying begins.
+`report_running_if_due` invokes its closure and emits a `running` event only
+after the configured interval is due, so the hot file-copy loop avoids needless
+snapshot construction, formatting, and output. `report_finished` emits the
+terminal success snapshot.
+
+Each emitted lifecycle call constructs a `ProgressEvent` and synchronously calls
+`ProgressReporter::report`. Here, `StderrProgressReporter` consumes each event
+by rendering one human-readable line per metric to stderr. Replace it with a
+JSON, logger, or structured snapshot reporter without changing the loop.
+
+The example lets filesystem and reporter errors propagate to keep the successful
+path readable. In a production error branch, use the latest counters to call
+`report_failed` before returning the copy error. If reporting that terminal
+event also fails, preserve both failures in the application's own error type
+rather than silently dropping either one.
+
 ## Core Model
 
-A progress stream has five main concepts:
+A progress stream has six main concepts:
 
 | Concept | Type | Meaning |
 | --- | --- | --- |
@@ -66,51 +177,6 @@ When a reporter wants to handle one metric at a time, it can call
 `ProgressEvent::metric_snapshots()`. Each `ProgressMetricSnapshot` contains the
 complete `ProgressMetric`, event phase, optional stage, flattened counter
 values, and elapsed time.
-
-## Quick Start
-
-The common workflow is:
-
-1. Define a schema.
-2. Choose a reporter.
-3. Create a `Progress` run.
-4. Report `started`, `running`, and terminal events.
-
-```rust
-use std::time::Duration;
-
-use qubit_progress::{
-    Progress,
-    ProgressMetric,
-    ProgressSchema,
-    StderrProgressReporter,
-};
-
-let schema = ProgressSchema::new(vec![
-    ProgressMetric::new("entries", "Entries"),
-    ProgressMetric::new("bytes", "Bytes"),
-]);
-let reporter = StderrProgressReporter::new();
-let mut progress = Progress::new(&reporter, Duration::from_secs(1), schema);
-
-progress.report_started(|event| {
-    event
-        .counter("entries", |counter| counter.total(3))
-        .counter("bytes", |counter| counter.total(1_024))
-}).expect("progress output should succeed");
-
-progress.report_running(|event| {
-    event
-        .counter("entries", |counter| counter.total(3).completed(1).active(1))
-        .counter("bytes", |counter| counter.total(1_024).completed(512))
-}).expect("progress output should succeed");
-
-progress.report_finished(|event| {
-    event
-        .counter("entries", |counter| counter.total(3).completed(3).succeeded(3))
-        .counter("bytes", |counter| counter.total(1_024).completed(1_024))
-}).expect("progress output should succeed");
-```
 
 ## Defining Metrics and Schemas
 

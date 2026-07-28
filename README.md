@@ -11,10 +11,23 @@ Generic progress reporting abstractions for Qubit Rust libraries and application
 
 ## Overview
 
-Qubit Progress models progress as immutable, self-describing events. Each event
-carries a metric schema, lifecycle phase, optional stage information, metric
-counters, and elapsed time. Reporters receive complete event snapshots and can
-render them as human-readable text, logs, JSON, or application-specific records.
+Long-running library code and command-line applications often need to report
+progress to stderr, logs, JSON streams, or a GUI. Printing from the work loop
+couples the operation to one presentation, while ad-hoc callbacks leave
+consumers without stable metric ids, lifecycle states, stages, or elapsed time.
+
+Qubit Progress separates the producer from the consumer. Your code owns the
+work state, turns it into counters, and uses `Progress` to emit immutable,
+self-describing `ProgressEvent` snapshots. A `ProgressReporter` consumes each
+event and chooses how to present or store it.
+
+```text
+application state → ProgressCounter snapshot → ProgressEvent → ProgressReporter → stderr / log / JSON / GUI
+```
+
+Each event carries a metric schema, lifecycle phase, optional stage information,
+metric counters, and elapsed time. This lets one operation use a consistent
+progress protocol while callers choose their own output sink.
 
 Use this crate when you need:
 
@@ -26,8 +39,9 @@ Use this crate when you need:
 - background running reporters for worker-driven operations;
 - serde-serializable progress events suitable for logs, agents, and structured consumers.
 
-For detailed usage, extension examples, and reporter design guidance, see the [User Guide](doc/user_guide.md).
-API reference documentation is available on [docs.rs](https://docs.rs/qubit-progress).
+For the full file-copy walkthrough, error-path guidance, and extension examples,
+see the [User Guide](doc/user_guide.md). API reference documentation is
+available on [docs.rs](https://docs.rs/qubit-progress).
 
 ## Installation
 
@@ -38,32 +52,80 @@ qubit-progress = "0.6"
 
 ## Quick Example
 
-```rust
-use std::time::Duration;
+This command copies a small batch of files. The copy loop produces progress;
+`StderrProgressReporter` is the consumer that renders each delivered event for
+the person running the command.
 
-use qubit_progress::{
-    ProgressEvent,
-    ProgressMetric,
-    ProgressPhase,
-    ProgressSchema,
+```rust
+use std::{
+    error::Error,
+    time::Duration,
 };
 
-let schema = ProgressSchema::new(vec![
-    ProgressMetric::new("entries", "Entries"),
-    ProgressMetric::new("bytes", "Bytes"),
-]);
+use qubit_progress::{
+    Progress,
+    ProgressMetric,
+    ProgressSchema,
+    StderrProgressReporter,
+};
 
-let event = ProgressEvent::builder(schema)
-    .running()
-    .stage_named("copy", "Copy files")
-    .counter("entries", |counter| counter.total(10).completed(4))
-    .counter("bytes", |counter| counter.total(1_000_000).completed(400_000))
-    .elapsed(Duration::from_millis(110))
-    .build();
+fn main() -> Result<(), Box<dyn Error>> {
+    let files = [
+        ("input/january.csv", "backup/january.csv"),
+        ("input/february.csv", "backup/february.csv"),
+    ];
+    let total_files = u64::try_from(files.len())?;
+    let total_bytes = files.iter().try_fold(0_u64, |total, (source, _)| {
+        Ok::<_, std::io::Error>(total + std::fs::metadata(*source)?.len())
+    })?;
 
-assert_eq!(event.phase(), ProgressPhase::Running);
-assert_eq!(event.counter("entries").map(|c| c.completed_count()), Some(4));
+    let schema = ProgressSchema::new(vec![
+        ProgressMetric::new("files", "Files"),
+        ProgressMetric::new("bytes", "Bytes"),
+    ]);
+    let reporter = StderrProgressReporter::new();
+    let mut progress = Progress::new(&reporter, Duration::from_millis(500), schema);
+
+    progress.report_started(|event| {
+        event
+            .counter("files", |counter| counter.total(total_files))
+            .counter("bytes", |counter| counter.total(total_bytes))
+    })?;
+
+    std::fs::create_dir_all("backup")?;
+    let mut completed_files = 0_u64;
+    let mut completed_bytes = 0_u64;
+    for (source, destination) in files {
+        completed_bytes += std::fs::copy(source, destination)?;
+        completed_files += 1;
+        progress.report_running_if_due(|event| {
+            event
+                .counter("files", |counter| counter.total(total_files).completed(completed_files))
+                .counter("bytes", |counter| counter.total(total_bytes).completed(completed_bytes))
+        })?;
+    }
+
+    progress.report_finished(|event| {
+        event
+            .counter("files", |counter| counter.total(total_files).completed(total_files).succeeded(total_files))
+            .counter("bytes", |counter| counter.total(total_bytes).completed(total_bytes).succeeded(total_bytes))
+    })?;
+    Ok(())
+}
 ```
+
+`report_started`, each due `report_running_if_due`, and `report_finished` build
+a `ProgressEvent` and synchronously call `ProgressReporter::report`. In this
+CLI scenario, `StderrProgressReporter` consumes the event by rendering one
+human-readable line per metric to stderr. Replace the reporter with a JSON,
+logger, or structured snapshot reporter without changing the copy loop.
+
+The example focuses on the successful path. A real command should call
+`report_failed` with the latest counters before returning a copy error, and it
+should propagate an output failure instead of silently losing progress.
+
+See the [User Guide](doc/user_guide.md) for the complete scenario, reporter
+choices, and custom consumer implementations.
 
 ## Main Capabilities
 
