@@ -1,8 +1,19 @@
 # Qubit Progress
 
-`qubit-progress` 为一次长耗时操作提供简洁、生命周期安全的进度协议。它把不变的操作配置与每次上报时变化的计数彻底分开。
+[![Rust CI](https://github.com/qubit-ltd/rs-progress/actions/workflows/ci.yml/badge.svg)](https://github.com/qubit-ltd/rs-progress/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://qubit-ltd.github.io/rs-progress/coverage-badge.json)](https://qubit-ltd.github.io/rs-progress/coverage/)
+[![Crates.io](https://img.shields.io/crates/v/qubit-progress.svg?color=blue)](https://crates.io/crates/qubit-progress)
+[![Rust](https://img.shields.io/badge/rust-1.94+-blue.svg?logo=rust)](https://www.rust-lang.org)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 
-核心规则只有一条：在操作开始时声明指标及其总量；每次上报的闭包只填写当前动态计数。每个 `Event` 都是完整快照，消费者无需依赖之前的事件重建状态。
+`qubit-progress` 是一个面向单次长耗时操作、具有生命周期安全保证的进度上报库。它向 `Reporter` 发送完整且不可变的事件：每个事件都包含操作阶段、耗时、稳定的指标元数据和最新动态计数。
+
+## 这个库解决什么问题？
+
+进度上报常被绑死在终端进度条上，或以零散计数器散落在复制循环中。这样既难以把同一状态同时发送给日志、JSON、UI 或遥测系统，也会迫使消费者根据增量重建状态。进入多线程后，操作所有者和更新计数的工作线程又常常不是同一段代码。
+
+本库把这两类状态分开：启动时仅配置一次 `Metric` 的稳定 ID、显示名称和可选总量；每次上报闭包只提供当前计数。库会校验快照并投递自包含的 `Event`。终态方法会消费 `Progress`，因此在安全 Rust 中不能重复完成，也不能在完成后继续上报。
 
 ## 安装
 
@@ -11,22 +22,82 @@
 qubit-progress = "0.6"
 ```
 
-使用 JSON Lines 输出时开启 `json-lines` 特性；使用日志 sink 时开启 `log` 特性。
+需要 `JsonLinesReporter` 时开启 `json-lines` 特性；需要 `LogReporter` 时开启 `log` 特性。
 
-## 快速示例
+## 常规用法：复制一组文件
+
+假设导入命令要复制一组已知文件。操作只在启动时声明文件总数；每次 `std::fs::copy` 成功后，上报最新的已完成和成功数量。`TextReporter` 将每个事件写成一行到标准错误；替换 reporter 后，同一段 `Progress` 代码也可以服务于其他输出目标。
 
 ```rust
+use std::{fs, io};
 use qubit_progress::{Metric, Progress, TextReporter};
 
-let reporter = TextReporter::stderr();
+fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> {
+    let reporter = TextReporter::new(io::stderr());
+    let mut progress = Progress::builder(&reporter)
+        .metric(Metric::new("files", "文件").total(files.len() as u64))
+        .start()?;
+
+    for (index, (source, destination)) in files.iter().enumerate() {
+        fs::copy(source, destination)?;
+        let completed = index as u64 + 1;
+        progress.report(|snapshot| {
+            snapshot.metric("files", |counts| {
+                counts.completed(completed).succeeded(completed);
+            });
+        })?;
+    }
+
+    progress.finish(|snapshot| {
+        snapshot.metric("files", |counts| {
+            let total = files.len() as u64;
+            counts.completed(total).succeeded(total);
+        });
+    })?;
+    Ok(())
+}
+```
+
+`Started`、每个 `Running` 和 `Succeeded` 事件都会携带已配置的总量。业务代码无需重复填写固定配置，reporter 也不需要之前的事件即可理解当前状态。
+
+## 额外线程：自动上报共享的复制状态
+
+对于并行或由工作线程驱动的任务，可让 `Progress` 拥有一个有作用域的后台上报器。快照闭包读取共享计数器，工作线程在更新计数后调用可克隆的 `Notifier`。使用 `Duration::ZERO` 时，通知会被合并并触发上报，无需轮询。发送终态事件前必须调用 `stop()`：有作用域的独占借用会阻止后台上报器存活期间手工上报或结束操作。
+
+```rust
+use std::{
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
+use qubit_progress::{Metric, Progress, TextReporter};
+
+let reporter = TextReporter::new(std::io::stderr());
 let mut progress = Progress::builder(&reporter)
+    .interval(Duration::ZERO)
     .metric(Metric::new("files", "文件").total(2))
     .start()?;
+let copied = Arc::new(Mutex::new(0_u64));
 
-progress.report(|snapshot| {
-    snapshot.metric("files", |counts| {
-        counts.completed(1).succeeded(1).active(1);
+thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
+    let copied_for_snapshot = Arc::clone(&copied);
+    let auto = progress.spawn_auto_reporter(scope, move |snapshot| {
+        let completed = *copied_for_snapshot.lock().expect("copy counter mutex poisoned");
+        snapshot.metric("files", |counts| {
+            counts.completed(completed).succeeded(completed);
+        });
     });
+
+    let notifier = auto.notifier();
+    let copied_for_worker = Arc::clone(&copied);
+    let worker = scope.spawn(move || {
+        // 在这里执行一次复制，再发布新的共享状态。
+        *copied_for_worker.lock().expect("copy counter mutex poisoned") = 2;
+        notifier.notify();
+    });
+    worker.join().expect("copy worker panicked");
+    auto.stop()?;
+    Ok(())
 })?;
 
 progress.finish(|snapshot| {
@@ -34,19 +105,45 @@ progress.finish(|snapshot| {
         counts.completed(2).succeeded(2);
     });
 })?;
-# Ok::<(), qubit_progress::TerminalError>(())
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`Started`、`Running` 和终态事件都会自动携带 `2` 这个总量，业务代码不必反复填写。
+若更需要周期性心跳而不是即时通知，可设置正的上报间隔。通知只会唤醒后台线程，绝不会绕过最小间隔。
 
-## 生命周期与禁用语义
+## 下一步
 
-`ProgressBuilder::start` 会校验固定配置、只采样一次 `Reporter::is_enabled()`，并仅在启用时发送 `Started`。禁用后，所有上报和终态闭包均不会执行，不创建事件、不调用 reporter，也不启动后台线程；固定配置校验仍然执行。
+请阅读[用户指南](doc/user_guide.zh_CN.md)，了解生命周期模型、校验规则、调度、自动上报、reporter 与错误处理；API 细节见 [docs.rs](https://docs.rs/qubit-progress)。
 
-生命周期为 `Started → Running* → Succeeded | Failed | Cancelled`。`finish`、`fail` 和 `cancel` 消费 `Progress`，因此安全 Rust 中不能重复发送终态事件，也不能在终态后继续上报。
+## 测试
 
-实现 `Reporter` 即可消费 `&Event`。内置 `NoopReporter`、`TextReporter`、`JsonLinesReporter`（`json-lines` 特性）和 `LogReporter`（`log` 特性）。JSON Lines 每行精确写入一个完整事件，耗时采用 `"250ms"` 这样的规范字符串。
+```bash
+# 使用默认 feature 集运行测试
+cargo test
 
-多线程工作可使用 `Progress::spawn_auto_reporter`：它返回有作用域的 `AutoReporter`，独占借用操作；零间隔时工作线程通过可克隆的 `Notifier` 合并唤醒，正间隔时定期心跳。发送终态事件前必须调用 `stop()`。
+# 使用项目声明的全部 feature 运行测试
+cargo test --all-features
 
-更多说明见[用户指南](doc/user_guide.zh_CN.md)。
+# 运行项目 CI 检查
+./ci-check.sh
+
+# 检查代码覆盖率
+./coverage.sh
+```
+
+## 许可证
+
+Copyright (c) 2025 - 2026. Haixing Hu. All rights reserved.
+
+本项目基于 Apache License 2.0 授权。完整许可证文本请参阅
+[LICENSE](LICENSE)。
+
+## 贡献
+
+欢迎贡献。请遵循 Rust API 指南，及时更新公共 API 文档与测试，并在提交
+Pull Request 前运行 `./align-ci.sh`格式化代码，运行`./ci-check.sh`对齐CI要求。
+
+## 作者
+
+**Haixing Hu** - *Qubit Co. Ltd.*
+
+仓库地址：[https://github.com/qubit-ltd/rs-progress](https://github.com/qubit-ltd/rs-progress)
