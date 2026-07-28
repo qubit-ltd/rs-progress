@@ -11,7 +11,7 @@ An operation has stable configuration and changing state:
 - `Snapshot` exists only inside one report closure. It supplies current `completed`, `active`, `succeeded`, and `failed` counts for each metric.
 - `Event` is an immutable, complete observation. A reporter does not need earlier events to reconstruct its state.
 
-The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `fail`, and `cancel` consume `Progress`, so safe Rust cannot deliver a second terminal event or report afterwards.
+The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
 
 ## Start an operation and report a snapshot
 
@@ -131,7 +131,7 @@ progress.finish(|snapshot| {
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-For a zero interval, `notify()` coalesces repeated calls into at most one pending report. For a positive interval, the worker emits heartbeats at the minimum interval; notifications only wake its wait and do not violate the limit. `notify()` is harmless after `stop()`. Always call `stop()` and handle its result before calling a terminal method. While the `AutoReporter` exists, the exclusive borrow prevents manual reporting, stage changes, total changes, and termination.
+For a zero interval, `notify()` coalesces repeated calls into at most one pending report. For a positive interval, the worker emits heartbeats at the minimum interval and `notify()` is a no-op, avoiding synchronization work for worker threads. `notify()` is harmless after `stop()`. Always call `stop()` and handle its result before calling a terminal method. While the `AutoReporter` exists, the exclusive borrow prevents manual reporting, stage changes, total changes, and termination.
 
 ## Disabled operations
 

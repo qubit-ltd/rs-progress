@@ -386,6 +386,15 @@ impl Snapshot {
         if let Some(error) = self.error {
             return Err(error);
         }
+        if let Some(metric_id) =
+            self.metric_ids.iter().zip(&self.updated).find_map(
+                |(metric_id, updated)| (!updated).then_some(metric_id),
+            )
+        {
+            return Err(ValidationError::MissingMetricUpdate {
+                metric_id: metric_id.clone(),
+            });
+        }
         metrics
             .iter()
             .zip(self.counts)

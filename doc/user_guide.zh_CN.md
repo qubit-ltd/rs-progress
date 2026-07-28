@@ -11,7 +11,7 @@
 - `Snapshot` 仅在一次上报闭包中存在，用于填写当前的 `completed`、`active`、`succeeded` 与 `failed` 计数。
 - `Event` 是不可变的完整观测值；reporter 无需依赖之前的事件重建状态。
 
-生命周期为 `Started → Running* → Succeeded | Failed | Cancelled`。`finish`、`fail` 和 `cancel` 会消费 `Progress`，因此安全 Rust 中无法再发送第二个终态事件，也不能在终态后继续上报。
+生命周期为 `Started → Running* → Succeeded | Failed | Cancelled`。`finish`、`fail` 和 `cancel` 会消费 `Progress`，因此安全 Rust 中至多发送一个终态事件，且不能在终态后继续上报；但若在调用终态方法前丢弃对象或发生 unwind，操作仍可能没有终态事件。
 
 ## 启动操作并上报快照
 
@@ -131,7 +131,7 @@ progress.finish(|snapshot| {
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-间隔为零时，`notify()` 会把多次调用合并为至多一次待处理上报。正间隔时，后台线程按最小间隔发送心跳；通知只会唤醒等待，不会绕过限速。`stop()` 后调用 `notify()` 没有副作用。必须在终态方法前调用 `stop()` 并处理其结果。`AutoReporter` 存在期间，独占借用会阻止手工上报、修改阶段、修改总量和结束操作。
+间隔为零时，`notify()` 会把多次调用合并为至多一次待处理上报。正间隔时，后台线程按最小间隔发送心跳，`notify()` 是无操作，避免工作线程为通知付出同步成本。`stop()` 后调用 `notify()` 没有副作用。必须在终态方法前调用 `stop()` 并处理其结果。`AutoReporter` 存在期间，独占借用会阻止手工上报、修改阶段、修改总量和结束操作。
 
 ## 禁用的操作
 

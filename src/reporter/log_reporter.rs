@@ -18,6 +18,11 @@ use crate::{
 pub struct LogReporter;
 
 impl Reporter for LogReporter {
+    /// Samples whether the `log` facade accepts info-level output.
+    fn is_enabled(&self) -> bool {
+        log::log_enabled!(log::Level::Info)
+    }
+
     /// Writes the event's debug representation through `log::info!`.
     fn report(&self, event: &Event) -> Result<(), ReportError> {
         log::info!("{event:?}");
