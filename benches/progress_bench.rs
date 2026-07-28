@@ -7,7 +7,10 @@
 // =============================================================================
 //! Criterion benchmarks for the redesigned progress reporting paths.
 
-use std::time::Duration;
+use std::{
+    hint::black_box,
+    time::Duration,
+};
 
 use criterion::{
     Criterion,
@@ -37,6 +40,26 @@ fn bench_disabled_report(criterion: &mut Criterion) {
                     });
                 })
                 .expect("disabled report must succeed");
+        });
+    });
+}
+
+/// Benchmarks an enabled running report with one fully configured metric.
+fn bench_enabled_report(criterion: &mut Criterion) {
+    let reporter = |_event: &qubit_progress::Event| Ok::<(), ReportError>(());
+    let mut progress = Progress::builder(&reporter)
+        .metric(Metric::new("entries", "Entries").total(1))
+        .start()
+        .expect("enabled progress must start");
+    criterion.bench_function("enabled_report", |bencher| {
+        bencher.iter(|| {
+            progress
+                .report(|snapshot| {
+                    snapshot.metric("entries", |counts| {
+                        counts.completed(black_box(1));
+                    });
+                })
+                .expect("enabled report must succeed");
         });
     });
 }
@@ -89,6 +112,7 @@ fn bench_multi_metric_terminal(criterion: &mut Criterion) {
 criterion_group!(
     progress_benches,
     bench_disabled_report,
+    bench_enabled_report,
     bench_not_due_report,
     bench_multi_metric_terminal
 );
