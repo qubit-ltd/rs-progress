@@ -5,6 +5,4 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Tests for reporters and event serialization.
-
-mod reporter_tests;
+//! No-op reporter behavior is covered by progress lifecycle integration tests.

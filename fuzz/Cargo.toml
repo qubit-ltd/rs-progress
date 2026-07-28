@@ -1,0 +1,20 @@
+[package]
+name = "qubit-progress-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1.0"
+qubit-progress = { path = "..", features = ["serde"] }
+
+[[bin]]
+name = "event_json"
+path = "fuzz_targets/event_json.rs"
+test = false
+doc = false
+bench = false

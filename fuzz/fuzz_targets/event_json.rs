@@ -5,6 +5,13 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Tests for reporters and event serialization.
+//! Fuzz target for strict Event JSON deserialization.
 
-mod reporter_tests;
+#![no_main]
+
+use libfuzzer_sys::fuzz_target;
+use qubit_progress::Event;
+
+fuzz_target!(|input: &[u8]| {
+    let _ = serde_json::from_slice::<Event>(input);
+});

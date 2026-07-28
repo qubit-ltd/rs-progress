@@ -1,47 +1,8 @@
 # Qubit Progress
 
-[![Rust CI](https://github.com/qubit-ltd/rs-progress/actions/workflows/ci.yml/badge.svg)](https://github.com/qubit-ltd/rs-progress/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://qubit-ltd.github.io/rs-progress/coverage-badge.json)](https://qubit-ltd.github.io/rs-progress/coverage/)
-[![Crates.io](https://img.shields.io/crates/v/qubit-progress.svg?color=blue)](https://crates.io/crates/qubit-progress)
-[![Rust](https://img.shields.io/badge/rust-1.94+-blue.svg?logo=rust)](https://www.rust-lang.org)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![中文文档](https://img.shields.io/badge/文档-中文版-blue.svg)](README.zh_CN.md)
+`qubit-progress` is a lifecycle-safe protocol for reporting one long-running operation. It separates immutable operation configuration from the changing counts sampled at each report.
 
-Generic progress reporting abstractions for Qubit Rust libraries and applications.
-
-## Overview
-
-Long-running library code and command-line applications often need to report
-progress to stderr, logs, JSON streams, or a GUI. Printing from the work loop
-couples the operation to one presentation, while ad-hoc callbacks leave
-consumers without stable metric ids, lifecycle states, stages, or elapsed time.
-
-Qubit Progress separates the producer from the consumer. Your code owns the
-work state, turns it into counters, and uses `Progress` to emit immutable,
-self-describing `ProgressEvent` snapshots. A `ProgressReporter` consumes each
-event and chooses how to present or store it.
-
-```text
-application state → ProgressCounter snapshot → ProgressEvent → ProgressReporter → stderr / log / JSON / GUI
-```
-
-Each event carries a metric schema, lifecycle phase, optional stage information,
-metric counters, and elapsed time. This lets one operation use a consistent
-progress protocol while callers choose their own output sink.
-
-Use this crate when you need:
-
-- stable metric definitions for an operation, such as files, bytes, entries, or tasks;
-- `u64` counters grouped by metric id;
-- lifecycle phases such as `started`, `running`, `finished`, `failed`, and `canceled`;
-- optional stage metadata for multi-step operations;
-- operation-scoped reporting with configurable running-report intervals;
-- background running reporters for worker-driven operations;
-- serde-serializable progress events suitable for logs, agents, and structured consumers.
-
-For the full file-copy walkthrough, error-path guidance, and extension examples,
-see the [User Guide](doc/user_guide.md). API reference documentation is
-available on [docs.rs](https://docs.rs/qubit-progress).
+Declare every metric and its total once when the operation starts. A report closure supplies only dynamic counts. Every delivered event is complete, so a reporter never needs previous events to reconstruct state.
 
 ## Installation
 
@@ -50,351 +11,44 @@ available on [docs.rs](https://docs.rs/qubit-progress).
 qubit-progress = "0.6"
 ```
 
-## Quick Example
+Enable `json-lines` for structured JSON output and `log` for the log sink.
 
-This command copies a small batch of files. The copy loop produces progress;
-`StderrProgressReporter` is the consumer that renders each delivered event for
-the person running the command.
+## Example
 
 ```rust
-use std::{
-    error::Error,
-    time::Duration,
-};
+use qubit_progress::{Metric, Progress, TextReporter};
 
-use qubit_progress::{
-    Progress,
-    ProgressMetric,
-    ProgressSchema,
-    StderrProgressReporter,
-};
+let reporter = TextReporter::stderr();
+let mut progress = Progress::builder(&reporter)
+    .metric(Metric::new("files", "Files").total(2))
+    .start()?;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let files = [
-        ("input/january.csv", "backup/january.csv"),
-        ("input/february.csv", "backup/february.csv"),
-    ];
-    let total_files = u64::try_from(files.len())?;
-    let total_bytes = files.iter().try_fold(0_u64, |total, (source, _)| {
-        Ok::<_, std::io::Error>(total + std::fs::metadata(*source)?.len())
-    })?;
-
-    let schema = ProgressSchema::new(vec![
-        ProgressMetric::new("files", "Files"),
-        ProgressMetric::new("bytes", "Bytes"),
-    ]);
-    let reporter = StderrProgressReporter::new();
-    let mut progress = Progress::new(&reporter, Duration::from_millis(500), schema);
-
-    progress.report_started(|event| {
-        event
-            .counter("files", |counter| counter.total(total_files))
-            .counter("bytes", |counter| counter.total(total_bytes))
-    })?;
-
-    std::fs::create_dir_all("backup")?;
-    let mut completed_files = 0_u64;
-    let mut completed_bytes = 0_u64;
-    for (source, destination) in files {
-        completed_bytes += std::fs::copy(source, destination)?;
-        completed_files += 1;
-        progress.report_running_if_due(|event| {
-            event
-                .counter("files", |counter| counter.total(total_files).completed(completed_files))
-                .counter("bytes", |counter| counter.total(total_bytes).completed(completed_bytes))
-        })?;
-    }
-
-    progress.report_finished(|event| {
-        event
-            .counter("files", |counter| counter.total(total_files).completed(total_files).succeeded(total_files))
-            .counter("bytes", |counter| counter.total(total_bytes).completed(total_bytes).succeeded(total_bytes))
-    })?;
-    Ok(())
-}
-```
-
-`report_started`, each due `report_running_if_due`, and `report_finished` build
-a `ProgressEvent` and synchronously call `ProgressReporter::report`. In this
-CLI scenario, `StderrProgressReporter` consumes the event by rendering one
-human-readable line per metric to stderr. Replace the reporter with a JSON,
-logger, or structured snapshot reporter without changing the copy loop.
-
-The example focuses on the successful path. A real command should call
-`report_failed` with the latest counters before returning a copy error, and it
-should propagate an output failure instead of silently losing progress.
-
-See the [User Guide](doc/user_guide.md) for the complete scenario, reporter
-choices, and custom consumer implementations.
-
-## Main Capabilities
-
-### Schema and Metrics
-
-`ProgressSchema` defines the metric dimensions that may appear in a progress
-event stream. A metric has a stable `id` for structured data and a human-readable
-`name` for display output.
-
-| Type | Purpose |
-| --- | --- |
-| `ProgressSchema` | metric definitions for one logical operation |
-| `ProgressMetric` | stable metric id plus display name |
-| `ProgressCounter` | `u64` counts for one metric id |
-| `ProgressMetricSnapshot` | one metric counter flattened with event phase, stage, and elapsed time |
-| `ProgressStage` | optional multi-stage operation metadata |
-
-A schema can contain multiple metrics, for example `entries` and `bytes`, so a
-single event can report logical item progress and byte progress together without
-mixing their units.
-
-### Events and Counters
-
-A `ProgressEvent` is an immutable snapshot. It contains:
-
-| Field | Purpose |
-| --- | --- |
-| `schema` | metric definitions carried with the event |
-| `operation_id` | process-local identifier shared by one logical operation |
-| `phase` | lifecycle state: `started`, `running`, `finished`, `failed`, or `canceled` |
-| `stage` | optional multi-stage operation metadata |
-| `counters` | one or more `ProgressCounter` values grouped by `metric_id` |
-| `elapsed` | elapsed `Duration`, serialized by `qubit-datatype` as strings such as `110ms` |
-
-Use `ProgressEvent::builder(schema)` to build events directly:
-
-```rust
-use std::time::Duration;
-
-use qubit_progress::{
-    ProgressEvent,
-    ProgressMetric,
-    ProgressSchema,
-};
-
-let event = ProgressEvent::builder(ProgressSchema::single("entries", "Entries"))
-    .running()
-    .counter("entries", |counter| counter.total(5).completed(2))
-    .elapsed(Duration::from_millis(110))
-    .build();
-
-assert_eq!(event.counter("entries").map(|counter| counter.completed_count()), Some(2));
-```
-
-### Operation-Scoped Progress
-
-A `Progress` instance is scoped to one logical operation. Do not mix unrelated
-operations into one reporter stream unless the reporter explicitly implements
-multiplexing. Multi-threaded work should aggregate counters and report them
-through the operation-scoped `Progress`.
-
-```rust
-use std::time::Duration;
-
-use qubit_progress::{
-    Progress,
-    ProgressMetric,
-    ProgressSchema,
-    WriterProgressReporter,
-};
-
-let schema = ProgressSchema::new(vec![
-    ProgressMetric::new("entries", "Entries"),
-    ProgressMetric::new("bytes", "Bytes"),
-]);
-let reporter = WriterProgressReporter::from_writer(std::io::stdout());
-let mut progress = Progress::new(&reporter, Duration::from_secs(1), schema);
-
-progress
-    .report_started(|event| event.counter("entries", |counter| counter.total(3)))
-    .expect("progress output should succeed");
-
-progress.report_running(|event| {
-    event
-        .counter("entries", |counter| counter.total(3).completed(1).active(1))
-        .counter("bytes", |counter| counter.total(1_024).completed(512))
-}).expect("progress output should succeed");
-
-progress.report_finished(|event| {
-    event
-        .counter("entries", |counter| counter.total(3).completed(3).succeeded(3))
-        .counter("bytes", |counter| counter.total(1_024).completed(1_024))
-}).expect("progress output should succeed");
-```
-
-`report_running_if_due` only invokes the builder closure when the configured
-interval has elapsed. This keeps hot paths cheap for positive intervals.
-
-### Background Reporter Thread
-
-Use `Progress::spawn_running_reporter` when worker threads update domain state
-and a coordinating thread should emit periodic `running` events. Workers update
-shared state, then call `RunningProgressPointHandle::report()` to wake the
-background reporter thread when the interval is `Duration::ZERO`.
-`RunningProgressGuard` owns that background reporter thread, and
-`RunningProgressPointHandle` is the cloneable worker-side wakeup handle.
-Call `RunningProgressGuard::status` to observe a background output failure
-before joining. The returned `RunningProgressStatus` is cloneable;
-`stop_and_join` still returns its error or resumes its panic.
-
-The example below uses `qubit-atomic`'s `ArcAtomic`; add
-`qubit-atomic = "0.13"` if you copy this pattern into your own crate.
-
-```rust
-use std::{
-    thread,
-    time::Duration,
-};
-
-use qubit_atomic::ArcAtomic;
-use qubit_progress::{
-    Progress,
-    ProgressCounter,
-    ProgressSchema,
-    WriterProgressReporter,
-};
-
-let reporter = WriterProgressReporter::from_writer(Vec::new());
-let completed = ArcAtomic::new(0u64);
-let progress = Progress::new(
-    &reporter,
-    Duration::ZERO,
-    ProgressSchema::single("entries", "Entries"),
-);
-
-thread::scope(|scope| {
-    let snapshot_completed = completed.clone();
-    let running = progress.spawn_running_reporter(scope, move || {
-        vec![ProgressCounter::new("entries")
-            .total(3)
-            .completed(snapshot_completed.load())]
+progress.report(|snapshot| {
+    snapshot.metric("files", |counts| {
+        counts.completed(1).succeeded(1).active(1);
     });
-    let point = running.point_handle();
-    let status = running.status();
+})?;
 
-    completed.store(1);
-    point.report();
-
-    assert!(!status.is_failed());
-    running.stop_and_join().expect("progress output should succeed");
-});
+progress.finish(|snapshot| {
+    snapshot.metric("files", |counts| {
+        counts.completed(2).succeeded(2);
+    });
+})?;
+# Ok::<(), qubit_progress::TerminalError>(())
 ```
 
-### Reporter Implementations
+`Started`, `Running`, and the terminal event all include the configured total of `2`; the application never repeats it.
 
-Reporters receive immutable `ProgressEvent` values through `ProgressReporter`:
+## Lifecycle and enablement
 
-```rust
-fn report(&self, event: &ProgressEvent) -> Result<(), ProgressReportError>;
-```
+`ProgressBuilder::start` validates fixed configuration, samples `Reporter::is_enabled()` once, and emits `Started` only when enabled. When disabled, every report closure and terminal closure is skipped, no event is created, and no background thread is spawned. Configuration validation still runs.
 
-Built-in reporters:
+The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `fail`, and `cancel` consume `Progress`, which makes duplicate terminal events and reports after termination impossible in safe Rust.
 
-| Reporter | Purpose |
-| --- | --- |
-| `NoOpProgressReporter` | ignores events |
-| `MetricSnapshotProgressReporter` | sends structured `ProgressMetricSnapshot` objects to a consumer |
-| `FormattedProgressReporter` | formats each metric snapshot and sends strings to a consumer |
-| `HumanReadableProgressReporter` | sends human-readable metric snapshot strings to a consumer |
-| `JsonProgressReporter` | sends JSON metric snapshot strings to a consumer |
-| `WriterProgressReporter` | writes human-readable metric snapshot lines to any `Write` sink |
-| `StdoutProgressReporter` | writes to stdout |
-| `StderrProgressReporter` | writes to stderr |
-| `LoggerProgressReporter` | emits through the `log` crate |
-| `JsonWriterProgressReporter` | writes JSON metric snapshot lines to any `Write` sink |
-| `JsonStdoutProgressReporter` | writes JSON metric snapshots to stdout |
-| `JsonStderrProgressReporter` | writes JSON metric snapshots to stderr |
-| `JsonLoggerProgressReporter` | emits JSON metric snapshots through the `log` crate |
+## Reporters
 
-A reporter can call `event.metric_snapshots_iter()` to lazily turn each counter into a
-`ProgressMetricSnapshot` containing the complete metric object, phase, optional
-stage, flattened counter values, and elapsed time.
+Implement `Reporter` to receive `&Event`. Built-ins are `NoopReporter`, `TextReporter`, `JsonLinesReporter` (feature `json-lines`), and `LogReporter` (feature `log`). JSON Lines writes exactly one complete event per line and serializes elapsed time as a canonical string such as `"250ms"`.
 
-## JSON Serialization
+For worker-driven code, `Progress::spawn_auto_reporter` returns a scoped `AutoReporter`. While it exists, it exclusively borrows the operation. Workers use its cloneable `Notifier` to coalesce zero-interval wakeups; a positive interval produces heartbeat reports. Call `stop()` before the terminal event.
 
-Enable the `serde` feature to serialize progress events. `elapsed` uses the
-`duration_with_unit` adapter from `qubit-datatype`, so JSON is compact and
-agent-friendly.
-The adapter selects the largest unit that preserves the value exactly, so
-sub-millisecond elapsed times round-trip without precision loss. Deserialization
-requires canonical duration text and does not trim surrounding whitespace.
-
-```rust
-use std::time::Duration;
-
-use qubit_progress::{
-    ProgressEvent,
-    ProgressMetric,
-    ProgressSchema,
-};
-
-let schema = ProgressSchema::new(vec![ProgressMetric::new("entries", "Entries")]);
-let event = ProgressEvent::builder(schema)
-    .running()
-    .counter("entries", |counter| counter.total(5).completed(2))
-    .elapsed(Duration::from_millis(110))
-    .build();
-
-let json = serde_json::to_string(&event).expect("event should serialize");
-let value: serde_json::Value = serde_json::from_str(&json)
-    .expect("serialized event should be valid JSON");
-assert!(value["operation_id"].as_u64().is_some_and(|id| id > 0));
-assert_eq!(value["elapsed"], "110ms");
-```
-
-## Crate Boundary
-
-`qubit-progress` provides progress data models, operation-scoped lifecycle
-helpers, and reporter abstractions. It intentionally does not provide terminal
-UI widgets, async runtime integration, task scheduling, tracing infrastructure,
-or long-term metrics storage.
-
-## Runtime Dependencies
-
-The `serde` feature enables serializable progress models and compact `Duration`
-serialization through `qubit-datatype`. It is enabled by default. The `json`
-feature implies `serde`; default features additionally enable
-`consumer-reporters` and `log`.
-
-Disable default features for a dependency-free core model, lifecycle APIs,
-no-op reporter, and writer reporters:
-
-```toml
-qubit-progress = { version = "0.6", default-features = false }
-```
-
-The crate does not require an async runtime.
-
-## Testing
-
-```bash
-# Run tests with the default feature set
-cargo test
-
-# Run tests with all declared features
-cargo test --all-features
-
-# Project CI checks
-./ci-check.sh
-
-# Check code coverage
-./coverage.sh
-```
-
-## License
-
-Copyright (c) 2025 - 2026. Haixing Hu. All rights reserved.
-
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the
-full license text.
-
-## Contributing
-
-Contributions are welcome. Please follow the Rust API guidelines, keep public
-API documentation and tests current, and run `./align-ci.sh` to format code and
-`./ci-check.sh` to satisfy CI requirements before submitting a pull request.
-
-## Author
-
-**Haixing Hu** - *Qubit Co. Ltd.*
-
-Repository: [https://github.com/qubit-ltd/rs-progress](https://github.com/qubit-ltd/rs-progress)
+See the [user guide](doc/user_guide.md) and the API documentation for details.

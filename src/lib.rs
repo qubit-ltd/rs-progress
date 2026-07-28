@@ -5,67 +5,56 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Generic progress reporting data model and reporter abstractions.
+//! Immutable, lifecycle-safe progress reporting.
 //!
-//! This crate models progress as immutable, self-describing events carrying a
-//! metric schema, lifecycle phase, optional stage information, metric counters,
-//! and elapsed time.
+//! A [`Progress`] operation owns its stable configuration, timing and reporter.
+//! Callers configure totals once with [`Metric`] and provide only current
+//! dynamic counts through report closures. Every emitted [`Event`] is complete.
 
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-pub mod model;
-/// Lifecycle helper for one progress-producing operation.
-pub mod progress;
+mod auto_reporter;
+mod error;
+mod event;
+mod metric;
+mod progress;
 pub mod reporter;
-/// Helpers for running progress reporting loops.
-pub mod running;
+mod stage;
+mod validation;
 
-pub use model::{
-    ProgressCounter,
-    ProgressEvent,
-    ProgressEventBuildError,
-    ProgressEventBuilder,
-    ProgressMetric,
-    ProgressMetricSnapshot,
-    ProgressMetricSnapshotError,
-    ProgressPhase,
-    ProgressSchema,
-    ProgressSchemaError,
-    ProgressStage,
-    ProgressStageError,
+pub use auto_reporter::{
+    AutoReporter,
+    Notifier,
+    Status,
 };
-pub use progress::Progress;
-#[cfg(all(feature = "json", feature = "log"))]
-pub use reporter::JsonLoggerProgressReporter;
+pub use error::{
+    ProgressError,
+    ReportError,
+    TerminalError,
+    ValidationError,
+};
+pub use event::{
+    Event,
+    Phase,
+};
+pub use metric::{
+    Metric,
+    MetricCounts,
+    MetricSnapshot,
+};
+pub use progress::{
+    Progress,
+    ProgressBuilder,
+    Snapshot,
+};
+#[cfg(feature = "json-lines")]
+pub use reporter::JsonLinesReporter;
 #[cfg(feature = "log")]
-pub use reporter::LoggerProgressReporter;
-#[cfg(feature = "consumer-reporters")]
+pub use reporter::LogReporter;
 pub use reporter::{
-    FormattedProgressReporter,
-    HumanReadableProgressReporter,
-    MetricSnapshotProgressReporter,
+    NoopReporter,
+    Reporter,
+    TextReporter,
 };
-pub use reporter::{
-    HumanReadableMetricSnapshotFormatter,
-    MetricSnapshotFormatter,
-    NoOpProgressReporter,
-    ProgressReportError,
-    ProgressReporter,
-    StderrProgressReporter,
-    StdoutProgressReporter,
-    WriterProgressReporter,
-};
-#[cfg(feature = "json")]
-pub use reporter::{
-    JsonMetricSnapshotFormatter,
-    JsonProgressReporter,
-    JsonStderrProgressReporter,
-    JsonStdoutProgressReporter,
-    JsonWriterProgressReporter,
-};
-pub use running::{
-    RunningProgressGuard,
-    RunningProgressPointHandle,
-    RunningProgressStatus,
-};
+pub use stage::Stage;
