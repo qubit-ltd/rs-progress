@@ -242,29 +242,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "qubit-datatype"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9dd16b80a75460ac639b745af90ef486a7544574c63d0949994678afe05dd83"
-dependencies = [
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "qubit-function"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59f10e916324739b811520fbfb24746f4822ad9ea1adb53c79fc04b7c090e5ed"
-
-[[package]]
 name = "qubit-progress"
 version = "0.6.0"
 dependencies = [
  "criterion",
  "log",
- "qubit-datatype",
- "qubit-function",
  "serde",
  "serde_json",
 ]
@@ -374,26 +356,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "thiserror"
-version = "2.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
-dependencies = [
- "thiserror-impl",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "2.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

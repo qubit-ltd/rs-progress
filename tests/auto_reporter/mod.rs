@@ -5,6 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Tests for reporters and event serialization.
+//! Tests for scoped automatic reporting.
 
-mod reporter_tests;
+mod auto_reporter_tests;

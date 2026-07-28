@@ -1,0 +1,26 @@
+// =============================================================================
+//    Copyright (c) 2025 - 2026 Haixing Hu.
+//
+//    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
+// =============================================================================
+//! `log` facade reporter for complete events.
+
+use crate::{
+    Event,
+    ReportError,
+    Reporter,
+};
+
+/// Reports each complete event through the `log` facade at info level.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LogReporter;
+
+impl Reporter for LogReporter {
+    /// Writes the event's debug representation through `log::info!`.
+    fn report(&self, event: &Event) -> Result<(), ReportError> {
+        log::info!("{event:?}");
+        Ok(())
+    }
+}

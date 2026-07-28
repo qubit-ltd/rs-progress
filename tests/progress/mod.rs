@@ -5,6 +5,6 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Tests for progress lifecycle helpers.
+//! Tests for the progress lifecycle.
 
 mod progress_tests;

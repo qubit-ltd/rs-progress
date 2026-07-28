@@ -5,11 +5,8 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Integration tests for `qubit-progress`.
+//! Integration tests for the redesigned `qubit-progress` API.
 
-mod docs;
-mod model;
+mod auto_reporter;
 mod progress;
 mod reporter;
-mod running;
-mod support;
