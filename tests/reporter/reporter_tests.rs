@@ -13,6 +13,9 @@ use qubit_progress::{
     TextReporter,
 };
 
+#[cfg(feature = "log")]
+use qubit_progress::Reporter;
+
 /// Verifies that the text sink emits one complete event record per delivery.
 #[test]
 fn test_text_reporter_writes_one_complete_line_per_event() {
@@ -48,4 +51,18 @@ fn test_json_lines_reporter_serializes_complete_event() {
     let output = String::from_utf8(bytes).expect("JSON output must be UTF-8");
     assert!(output.contains("\"phase\":\"started\""));
     assert!(output.contains("\"total\":1"));
+}
+
+/// Verifies that the log reporter samples the facade's info-level enablement.
+#[cfg(feature = "log")]
+#[test]
+fn test_log_reporter_matches_info_level_enablement() {
+    use qubit_progress::LogReporter;
+
+    let reporter = LogReporter;
+    assert_eq!(
+        reporter.is_enabled(),
+        log::log_enabled!(log::Level::Info),
+        "log reporting must not start operations when info output is disabled",
+    );
 }
