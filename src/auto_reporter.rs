@@ -131,6 +131,9 @@ impl Notifier {
         let Some(inner) = self.inner.upgrade() else {
             return;
         };
+        if !inner.notification_driven {
+            return;
+        }
         if inner.stopped.load(Ordering::Acquire) {
             return;
         }
@@ -164,6 +167,8 @@ impl Status {
 
 /// Shared control state held by the handle and weakly by worker notifiers.
 struct AutoReporterInner {
+    /// Whether state-change notifications drive running reports.
+    notification_driven: bool,
     /// Bounded wake channel sender.
     wake_sender: SyncSender<()>,
     /// Stop request flag.
@@ -193,6 +198,7 @@ where
     }
     let (wake_sender, wake_receiver) = sync_channel(1);
     let inner = Arc::new(AutoReporterInner {
+        notification_driven: progress.report_interval().is_zero(),
         wake_sender,
         stopped: AtomicBool::new(false),
         pending: AtomicBool::new(false),
@@ -201,16 +207,18 @@ where
     let worker_status = status.clone();
     let join = scope.spawn(move || {
         match catch_unwind(AssertUnwindSafe(|| {
-            run(progress, snapshot, worker_inner, wake_receiver)
+            run(progress, snapshot, Arc::clone(&worker_inner), wake_receiver)
         })) {
             Ok(result) => {
                 if result.is_err() {
                     worker_status.failed.store(true, Ordering::Release);
+                    worker_inner.stopped.store(true, Ordering::Release);
                 }
                 result
             }
             Err(payload) => {
                 worker_status.failed.store(true, Ordering::Release);
+                worker_inner.stopped.store(true, Ordering::Release);
                 resume_unwind(payload)
             }
         }

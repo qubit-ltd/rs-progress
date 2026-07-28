@@ -16,6 +16,7 @@ use std::{
 
 /// Structured validation failure for progress configuration or snapshots.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum ValidationError {
     /// An operation was started without metrics.
     NoMetrics,
@@ -42,6 +43,11 @@ pub enum ValidationError {
     /// A snapshot configured the same metric more than once.
     DuplicateMetricUpdate {
         /// Metric ID configured more than once in one snapshot.
+        metric_id: String,
+    },
+    /// A snapshot omitted a metric declared by the operation.
+    MissingMetricUpdate {
+        /// Metric ID not configured in one snapshot.
         metric_id: String,
     },
     /// Arithmetic required to validate a count set overflowed.
@@ -106,6 +112,10 @@ impl fmt::Display for ValidationError {
             Self::DuplicateMetricUpdate { metric_id } => write!(
                 formatter,
                 "metric ID {metric_id:?} was configured twice in one snapshot"
+            ),
+            Self::MissingMetricUpdate { metric_id } => write!(
+                formatter,
+                "metric ID {metric_id:?} was not configured in one snapshot"
             ),
             Self::CountOverflow { metric_id } => {
                 write!(formatter, "counts for metric {metric_id:?} overflowed")

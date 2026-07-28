@@ -13,7 +13,7 @@
 
 Progress reporting is often coupled to a terminal progress bar or scattered across a copy loop as ad-hoc counters. That makes it difficult to send the same state to logs, JSON, a UI, or telemetry; it also makes consumers reconstruct state from deltas. Threaded work adds another problem: the code that owns the operation and the code that changes the counters are usually different.
 
-This crate separates the two kinds of state. Configure each `Metric`—its stable ID, display name, and optional total—once at startup. Each report closure supplies only the current counts. The crate validates the snapshot and delivers a self-contained `Event`. Its consuming terminal methods make duplicate completion and reporting after completion impossible in safe Rust.
+This crate separates the two kinds of state. Configure each `Metric`—its stable ID, display name, and optional total—once at startup. Each report closure supplies only the current counts. The crate validates the snapshot and delivers a self-contained `Event`. Its consuming terminal methods permit at most one terminal event and prevent later reports in safe Rust; dropping or unwinding before a terminal call can still abandon an operation.
 
 ## Installation
 
@@ -108,7 +108,7 @@ progress.finish(|snapshot| {
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Use a positive interval when a periodic heartbeat is more useful than immediate notifications. Notifications wake the worker but never bypass that minimum interval.
+Use a positive interval when a periodic heartbeat is more useful than immediate notifications. In this mode, `notify()` is a no-op so workers avoid synchronization work; the background reporter wakes only for its timer or `stop()`.
 
 ## Next steps
 
