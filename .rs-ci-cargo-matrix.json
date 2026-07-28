@@ -8,16 +8,16 @@
       "features": []
     },
     {
-      "name": "consumer-reporters",
+      "name": "serde",
       "commands": ["check", "test", "doc"],
       "defaultFeatures": false,
-      "features": ["consumer-reporters"]
+      "features": ["serde"]
     },
     {
-      "name": "json",
+      "name": "json-lines",
       "commands": ["check", "test", "doc"],
       "defaultFeatures": false,
-      "features": ["json"]
+      "features": ["json-lines"]
     },
     {
       "name": "log",
@@ -26,10 +26,10 @@
       "features": ["log"]
     },
     {
-      "name": "json-log",
+      "name": "json-lines-log",
       "commands": ["check", "test", "doc", "clippy"],
       "defaultFeatures": false,
-      "features": ["json", "log"]
+      "features": ["json-lines", "log"]
     }
   ]
 }
