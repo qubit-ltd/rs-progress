@@ -1,14 +1,41 @@
 # Qubit Progress 用户指南
 
-`qubit-progress` 是一个面向 Rust 库和应用的小型进度汇报层。它不持有你的业务状态。你的代码负责保存业务状态，并在需要汇报时把业务状态转换成 progress counters，再发送不可变的 progress events 给 reporter。
+`qubit-progress` 是一个面向 Rust 库和应用的小型进度汇报层。它不持有你的业务
+状态。你的代码负责保存业务状态、把状态转换成 progress counter，并把不可变的
+progress event 发送给 reporter。
 
-本指南说明如何使用本库，如何选择合适 API，以及如何扩展实现自己的 reporter，例如 GUI 进度条 reporter 或 JSON-lines reporter。
+本指南先说明本库解决的痛点，再以命令行批量复制文件为场景，跟随业务状态到进度
+消费者的完整流程。后续章节会介绍数据模型、汇报节奏、内置 reporter，以及 GUI
+进度条 reporter、JSON-lines reporter 等自定义实现。
+
+## 为什么需要 Qubit Progress？
+
+长时间运行的任务需要输出进度，但一个可复用的操作不应在 stderr、日志、JSON 流
+或 GUI widget 之间做选择。直接打印会把业务循环与某一种展示方式耦合。临时拼接的
+回调参数，也很难让消费者稳定理解单位、生命周期状态、可选 stage 和 elapsed time。
+
+例如，一个复制文件的命令需要告诉使用者已复制的文件数和字节数。同一套复制逻辑
+以后也可能运行在服务器上，此时 JSON 流更合适；或运行在 GUI 后面，此时结构化值
+比格式化文本更有价值。复制逻辑不应该因为消费者不同而改变。
+
+## 如何解决
+
+业务代码拥有领域状态，`qubit-progress` 为该状态提供稳定的进度协议：
+
+```text
+业务状态 → ProgressCounter 快照 → ProgressEvent → ProgressReporter → stderr / log / JSON / GUI
+```
+
+先在 `ProgressSchema` 中定义稳定的 metric id。到达生命周期节点时，通过
+`Progress` 把当前 counter 转换为不可变、自描述的 `ProgressEvent`；注入的
+`ProgressReporter` 会立即消费 event。替换 reporter 只改变输出目的地，不改变
+业务循环。
 
 ## 安装
 
 ```toml
 [dependencies]
-qubit-progress = "0.5"
+qubit-progress = "0.6"
 ```
 
 Serde 默认启用。若关闭默认 feature，需要先启用 `serde` feature，再加入
@@ -34,9 +61,87 @@ qubit-function = "0.16"
 qubit-atomic = "0.13"
 ```
 
+## 快速开始：在命令行中批量复制文件
+
+下面的命令把两个文件复制到 backup 目录。`files` 和 `bytes` 是不同的 metric，
+因为它们回答的是不同问题：复制一个大文件时，byte 进度会前进，而文件数量可能
+还没有增加。
+
+```rust
+use std::{
+    error::Error,
+    time::Duration,
+};
+
+use qubit_progress::{
+    Progress,
+    ProgressMetric,
+    ProgressSchema,
+    StderrProgressReporter,
+};
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let files = [
+        ("input/january.csv", "backup/january.csv"),
+        ("input/february.csv", "backup/february.csv"),
+    ];
+    let total_files = u64::try_from(files.len())?;
+    let total_bytes = files.iter().try_fold(0_u64, |total, (source, _)| {
+        Ok::<_, std::io::Error>(total + std::fs::metadata(*source)?.len())
+    })?;
+
+    let schema = ProgressSchema::new(vec![
+        ProgressMetric::new("files", "Files"),
+        ProgressMetric::new("bytes", "Bytes"),
+    ]);
+    let reporter = StderrProgressReporter::new();
+    let mut progress = Progress::new(&reporter, Duration::from_millis(500), schema);
+
+    progress.report_started(|event| {
+        event
+            .counter("files", |counter| counter.total(total_files))
+            .counter("bytes", |counter| counter.total(total_bytes))
+    })?;
+
+    std::fs::create_dir_all("backup")?;
+    let mut completed_files = 0_u64;
+    let mut completed_bytes = 0_u64;
+    for (source, destination) in files {
+        completed_bytes += std::fs::copy(source, destination)?;
+        completed_files += 1;
+        progress.report_running_if_due(|event| {
+            event
+                .counter("files", |counter| counter.total(total_files).completed(completed_files))
+                .counter("bytes", |counter| counter.total(total_bytes).completed(completed_bytes))
+        })?;
+    }
+
+    progress.report_finished(|event| {
+        event
+            .counter("files", |counter| counter.total(total_files).completed(total_files).succeeded(total_files))
+            .counter("bytes", |counter| counter.total(total_bytes).completed(total_bytes).succeeded(total_bytes))
+    })?;
+    Ok(())
+}
+```
+
+`report_started` 在复制开始前发出初始快照。只有达到配置间隔后，
+`report_running_if_due` 才会调用其闭包并发出 `running` event，因此高频的文件
+复制循环不会无谓地构造快照、格式化和输出。`report_finished` 发出成功的 terminal
+快照。
+
+每一次实际发出的生命周期调用都会构造 `ProgressEvent`，并同步调用
+`ProgressReporter::report`。这里，`StderrProgressReporter` 通过把每个 metric
+渲染为一行人类可读文本并写入 stderr 来消费 event。替换为 JSON、日志或结构化
+snapshot reporter，不需要改动复制循环。
+
+示例为了清晰而直接向上传播文件系统和 reporter 错误。生产代码的错误分支中，应
+先用最新 counter 调用 `report_failed`，再返回复制错误；如果这个 terminal event
+的汇报也失败，应用自己的错误类型应同时保留两种失败，不能静默丢弃任意一种。
+
 ## 核心模型
 
-一个 progress stream 主要由五个概念组成：
+一个 progress stream 主要由六个概念组成：
 
 | 概念 | 类型 | 含义 |
 | --- | --- | --- |
@@ -52,51 +157,6 @@ qubit-atomic = "0.13"
 Event 是自描述的：它自带 schema。因此序列化后的 JSON 可以直接被日志、数据库、agent 和外部消费者读取，而不依赖额外的 schema registry。
 
 当 reporter 希望按 metric 粒度处理事件时，可以调用 `ProgressEvent::metric_snapshots()`。每个 `ProgressMetricSnapshot` 都包含完整 `ProgressMetric`、event phase、可选 stage、扁平 counter 值和 elapsed time。
-
-## 快速开始
-
-常见使用流程是：
-
-1. 定义 schema。
-2. 选择 reporter。
-3. 创建 `Progress` run。
-4. 汇报 `started`、`running` 和 terminal event。
-
-```rust
-use std::time::Duration;
-
-use qubit_progress::{
-    Progress,
-    ProgressMetric,
-    ProgressSchema,
-    StderrProgressReporter,
-};
-
-let schema = ProgressSchema::new(vec![
-    ProgressMetric::new("entries", "Entries"),
-    ProgressMetric::new("bytes", "Bytes"),
-]);
-let reporter = StderrProgressReporter::new();
-let mut progress = Progress::new(&reporter, Duration::from_secs(1), schema);
-
-progress.report_started(|event| {
-    event
-        .counter("entries", |counter| counter.total(3))
-        .counter("bytes", |counter| counter.total(1_024))
-}).expect("progress output should succeed");
-
-progress.report_running(|event| {
-    event
-        .counter("entries", |counter| counter.total(3).completed(1).active(1))
-        .counter("bytes", |counter| counter.total(1_024).completed(512))
-}).expect("progress output should succeed");
-
-progress.report_finished(|event| {
-    event
-        .counter("entries", |counter| counter.total(3).completed(3).succeeded(3))
-        .counter("bytes", |counter| counter.total(1_024).completed(1_024))
-}).expect("progress output should succeed");
-```
 
 ## 定义 Metric 和 Schema
 

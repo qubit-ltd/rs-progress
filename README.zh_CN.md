@@ -11,7 +11,22 @@
 
 ## 概述
 
-Qubit Progress 把进度建模为不可变、自描述的事件。每个事件都携带 metric schema、生命周期 phase、可选 stage 信息、metric counters 和 elapsed time。Reporter 接收完整事件快照，可以把它渲染为人类可读文本、日志、JSON 或应用自己的记录格式。
+长时间运行的库代码和命令行应用，通常需要把进度汇报给 stderr、日志、JSON 流或
+GUI。如果在业务循环中直接打印，就会把操作和某一种展示方式耦合；如果每个操作都
+自行定义回调参数，消费者也无法稳定理解 metric id、生命周期、stage 和 elapsed
+time。
+
+Qubit Progress 把生产端和消费端分开。业务代码拥有工作状态，把状态转换为
+counter，并通过 `Progress` 发出不可变、自描述的 `ProgressEvent` 快照；
+`ProgressReporter` 消费每个 event，决定如何展示或存储它。
+
+```text
+业务状态 → ProgressCounter 快照 → ProgressEvent → ProgressReporter → stderr / log / JSON / GUI
+```
+
+每个 event 都携带 metric schema、生命周期 phase、可选 stage、metric counter 和
+elapsed time。因此同一个操作可以使用统一的进度协议，而调用方仍能选择自己的输出
+sink。
 
 适合使用本 crate 的场景包括：
 
@@ -23,7 +38,7 @@ Qubit Progress 把进度建模为不可变、自描述的事件。每个事件�
 - 需要为 worker 驱动的操作提供后台 running reporter；
 - 需要支持 serde 序列化、便于日志、agent 和结构化消费者读取的 progress event。
 
-详细用法、扩展示例和 reporter 设计建议请参见[中文用户指南](doc/user_guide.zh_CN.md)。
+完整的文件复制流程、错误路径说明和扩展示例请参见[中文用户指南](doc/user_guide.zh_CN.md)。
 API 参考文档可在 [docs.rs](https://docs.rs/qubit-progress) 查看。
 
 ## 安装
@@ -35,32 +50,77 @@ qubit-progress = "0.6"
 
 ## 快速示例
 
-```rust
-use std::time::Duration;
+下面的命令复制一批文件。复制循环负责产生进度；`StderrProgressReporter` 是消费端，
+负责把每个已交付 event 渲染给执行命令的人。
 
-use qubit_progress::{
-    ProgressEvent,
-    ProgressMetric,
-    ProgressPhase,
-    ProgressSchema,
+```rust
+use std::{
+    error::Error,
+    time::Duration,
 };
 
-let schema = ProgressSchema::new(vec![
-    ProgressMetric::new("entries", "Entries"),
-    ProgressMetric::new("bytes", "Bytes"),
-]);
+use qubit_progress::{
+    Progress,
+    ProgressMetric,
+    ProgressSchema,
+    StderrProgressReporter,
+};
 
-let event = ProgressEvent::builder(schema)
-    .running()
-    .stage_named("copy", "Copy files")
-    .counter("entries", |counter| counter.total(10).completed(4))
-    .counter("bytes", |counter| counter.total(1_000_000).completed(400_000))
-    .elapsed(Duration::from_millis(110))
-    .build();
+fn main() -> Result<(), Box<dyn Error>> {
+    let files = [
+        ("input/january.csv", "backup/january.csv"),
+        ("input/february.csv", "backup/february.csv"),
+    ];
+    let total_files = u64::try_from(files.len())?;
+    let total_bytes = files.iter().try_fold(0_u64, |total, (source, _)| {
+        Ok::<_, std::io::Error>(total + std::fs::metadata(*source)?.len())
+    })?;
 
-assert_eq!(event.phase(), ProgressPhase::Running);
-assert_eq!(event.counter("entries").map(|c| c.completed_count()), Some(4));
+    let schema = ProgressSchema::new(vec![
+        ProgressMetric::new("files", "Files"),
+        ProgressMetric::new("bytes", "Bytes"),
+    ]);
+    let reporter = StderrProgressReporter::new();
+    let mut progress = Progress::new(&reporter, Duration::from_millis(500), schema);
+
+    progress.report_started(|event| {
+        event
+            .counter("files", |counter| counter.total(total_files))
+            .counter("bytes", |counter| counter.total(total_bytes))
+    })?;
+
+    std::fs::create_dir_all("backup")?;
+    let mut completed_files = 0_u64;
+    let mut completed_bytes = 0_u64;
+    for (source, destination) in files {
+        completed_bytes += std::fs::copy(source, destination)?;
+        completed_files += 1;
+        progress.report_running_if_due(|event| {
+            event
+                .counter("files", |counter| counter.total(total_files).completed(completed_files))
+                .counter("bytes", |counter| counter.total(total_bytes).completed(completed_bytes))
+        })?;
+    }
+
+    progress.report_finished(|event| {
+        event
+            .counter("files", |counter| counter.total(total_files).completed(total_files).succeeded(total_files))
+            .counter("bytes", |counter| counter.total(total_bytes).completed(total_bytes).succeeded(total_bytes))
+    })?;
+    Ok(())
+}
 ```
+
+`report_started`、每个到期的 `report_running_if_due` 和 `report_finished` 都会构造
+`ProgressEvent`，并同步调用 `ProgressReporter::report`。在这个命令行场景中，
+`StderrProgressReporter` 通过把每个 metric 渲染为一行人类可读文本并写入 stderr 来
+消费 event。替换 reporter 即可改为 JSON、日志或结构化 snapshot，不需要改动复制
+循环。
+
+该示例聚焦成功路径。真实命令在 `std::fs::copy` 失败时，应先用最新 counter 调用
+`report_failed`，再返回复制错误；reporter 输出失败也应向上传播，不能静默丢失进度。
+
+完整场景、reporter 选择和自定义消费者实现请参见[中文用户指南](doc/user_guide.zh_CN.md)。
 
 ## 主要能力
 
