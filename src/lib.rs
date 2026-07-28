@@ -10,6 +10,23 @@
 //! A [`Progress`] operation owns its stable configuration, timing and reporter.
 //! Callers configure totals once with [`Metric`] and provide only current
 //! dynamic counts through report closures. Every emitted [`Event`] is complete.
+//!
+//! # Examples
+//!
+//! ```
+//! use qubit_progress::{Metric, Progress, TextReporter};
+//!
+//! let reporter = TextReporter::new(Vec::new());
+//! let progress = Progress::builder(&reporter)
+//!     .metric(Metric::new("tasks", "Tasks").total(1))
+//!     .start()?;
+//! progress.finish(|snapshot| {
+//!     snapshot.metric("tasks", |counts| {
+//!         counts.completed(1).succeeded(1);
+//!     });
+//! })?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]

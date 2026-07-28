@@ -195,3 +195,30 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
         Phase::Cancelled
     );
 }
+
+/// Verifies that every declared metric receives one update in each snapshot.
+#[test]
+fn test_progress_rejects_snapshot_with_missing_metric_update() {
+    let reporter = RecordingReporter::default();
+    let mut progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .metric(Metric::new("bytes", "Bytes"))
+        .start()
+        .expect("progress run must start");
+
+    let error = progress
+        .report(|snapshot| {
+            snapshot.metric("tasks", |counts| {
+                counts.completed(1).succeeded(1);
+            });
+        })
+        .expect_err("a snapshot missing a configured metric must fail");
+
+    assert!(matches!(
+        error,
+        ProgressError::Validation(ValidationError::MissingMetricUpdate {
+            ref metric_id,
+            ..
+        }) if metric_id == "bytes"
+    ));
+}
