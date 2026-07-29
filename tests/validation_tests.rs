@@ -13,6 +13,7 @@ use qubit_progress::{
     Progress,
     ProgressError,
     ValidationError,
+    Stage,
 };
 
 /// Verifies that operations require at least one configured metric.
@@ -42,4 +43,54 @@ fn test_progress_rejects_blank_metric_metadata() {
         error,
         ProgressError::Validation(ValidationError::EmptyMetricId { .. })
     ));
+}
+
+/// Verifies fixed metric and stage metadata reject every invalid shape.
+#[test]
+fn test_progress_rejects_invalid_fixed_metadata() {
+    let reporter = NoopReporter;
+    let cases = [
+        (
+            Progress::builder(&reporter).metric(Metric::new("tasks", " ")).start(),
+            "empty metric name",
+        ),
+        (
+            Progress::builder(&reporter)
+                .metric(Metric::new("tasks", "Tasks"))
+                .metric(Metric::new("tasks", "Other"))
+                .start(),
+            "duplicate metric ID",
+        ),
+        (
+            Progress::builder(&reporter)
+                .stage(Stage::new(" ", "Copy"))
+                .metric(Metric::new("tasks", "Tasks"))
+                .start(),
+            "empty stage ID",
+        ),
+        (
+            Progress::builder(&reporter)
+                .stage(Stage::new("copy", " "))
+                .metric(Metric::new("tasks", "Tasks"))
+                .start(),
+            "empty stage name",
+        ),
+        (
+            Progress::builder(&reporter)
+                .stage(Stage::new("copy", "Copy").position(0, 1))
+                .metric(Metric::new("tasks", "Tasks"))
+                .start(),
+            "zero stage position",
+        ),
+        (
+            Progress::builder(&reporter)
+                .stage(Stage::new("copy", "Copy").position(2, 1))
+                .metric(Metric::new("tasks", "Tasks"))
+                .start(),
+            "out of range stage position",
+        ),
+    ];
+    for (result, description) in cases {
+        assert!(result.is_err(), "{description} must be rejected");
+    }
 }

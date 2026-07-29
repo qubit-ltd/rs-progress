@@ -14,6 +14,7 @@ use std::sync::{
         Ordering,
     },
 };
+use std::time::Duration;
 
 use qubit_progress::{
     Event,
@@ -205,4 +206,64 @@ fn test_progress_returns_none_for_unknown_metric() {
     assert!(progress.metric("tasks").is_some());
     assert!(progress.metric("bytes").is_some());
     assert!(progress.metric("unknown").is_none());
+}
+
+/// Verifies stage replacement, clearing, and positive-interval scheduling.
+#[test]
+fn test_progress_updates_stage_and_respects_due_interval() {
+    let reporter = RecordingReporter::default();
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::from_millis(5))
+        .stage(Stage::new("copy", "Copy").position(1, 2))
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress must start");
+    assert!(progress.is_enabled());
+    assert!(progress.elapsed() < Duration::from_secs(1));
+    progress.report_if_due().expect("early report must be skipped");
+    progress
+        .set_stage(Stage::new("verify", "Verify").position(2, 2))
+        .expect("replacement stage must be valid");
+    std::thread::sleep(Duration::from_millis(6));
+    progress.report_if_due().expect("due report must succeed");
+    progress.clear_stage();
+    progress.report().expect("manual report must succeed");
+    progress.cancel().expect("cancelled event must succeed");
+
+    let events = reporter.events();
+    assert_eq!(events.len(), 4);
+    assert_eq!(events[0].stage().expect("initial stage").id(), "copy");
+    assert_eq!(events[1].stage().expect("replacement stage").id(), "verify");
+    assert!(events[2].stage().is_none());
+    assert_eq!(events[3].phase(), Phase::Cancelled);
+}
+
+/// Reporter that rejects every delivery to exercise start and running errors.
+struct RejectingReporter;
+
+impl Reporter for RejectingReporter {
+    /// Rejects the supplied event with a stable test error.
+    fn report(&self, _event: &Event) -> Result<(), ReportError> {
+        Err(ReportError::message("delivery rejected"))
+    }
+}
+
+/// Verifies reporter failures propagate from start and running delivery.
+#[test]
+fn test_progress_propagates_reporter_failures() {
+    let result = Progress::builder(&RejectingReporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start();
+    let error = match result {
+        Ok(_) => panic!("Started delivery must fail"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, ProgressError::Report(_)));
+
+    let reporter = RecordingReporter::default();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("healthy operation must start");
+    assert!(progress.is_enabled());
 }
