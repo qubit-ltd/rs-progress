@@ -19,10 +19,13 @@ use std::{
 use qubit_progress::{
     Event,
     Metric,
+    MetricError,
+    MetricTransition,
     Progress,
     ProgressError,
     ReportError,
     Reporter,
+    ValidationError,
 };
 
 /// Error type used to verify that clones preserve the original error object.
@@ -96,4 +99,128 @@ fn test_terminal_error_into_parts_returns_elapsed_and_progress_error() {
 
     assert_eq!(elapsed, expected_elapsed);
     assert!(matches!(progress_error, ProgressError::Report(_)));
+}
+
+/// Verifies that every public validation error has a stable explanation.
+#[test]
+fn test_validation_errors_format_every_variant() {
+    let errors = [
+        ValidationError::NoMetrics,
+        ValidationError::EmptyMetricId { index: 3 },
+        ValidationError::EmptyMetricName {
+            metric_id: "tasks".into(),
+        },
+        ValidationError::DuplicateMetricId {
+            metric_id: "tasks".into(),
+        },
+        ValidationError::CountOverflow {
+            metric_id: "tasks".into(),
+        },
+        ValidationError::ClassifiedExceedsCompleted {
+            metric_id: "tasks".into(),
+        },
+        ValidationError::CountsExceedTotal {
+            metric_id: "tasks".into(),
+        },
+        ValidationError::NonZeroCountsForZeroTotal {
+            metric_id: "tasks".into(),
+        },
+        ValidationError::EmptyStageId,
+        ValidationError::EmptyStageName,
+        ValidationError::IncompleteStagePosition,
+        ValidationError::InvalidStagePosition {
+            position: 3,
+            total: 2,
+        },
+        ValidationError::OperationIdExhausted,
+        ValidationError::SequenceExhausted,
+    ];
+
+    for error in errors {
+        assert!(!error.to_string().is_empty());
+        assert!(Error::source(&error).is_none());
+    }
+}
+
+/// Verifies that every metric error and transition preserves its context.
+#[test]
+fn test_metric_errors_and_transitions_format_every_variant() {
+    for (transition, name) in [
+        (MetricTransition::Start, "start"),
+        (MetricTransition::Complete, "complete"),
+        (MetricTransition::Succeed, "succeed"),
+        (MetricTransition::Fail, "fail"),
+        (MetricTransition::Cancel, "cancel"),
+    ] {
+        assert_eq!(transition.to_string(), name);
+    }
+
+    let errors = [
+        MetricError::Closed {
+            metric_id: "tasks".into(),
+        },
+        MetricError::InsufficientCount {
+            metric_id: "tasks".into(),
+            transition: MetricTransition::Start,
+            requested: 2,
+            available: 1,
+        },
+        MetricError::TotalExceeded {
+            metric_id: "tasks".into(),
+            total: 1,
+            attempted: 2,
+        },
+        MetricError::TotalBelowOccupied {
+            metric_id: "tasks".into(),
+            total: 1,
+            occupied: 2,
+        },
+        MetricError::CountOverflow {
+            metric_id: "tasks".into(),
+        },
+        MetricError::StatePoisoned {
+            metric_id: "tasks".into(),
+        },
+    ];
+    for error in errors {
+        assert!(!error.to_string().is_empty());
+        assert!(Error::source(&error).is_none());
+    }
+}
+
+/// Verifies error conversion, source chains, and terminal accessors.
+#[test]
+fn test_progress_and_terminal_errors_preserve_sources() {
+    let validation = ProgressError::from(ValidationError::NoMetrics);
+    let metric = ProgressError::from(MetricError::Closed {
+        metric_id: "tasks".into(),
+    });
+    let report = ProgressError::from(ReportError::message("sink unavailable"));
+    for error in [&validation, &metric, &report] {
+        assert!(!error.to_string().is_empty());
+        assert!(Error::source(error).is_some());
+    }
+
+    let reporter = TerminalFailingReporter::new();
+    let terminal = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("Started event must succeed")
+        .finish()
+        .expect_err("terminal event must fail");
+    assert!(terminal.elapsed() < std::time::Duration::from_secs(1));
+    assert!(matches!(terminal.progress_error(), ProgressError::Report(_)));
+    assert!(terminal.to_string().contains("terminal progress report failed"));
+    assert!(Error::source(&terminal).is_some());
+    assert!(matches!(terminal.into_progress_error(), ProgressError::Report(_)));
+}
+
+/// Verifies message-backed errors expose the original text and error source.
+#[test]
+fn test_report_error_message_compares_and_exposes_source() {
+    let first = ReportError::message("sink unavailable");
+    let second = ReportError::message("sink unavailable");
+    assert_eq!(first, second);
+    assert_eq!(first.to_string(), "sink unavailable");
+    assert!(Error::source(&first).is_some());
 }
