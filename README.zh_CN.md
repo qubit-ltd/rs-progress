@@ -7,13 +7,13 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![English Document](https://img.shields.io/badge/Document-English-blue.svg)](README.md)
 
-`qubit-progress` 是一个面向单次长耗时操作、具有生命周期安全保证的进度上报库。它向 `Reporter` 发送完整且不可变的事件：每个事件都包含操作阶段、耗时、稳定的指标元数据和最新动态计数。
+`qubit-progress` 是一个面向单次长耗时操作、具有生命周期安全保证的进度上报库。它向上报器（`Reporter`）发送完整且不可变的事件：每个事件都包含操作阶段、耗时、稳定的指标元数据和最新动态计数。
 
 ## 这个库解决什么问题？
 
 进度上报常被绑死在终端进度条上，或以零散计数器散落在复制循环中。这样既难以把同一状态同时发送给日志、JSON、UI 或遥测系统，也会迫使消费者根据增量重建状态。进入多线程后，操作所有者和更新计数的工作线程又常常不是同一段代码。
 
-本库把这两类状态分开：启动时仅配置一次 `Metric` 的稳定 ID、显示名称和可选总量；随后由 `Progress` 持有动态计数，可克隆的 metric handle 以经过校验的生命周期转换更新它们，每个事件都读取一个内部一致的快照。终态方法会消费 `Progress`，因此在安全 Rust 中至多发送一个终态事件，且不能在终态后继续上报；但若在调用终态方法前丢弃对象或发生 unwind，操作仍可能没有终态事件。
+本库把这两类状态分开：启动时仅配置一次 `Metric` 的稳定 ID、显示名称和可选总量；随后由 `Progress` 持有动态计数，可克隆的指标句柄以经过校验的生命周期转换更新它们，每个事件都读取一个内部一致的快照。终态方法会消费 `Progress`，因此在安全 Rust 中至多发送一个终态事件，且不能在终态后继续上报；但若在调用终态方法前丢弃对象或发生 unwind，操作仍可能没有终态事件。
 
 ## 安装
 
@@ -22,11 +22,12 @@
 qubit-progress = "0.6"
 ```
 
-需要 `JsonLinesReporter` 时开启 `json-lines` 特性；需要 `LogReporter` 时开启 `log` 特性。
+需要序列化或反序列化事件数据时开启 `serde`；需要 `JsonLinesReporter` 时开启
+`json-lines`（它会同时开启 `serde`）；需要 `LogReporter` 时开启 `log`。
 
 ## 常规用法：复制一组文件
 
-假设导入命令要复制一组已知文件。操作只在启动时声明文件总数；每次 `std::fs::copy` 成功后，上报最新的已完成和成功数量。`TextReporter` 将每个事件写成一行到标准错误；替换 reporter 后，同一段 `Progress` 代码也可以服务于其他输出目标。
+假设导入命令要复制一组已知文件。操作只在启动时声明文件总数；每复制一个文件前将其标为进行中，成功后再标为成功并上报最新计数。`TextReporter` 将每个事件写成一行到标准错误；替换上报器后，同一段 `Progress` 代码也可以服务于其他输出目标。
 
 ```rust
 use std::{fs, io};
@@ -40,8 +41,8 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
 
     let files_metric = progress.metric("files").expect("configured metric must exist");
     for (source, destination) in files {
-        fs::copy(source, destination)?;
         files_metric.start(1)?;
+        fs::copy(source, destination)?;
         files_metric.succeed(1)?;
         progress.report()?;
     }
@@ -51,11 +52,14 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
 }
 ```
 
-`Started`、每个 `Running` 和 `Succeeded` 事件都会携带已配置的总量。业务代码无需重复填写固定配置，reporter 也不需要之前的事件即可理解当前状态。
+`Started`、每个 `Running` 和 `Succeeded` 事件都会携带已配置的总量。业务代码无需重复填写固定配置，上报器也不需要之前的事件即可理解当前状态。
 
-## 额外线程：自动上报共享的复制状态
+这个示例只展示成功路径。失败或取消时，应在返回前发送对应终态事件；具体模式见
+[结束每次操作](doc/user_guide.zh_CN.md#结束每次操作)。
 
-对于并行或由工作线程驱动的任务，可让 `Progress` 拥有一个有作用域的后台上报器。工作线程更新可克隆的 metric handle 后调用可克隆的 `Notifier`。使用 `Duration::ZERO` 时，通知会被合并并触发上报，无需轮询。发送终态事件前必须调用 `stop()`：有作用域的独占借用会阻止后台上报器存活期间手工上报或结束操作。
+## 工作线程场景：自动上报共享的复制状态
+
+对于并行或由工作线程驱动的任务，可让 `Progress` 拥有一个有作用域的后台上报器。工作线程更新可克隆的指标句柄后调用可克隆的 `Notifier`。使用 `Duration::ZERO` 时，通知会被合并并触发上报，无需轮询。发送终态事件前必须调用 `stop()`：有作用域的独占借用会阻止后台上报器存活期间手工上报或结束操作。
 
 ```rust
 use std::{thread, time::Duration};
@@ -73,8 +77,8 @@ thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
 
     let notifier = auto.notifier();
     let worker = scope.spawn(move || {
-        // 在这里执行一次复制，再发布新的共享状态。
         files_metric.start(2).expect("metric update must succeed");
+        // 在这里执行复制。
         files_metric.succeed(2).expect("metric update must succeed");
         notifier.notify();
     });
@@ -91,7 +95,7 @@ progress.finish()?;
 
 ## 下一步
 
-请阅读[用户指南](doc/user_guide.zh_CN.md)，了解生命周期模型、校验规则、调度、自动上报、reporter 与错误处理；API 细节见 [docs.rs](https://docs.rs/qubit-progress)。
+请阅读[用户指南](doc/user_guide.zh_CN.md)，了解生命周期模型、校验规则、调度、自动上报、上报器与错误处理；API 细节见 [docs.rs](https://docs.rs/qubit-progress)。
 
 ## 测试
 

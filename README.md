@@ -22,11 +22,12 @@ This crate separates the two kinds of state. Configure each `Metric`—its stabl
 qubit-progress = "0.6"
 ```
 
-Enable `json-lines` for `JsonLinesReporter` or `log` for `LogReporter`.
+Enable `serde` to serialize and deserialize event data, `json-lines` for
+`JsonLinesReporter` (which includes `serde`), or `log` for `LogReporter`.
 
 ## Basic use: copy a directory of files
 
-Suppose an import command copies a known list of files. The operation declares the number of files once; after each `std::fs::copy`, it reports the latest completed and successful counts. `TextReporter` writes one complete line per event to standard error, but the same `Progress` code works with a custom reporter.
+Suppose an import command copies a known list of files. The operation declares the number of files once. Before each copy it marks one file active; after success it marks that file succeeded and reports the latest counts. `TextReporter` writes one complete line per event to standard error, but the same `Progress` code works with a custom reporter.
 
 ```rust
 use std::{fs, io};
@@ -40,8 +41,8 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
 
     let files_metric = progress.metric("files").expect("configured metric must exist");
     for (source, destination) in files {
-        fs::copy(source, destination)?;
         files_metric.start(1)?;
+        fs::copy(source, destination)?;
         files_metric.succeed(1)?;
         progress.report()?;
     }
@@ -52,6 +53,10 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
 ```
 
 `Started`, every `Running` event, and `Succeeded` all carry the configured total. The application never repeats that fixed configuration, and a reporter never needs a previous event to understand the current state.
+
+This example shows the success path. On failure or cancellation, send the
+matching terminal event before returning; see
+[Close every operation](doc/user_guide.md#close-every-operation).
 
 ## Worker-thread use: automatically report shared copy state
 
@@ -73,8 +78,8 @@ thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
 
     let notifier = auto.notifier();
     let worker = scope.spawn(move || {
-        // Perform one copy here, then publish the new shared state.
         files_metric.start(2).expect("metric update must succeed");
+        // Perform the copy here.
         files_metric.succeed(2).expect("metric update must succeed");
         notifier.notify();
     });
