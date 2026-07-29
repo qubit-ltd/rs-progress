@@ -63,7 +63,7 @@ where
     }
 }
 
-/// Produces one complete human-readable representation of an event.
+/// Produces one complete human-readable event record with escaped metadata.
 fn format_event(event: &Event) -> String {
     let mut line = format!(
         "operation={} sequence={} phase={} elapsed={:?}",
@@ -73,14 +73,21 @@ fn format_event(event: &Event) -> String {
         event.elapsed(),
     );
     if let Some(stage) = event.stage() {
-        let _ = write!(line, " stage={}({})", stage.id(), stage.name());
+        let _ = write!(
+            line,
+            " stage={}({}) position={:?} total={:?}",
+            stage.id().escape_default(),
+            stage.name().escape_default(),
+            stage.position_value(),
+            stage.total(),
+        );
     }
     for metric in event.metrics() {
         let _ = write!(
             line,
             " metric={}({}) total={:?} completed={} active={} succeeded={} failed={} cancelled={}",
-            metric.id(),
-            metric.name(),
+            metric.id().escape_default(),
+            metric.name().escape_default(),
             metric.total(),
             metric.completed(),
             metric.active(),
