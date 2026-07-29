@@ -7,9 +7,10 @@
 // =============================================================================
 //! Immutable, lifecycle-safe progress reporting.
 //!
-//! A [`Progress`] operation owns its stable configuration, timing and reporter.
-//! Callers configure totals once with [`Metric`] and provide only current
-//! dynamic counts through report closures. Every emitted [`Event`] is complete.
+//! A [`Progress`] operation owns its metric state, timing and reporter.
+//! Callers configure stable metadata with [`Metric`] and update dynamic counts
+//! through cloneable [`MetricHandle`] values. Every emitted [`Event`] is
+//! complete.
 //!
 //! # Examples
 //!
@@ -20,11 +21,10 @@
 //! let progress = Progress::builder(&reporter)
 //!     .metric(Metric::new("tasks", "Tasks").total(1))
 //!     .start()?;
-//! progress.finish(|snapshot| {
-//!     snapshot.metric("tasks", |counts| {
-//!         counts.completed(1).succeeded(1);
-//!     });
-//! })?;
+//! let tasks = progress.metric("tasks").expect("configured metric must exist");
+//! tasks.start(1)?;
+//! tasks.succeed(1)?;
+//! progress.finish()?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -46,6 +46,8 @@ pub use auto_reporter::{
     Status,
 };
 pub use error::{
+    MetricError,
+    MetricTransition,
     ProgressError,
     ReportError,
     TerminalError,
@@ -57,13 +59,12 @@ pub use event::{
 };
 pub use metric::{
     Metric,
-    MetricCounts,
+    MetricHandle,
     MetricSnapshot,
 };
 pub use progress::{
     Progress,
     ProgressBuilder,
-    Snapshot,
 };
 #[cfg(feature = "json-lines")]
 pub use reporter::JsonLinesReporter;

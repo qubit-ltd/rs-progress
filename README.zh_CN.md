@@ -13,7 +13,7 @@
 
 进度上报常被绑死在终端进度条上，或以零散计数器散落在复制循环中。这样既难以把同一状态同时发送给日志、JSON、UI 或遥测系统，也会迫使消费者根据增量重建状态。进入多线程后，操作所有者和更新计数的工作线程又常常不是同一段代码。
 
-本库把这两类状态分开：启动时仅配置一次 `Metric` 的稳定 ID、显示名称和可选总量；每次上报闭包只提供当前计数。库会校验快照并投递自包含的 `Event`。终态方法会消费 `Progress`，因此在安全 Rust 中至多发送一个终态事件，且不能在终态后继续上报；但若在调用终态方法前丢弃对象或发生 unwind，操作仍可能没有终态事件。
+本库把这两类状态分开：启动时仅配置一次 `Metric` 的稳定 ID、显示名称和可选总量；随后由 `Progress` 持有动态计数，可克隆的 metric handle 以经过校验的生命周期转换更新它们，每个事件都读取一个内部一致的快照。终态方法会消费 `Progress`，因此在安全 Rust 中至多发送一个终态事件，且不能在终态后继续上报；但若在调用终态方法前丢弃对象或发生 unwind，操作仍可能没有终态事件。
 
 ## 安装
 
@@ -38,22 +38,15 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
         .metric(Metric::new("files", "文件").total(files.len() as u64))
         .start()?;
 
-    for (index, (source, destination)) in files.iter().enumerate() {
+    let files_metric = progress.metric("files").expect("configured metric must exist");
+    for (source, destination) in files {
         fs::copy(source, destination)?;
-        let completed = index as u64 + 1;
-        progress.report(|snapshot| {
-            snapshot.metric("files", |counts| {
-                counts.completed(completed).succeeded(completed);
-            });
-        })?;
+        files_metric.start(1)?;
+        files_metric.succeed(1)?;
+        progress.report()?;
     }
 
-    progress.finish(|snapshot| {
-        snapshot.metric("files", |counts| {
-            let total = files.len() as u64;
-            counts.completed(total).succeeded(total);
-        });
-    })?;
+    progress.finish()?;
     Ok(())
 }
 ```
@@ -62,14 +55,10 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
 
 ## 额外线程：自动上报共享的复制状态
 
-对于并行或由工作线程驱动的任务，可让 `Progress` 拥有一个有作用域的后台上报器。快照闭包读取共享计数器，工作线程在更新计数后调用可克隆的 `Notifier`。使用 `Duration::ZERO` 时，通知会被合并并触发上报，无需轮询。发送终态事件前必须调用 `stop()`：有作用域的独占借用会阻止后台上报器存活期间手工上报或结束操作。
+对于并行或由工作线程驱动的任务，可让 `Progress` 拥有一个有作用域的后台上报器。工作线程更新可克隆的 metric handle 后调用可克隆的 `Notifier`。使用 `Duration::ZERO` 时，通知会被合并并触发上报，无需轮询。发送终态事件前必须调用 `stop()`：有作用域的独占借用会阻止后台上报器存活期间手工上报或结束操作。
 
 ```rust
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::{thread, time::Duration};
 use qubit_progress::{Metric, Progress, TextReporter};
 
 let reporter = TextReporter::new(std::io::stderr());
@@ -77,22 +66,16 @@ let mut progress = Progress::builder(&reporter)
     .interval(Duration::ZERO)
     .metric(Metric::new("files", "文件").total(2))
     .start()?;
-let copied = Arc::new(Mutex::new(0_u64));
+let files_metric = progress.metric("files").expect("configured metric must exist");
 
 thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
-    let copied_for_snapshot = Arc::clone(&copied);
-    let auto = progress.spawn_auto_reporter(scope, move |snapshot| {
-        let completed = *copied_for_snapshot.lock().expect("copy counter mutex poisoned");
-        snapshot.metric("files", |counts| {
-            counts.completed(completed).succeeded(completed);
-        });
-    });
+    let auto = progress.spawn_auto_reporter(scope);
 
     let notifier = auto.notifier();
-    let copied_for_worker = Arc::clone(&copied);
     let worker = scope.spawn(move || {
         // 在这里执行一次复制，再发布新的共享状态。
-        *copied_for_worker.lock().expect("copy counter mutex poisoned") = 2;
+        files_metric.start(2).expect("metric update must succeed");
+        files_metric.succeed(2).expect("metric update must succeed");
         notifier.notify();
     });
     worker.join().expect("copy worker panicked");
@@ -100,11 +83,7 @@ thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
     Ok(())
 })?;
 
-progress.finish(|snapshot| {
-    snapshot.metric("files", |counts| {
-        counts.completed(2).succeeded(2);
-    });
-})?;
+progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 

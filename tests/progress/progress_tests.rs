@@ -18,6 +18,7 @@ use std::sync::{
 use qubit_progress::{
     Event,
     Metric,
+    MetricError,
     Phase,
     Progress,
     ProgressError,
@@ -63,21 +64,19 @@ fn test_progress_carries_configured_total_in_every_event() {
         .metric(Metric::new("tasks", "Tasks").total(3))
         .start()
         .expect("progress run must start");
+    let tasks = progress
+        .metric("tasks")
+        .expect("configured metric must exist");
 
-    progress
-        .report(|snapshot| {
-            snapshot.metric("tasks", |counts| {
-                counts.completed(1).active(1).succeeded(1);
-            });
-        })
-        .expect("running event must report");
-    progress
-        .finish(|snapshot| {
-            snapshot.metric("tasks", |counts| {
-                counts.completed(3).succeeded(3);
-            });
-        })
-        .expect("terminal event must report");
+    tasks.start(2).expect("work must start");
+    tasks.succeed(1).expect("work must succeed");
+    progress.report().expect("running event must report");
+    tasks
+        .succeed(1)
+        .expect("remaining active work must succeed");
+    tasks.start(1).expect("final work must start");
+    tasks.succeed(1).expect("final work must succeed");
+    progress.finish().expect("terminal event must report");
 
     let events = reporter.events();
     assert_eq!(events.len(), 3);
@@ -115,37 +114,41 @@ impl Reporter for DisabledReporter {
     }
 }
 
-/// Verifies that disabled operations skip all report closures and deliveries.
+/// Verifies that disabled operations retain metric state without delivery.
 #[test]
-fn test_disabled_progress_never_invokes_snapshot_closures() {
+fn test_disabled_progress_tracks_metrics_without_delivery() {
     let reporter = DisabledReporter::new();
-    let closure_calls = AtomicUsize::new(0);
     let mut progress = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks").total(1))
         .start()
         .expect("disabled progress configuration must still validate");
+    let tasks = progress
+        .metric("tasks")
+        .expect("configured metric must exist");
 
+    tasks.start(1).expect("work must start");
+    tasks.succeed(1).expect("work must succeed");
     progress
-        .report(|_| {
-            closure_calls.fetch_add(1, Ordering::Relaxed);
-        })
+        .report()
         .expect("disabled running report must be a no-op");
     progress
-        .report_if_due(|_| {
-            closure_calls.fetch_add(1, Ordering::Relaxed);
-        })
+        .report_if_due()
         .expect("disabled due report must be a no-op");
     progress
-        .finish(|_| {
-            closure_calls.fetch_add(1, Ordering::Relaxed);
-        })
+        .finish()
         .expect("disabled terminal report must be a no-op");
 
-    assert_eq!(closure_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(
+        tasks
+            .snapshot()
+            .expect("closed metric snapshot must remain readable")
+            .succeeded(),
+        1,
+    );
     assert_eq!(reporter.reports.load(Ordering::Relaxed), 0);
 }
 
-/// Verifies that fixed configuration and dynamic snapshot invariants fail
+/// Verifies that fixed configuration and metric transition invariants fail
 /// clearly.
 #[test]
 fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
@@ -163,29 +166,22 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
         ProgressError::Validation(ValidationError::DuplicateMetricId { .. })
     ));
 
-    let mut progress = Progress::builder(&reporter)
+    let progress = Progress::builder(&reporter)
         .stage(Stage::new("copy", "Copy").position(1, 2))
         .metric(Metric::new("tasks", "Tasks").total(2))
         .start()
         .expect("valid progress must start");
-    let error = progress
-        .report(|snapshot| {
-            snapshot.metric("tasks", |counts| {
-                counts.completed(2).active(1).succeeded(2);
-            });
-        })
+    let tasks = progress
+        .metric("tasks")
+        .expect("configured metric must exist");
+    tasks.start(2).expect("declared work must start");
+    let error = tasks
+        .start(1)
         .expect_err("occupied work beyond a known total must fail");
-    assert!(matches!(
-        error,
-        ProgressError::Validation(ValidationError::CountsExceedTotal { .. })
-    ));
-    progress
-        .cancel(|snapshot| {
-            snapshot.metric("tasks", |counts| {
-                counts.completed(2);
-            });
-        })
-        .expect("a valid terminal snapshot must be accepted after validation failure");
+    assert!(matches!(error, MetricError::TotalExceeded { .. }));
+    progress.cancel().expect(
+        "a valid terminal snapshot must be accepted after validation failure",
+    );
     assert_eq!(
         reporter
             .events()
@@ -196,29 +192,17 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
     );
 }
 
-/// Verifies that every declared metric receives one update in each snapshot.
+/// Verifies that metrics are retrieved only when configured by the operation.
 #[test]
-fn test_progress_rejects_snapshot_with_missing_metric_update() {
+fn test_progress_returns_none_for_unknown_metric() {
     let reporter = RecordingReporter::default();
-    let mut progress = Progress::builder(&reporter)
+    let progress = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks"))
         .metric(Metric::new("bytes", "Bytes"))
         .start()
         .expect("progress run must start");
 
-    let error = progress
-        .report(|snapshot| {
-            snapshot.metric("tasks", |counts| {
-                counts.completed(1).succeeded(1);
-            });
-        })
-        .expect_err("a snapshot missing a configured metric must fail");
-
-    assert!(matches!(
-        error,
-        ProgressError::Validation(ValidationError::MissingMetricUpdate {
-            ref metric_id,
-            ..
-        }) if metric_id == "bytes"
-    ));
+    assert!(progress.metric("tasks").is_some());
+    assert!(progress.metric("bytes").is_some());
+    assert!(progress.metric("unknown").is_none());
 }

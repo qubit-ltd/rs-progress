@@ -5,11 +5,13 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Operation lifecycle, snapshot configuration and report scheduling.
+//! Operation lifecycle, metric state and report scheduling.
 // qubit-style: allow multiple-public-types
 
 use std::{
+    sync::Arc,
     sync::atomic::{
+        AtomicBool,
         AtomicU64,
         Ordering,
     },
@@ -22,7 +24,7 @@ use std::{
 use crate::{
     Event,
     Metric,
-    MetricCounts,
+    MetricHandle,
     MetricSnapshot,
     Phase,
     ProgressError,
@@ -35,7 +37,6 @@ use crate::{
         AutoReporter,
     },
     validation::{
-        validate_counts,
         validate_metrics,
         validate_stage,
     },
@@ -87,10 +88,18 @@ impl<'reporter> ProgressBuilder<'reporter> {
         }
         let enabled = self.reporter.is_enabled();
         let started_at = Instant::now();
+        let operation_open = Arc::new(AtomicBool::new(true));
         let mut progress = Progress {
             reporter: self.reporter,
             enabled,
-            metrics: self.metrics,
+            metrics: self
+                .metrics
+                .into_iter()
+                .map(|metric| {
+                    MetricHandle::new(metric, Arc::clone(&operation_open))
+                })
+                .collect(),
+            operation_open,
             stage: self.stage,
             interval: self.interval,
             started_at,
@@ -99,7 +108,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
             next_sequence: 0,
         };
         if enabled {
-            let metrics = progress.empty_metric_snapshots();
+            let metrics = progress.metric_snapshots()?;
             progress.send(Phase::Started, metrics, Duration::ZERO)?;
         }
         Ok(progress)
@@ -116,8 +125,10 @@ pub struct Progress<'reporter> {
     reporter: &'reporter dyn Reporter,
     /// Stable enablement sampled once at start.
     enabled: bool,
-    /// Fixed metric metadata carried by each event.
-    metrics: Vec<Metric>,
+    /// Live metrics carried by each event.
+    metrics: Vec<MetricHandle>,
+    /// Shared gate that prevents handle updates after operation closure.
+    operation_open: Arc<AtomicBool>,
     /// Optional current stage.
     stage: Option<Stage>,
     /// Minimum due-report spacing.
@@ -155,19 +166,24 @@ impl<'reporter> Progress<'reporter> {
     pub fn elapsed(&self) -> Duration {
         self.started_at.elapsed()
     }
-    /// Immediately emits a Running event from the supplied current snapshot.
+    /// Returns a cloneable live metric selected by its stable ID.
+    pub fn metric(&self, metric_id: &str) -> Option<MetricHandle> {
+        self.metrics
+            .iter()
+            .find(|metric| metric.id() == metric_id)
+            .cloned()
+    }
+    /// Immediately emits a Running event from current metric state.
     ///
-    /// Disabled operations skip `configure`. Snapshot validation failures do
-    /// not consume sequence or change scheduling; reporter failures consume
-    /// one attempted-delivery sequence and push the next deadline.
-    pub fn report(
-        &mut self,
-        configure: impl FnOnce(&mut Snapshot),
-    ) -> Result<(), ProgressError> {
+    /// # Errors
+    ///
+    /// Returns a metric-state or reporter delivery error. Disabled
+    /// operations return success without sending an event.
+    pub fn report(&mut self) -> Result<(), ProgressError> {
         if !self.enabled {
             return Ok(());
         }
-        let metrics = self.snapshot(configure)?;
+        let metrics = self.metric_snapshots()?;
         let elapsed = self.elapsed();
         let result = self.send(Phase::Running, metrics, elapsed);
         self.reset_deadline();
@@ -176,33 +192,12 @@ impl<'reporter> Progress<'reporter> {
     /// Emits a Running event only when the configured interval is due.
     ///
     /// A zero interval is always due. Disabled and not-yet-due operations
-    /// return success without invoking `configure`.
-    pub fn report_if_due(
-        &mut self,
-        configure: impl FnOnce(&mut Snapshot),
-    ) -> Result<(), ProgressError> {
+    /// return success without taking a metric snapshot.
+    pub fn report_if_due(&mut self) -> Result<(), ProgressError> {
         if !self.enabled || !self.is_due() {
             return Ok(());
         }
-        self.report(configure)
-    }
-    /// Updates the known total carried by subsequent events for one metric.
-    ///
-    /// Returns [`ProgressError::Validation`] for an unknown metric ID.
-    pub fn set_total(
-        &mut self,
-        metric_id: &str,
-        total: u64,
-    ) -> Result<(), ProgressError> {
-        let metric = self
-            .metrics
-            .iter_mut()
-            .find(|metric| metric.id() == metric_id)
-            .ok_or_else(|| ValidationError::UnknownMetricId {
-                metric_id: metric_id.into(),
-            })?;
-        metric.total = Some(total);
-        Ok(())
+        self.report()
     }
     /// Replaces stage metadata attached to subsequent events.
     ///
@@ -217,25 +212,16 @@ impl<'reporter> Progress<'reporter> {
         self.stage = None;
     }
     /// Consumes this operation and emits a successful terminal event.
-    pub fn finish(
-        self,
-        configure: impl FnOnce(&mut Snapshot),
-    ) -> Result<Duration, TerminalError> {
-        self.terminal(Phase::Succeeded, configure)
+    pub fn finish(self) -> Result<Duration, TerminalError> {
+        self.terminal(Phase::Succeeded)
     }
     /// Consumes this operation and emits a failed terminal event.
-    pub fn fail(
-        self,
-        configure: impl FnOnce(&mut Snapshot),
-    ) -> Result<Duration, TerminalError> {
-        self.terminal(Phase::Failed, configure)
+    pub fn fail(self) -> Result<Duration, TerminalError> {
+        self.terminal(Phase::Failed)
     }
     /// Consumes this operation and emits a cancelled terminal event.
-    pub fn cancel(
-        self,
-        configure: impl FnOnce(&mut Snapshot),
-    ) -> Result<Duration, TerminalError> {
-        self.terminal(Phase::Cancelled, configure)
+    pub fn cancel(self) -> Result<Duration, TerminalError> {
+        self.terminal(Phase::Cancelled)
     }
     /// Spawns a scoped automatic Running reporter that exclusively borrows this
     /// operation.
@@ -243,32 +229,22 @@ impl<'reporter> Progress<'reporter> {
     /// While the returned [`AutoReporter`] exists, Rust prevents manual
     /// reports, configuration changes and terminal delivery. Call
     /// [`AutoReporter::stop`] before sending a terminal event.
-    pub fn spawn_auto_reporter<'scope, 'env, F>(
+    pub fn spawn_auto_reporter<'scope, 'env>(
         &'scope mut self,
         scope: &'scope std::thread::Scope<'scope, 'env>,
-        snapshot: F,
     ) -> AutoReporter<'scope, 'reporter>
     where
         'reporter: 'scope,
-        F: FnMut(&mut Snapshot) + Send + 'scope,
     {
-        auto_reporter::spawn(self, scope, snapshot)
+        auto_reporter::spawn(self, scope)
     }
-    /// Builds validated dynamic snapshots from one report closure.
-    fn snapshot(
-        &self,
-        configure: impl FnOnce(&mut Snapshot),
-    ) -> Result<Vec<MetricSnapshot>, ProgressError> {
-        let mut snapshot = Snapshot::new(&self.metrics);
-        configure(&mut snapshot);
-        snapshot.finish(&self.metrics).map_err(ProgressError::from)
-    }
-    /// Produces zero-count snapshots for Started.
-    fn empty_metric_snapshots(&self) -> Vec<MetricSnapshot> {
+    /// Copies each metric into one independently consistent event snapshot.
+    fn metric_snapshots(&self) -> Result<Vec<MetricSnapshot>, ProgressError> {
         self.metrics
             .iter()
-            .map(|metric| MetricSnapshot::new(metric, MetricCounts::default()))
-            .collect()
+            .map(MetricHandle::snapshot)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(ProgressError::from)
     }
     /// Delivers one complete event after reserving its delivery sequence.
     fn send(
@@ -316,99 +292,28 @@ impl<'reporter> Progress<'reporter> {
         self.next_running_at = next_deadline(Instant::now(), self.interval);
     }
     /// Emits one terminal phase while retaining elapsed time on failure.
-    fn terminal(
-        mut self,
-        phase: Phase,
-        configure: impl FnOnce(&mut Snapshot),
-    ) -> Result<Duration, TerminalError> {
+    fn terminal(mut self, phase: Phase) -> Result<Duration, TerminalError> {
         let elapsed = self.elapsed();
+        self.close();
         if !self.enabled {
             return Ok(elapsed);
         }
-        self.snapshot(configure)
+        self.metric_snapshots()
             .and_then(|metrics| self.send(phase, metrics, elapsed))
             .map(|()| elapsed)
             .map_err(|error| TerminalError::new(elapsed, error))
     }
+
+    /// Closes all live metric handles owned by this operation.
+    fn close(&self) {
+        self.operation_open.store(false, Ordering::Release);
+    }
 }
 
-/// One-report dynamic configuration view.
-pub struct Snapshot {
-    metric_ids: Vec<String>,
-    counts: Vec<MetricCounts>,
-    updated: Vec<bool>,
-    error: Option<ValidationError>,
-}
-impl Snapshot {
-    /// Creates a zeroed dynamic view for every configured metric.
-    fn new(metrics: &[Metric]) -> Self {
-        Self {
-            metric_ids: metrics
-                .iter()
-                .map(|metric| metric.id().into())
-                .collect(),
-            counts: vec![MetricCounts::default(); metrics.len()],
-            updated: vec![false; metrics.len()],
-            error: None,
-        }
-    }
-    /// Configures dynamic counts for one declared metric.
-    ///
-    /// Unknown IDs and duplicate updates are recorded for the enclosing report;
-    /// their callbacks are not executed.
-    pub fn metric(
-        &mut self,
-        metric_id: &str,
-        configure: impl FnOnce(&mut MetricCounts),
-    ) -> &mut Self {
-        let Some(index) = self.metric_ids.iter().position(|id| id == metric_id)
-        else {
-            self.record_error(ValidationError::UnknownMetricId {
-                metric_id: metric_id.into(),
-            });
-            return self;
-        };
-        if self.updated[index] {
-            self.record_error(ValidationError::DuplicateMetricUpdate {
-                metric_id: metric_id.into(),
-            });
-            return self;
-        }
-        self.updated[index] = true;
-        configure(&mut self.counts[index]);
-        self
-    }
-    /// Finishes snapshot configuration and validates every metric count set.
-    fn finish(
-        self,
-        metrics: &[Metric],
-    ) -> Result<Vec<MetricSnapshot>, ValidationError> {
-        if let Some(error) = self.error {
-            return Err(error);
-        }
-        if let Some(metric_id) =
-            self.metric_ids.iter().zip(&self.updated).find_map(
-                |(metric_id, updated)| (!updated).then_some(metric_id),
-            )
-        {
-            return Err(ValidationError::MissingMetricUpdate {
-                metric_id: metric_id.clone(),
-            });
-        }
-        metrics
-            .iter()
-            .zip(self.counts)
-            .map(|(metric, counts)| {
-                validate_counts(metric, counts)?;
-                Ok(MetricSnapshot::new(metric, counts))
-            })
-            .collect()
-    }
-    /// Retains only the first invalid closure operation.
-    fn record_error(&mut self, error: ValidationError) {
-        if self.error.is_none() {
-            self.error = Some(error);
-        }
+impl Drop for Progress<'_> {
+    /// Closes live handles when a caller abandons an unfinished operation.
+    fn drop(&mut self) {
+        self.close();
     }
 }
 

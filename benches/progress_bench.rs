@@ -31,15 +31,14 @@ fn bench_disabled_report(criterion: &mut Criterion) {
         .metric(Metric::new("entries", "Entries").total(1))
         .start()
         .expect("disabled progress must start");
+    let metric = progress
+        .metric("entries")
+        .expect("configured metric must exist");
+    metric.start(1).expect("metric update must succeed");
+    metric.complete(1).expect("metric update must succeed");
     criterion.bench_function("disabled_report", |bencher| {
         bencher.iter(|| {
-            progress
-                .report(|snapshot| {
-                    snapshot.metric("entries", |counts| {
-                        counts.completed(1);
-                    });
-                })
-                .expect("disabled report must succeed");
+            progress.report().expect("disabled report must succeed");
         });
     });
 }
@@ -51,15 +50,16 @@ fn bench_enabled_report(criterion: &mut Criterion) {
         .metric(Metric::new("entries", "Entries").total(1))
         .start()
         .expect("enabled progress must start");
+    let metric = progress
+        .metric("entries")
+        .expect("configured metric must exist");
+    metric
+        .start(black_box(1))
+        .expect("metric update must succeed");
+    metric.complete(1).expect("metric update must succeed");
     criterion.bench_function("enabled_report", |bencher| {
         bencher.iter(|| {
-            progress
-                .report(|snapshot| {
-                    snapshot.metric("entries", |counts| {
-                        counts.completed(black_box(1));
-                    });
-                })
-                .expect("enabled report must succeed");
+            progress.report().expect("enabled report must succeed");
         });
     });
 }
@@ -75,11 +75,7 @@ fn bench_not_due_report(criterion: &mut Criterion) {
     criterion.bench_function("not_due_report", |bencher| {
         bencher.iter(|| {
             progress
-                .report_if_due(|snapshot| {
-                    snapshot.metric("entries", |counts| {
-                        counts.completed(1);
-                    });
-                })
+                .report_if_due()
                 .expect("undued report must succeed");
         });
     });
@@ -90,21 +86,34 @@ fn bench_multi_metric_terminal(criterion: &mut Criterion) {
     let reporter = |_event: &qubit_progress::Event| Ok::<(), ReportError>(());
     criterion.bench_function("multi_metric_terminal", |bencher| {
         bencher.iter(|| {
-            Progress::builder(&reporter)
+            let progress = Progress::builder(&reporter)
                 .metric(Metric::new("entries", "Entries").total(1))
                 .metric(Metric::new("bytes", "Bytes").total(1024))
                 .start()
-                .expect("progress must start")
-                .finish(|snapshot| {
-                    snapshot
-                        .metric("entries", |counts| {
-                            counts.completed(1).succeeded(1);
-                        })
-                        .metric("bytes", |counts| {
-                            counts.completed(1024);
-                        });
+                .expect("progress must start");
+            progress
+                .metric("entries")
+                .expect("configured metric must exist")
+                .start(1)
+                .and_then(|()| {
+                    progress
+                        .metric("entries")
+                        .expect("configured metric must exist")
+                        .succeed(1)
                 })
-                .expect("terminal event must report");
+                .expect("metric update must succeed");
+            progress
+                .metric("bytes")
+                .expect("configured metric must exist")
+                .start(1024)
+                .and_then(|()| {
+                    progress
+                        .metric("bytes")
+                        .expect("configured metric must exist")
+                        .complete(1024)
+                })
+                .expect("metric update must succeed");
+            progress.finish().expect("terminal event must report");
         });
     });
 }

@@ -7,4 +7,8 @@
 // =============================================================================
 //! Tests for reporters and event serialization.
 
+mod json_lines_reporter_tests;
+mod log_reporter_tests;
+mod noop_reporter_tests;
 mod reporter_tests;
+mod text_reporter_tests;

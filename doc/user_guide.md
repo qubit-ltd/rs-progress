@@ -8,12 +8,12 @@ An operation has stable configuration and changing state:
 
 - `ProgressBuilder` collects the reporter, report interval, metrics, and optional `Stage` before the operation begins.
 - `Metric` is stable metadata: a machine-readable ID, a display name, and an optional total. Every event carries this metadata.
-- `Snapshot` exists only inside one report closure. It supplies current `completed`, `active`, `succeeded`, and `failed` counts for each metric.
+- `Progress` owns the changing state for every configured metric. Obtain a cloneable `MetricHandle` with `Progress::metric` and use it to move quantities through the metric lifecycle.
 - `Event` is an immutable, complete observation. A reporter does not need earlier events to reconstruct its state.
 
 The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
 
-## Start an operation and report a snapshot
+## Start an operation and update its metrics
 
 Use a stable metric ID in code and a human-readable name for output. A total is optional; when known, configure it once. The following operation reports a batch in progress and then completes it.
 
@@ -24,29 +24,28 @@ let reporter = TextReporter::new(std::io::stderr());
 let mut progress = Progress::builder(&reporter)
     .metric(Metric::new("files", "Files").total(10))
     .start()?;
+let files = progress.metric("files").expect("configured metric must exist");
 
-progress.report(|snapshot| {
-    snapshot.metric("files", |counts| {
-        counts.completed(4).succeeded(3).failed(1).active(2);
-    });
-})?;
+files.start(6)?;
+files.succeed(3)?;
+files.fail(1)?;
+files.complete(1)?;
+progress.report()?;
 
-let elapsed = progress.finish(|snapshot| {
-    snapshot.metric("files", |counts| {
-        counts.completed(10).succeeded(9).failed(1);
-    });
-})?;
+files.start(4)?;
+files.succeed(4)?;
+let elapsed = progress.finish()?;
 # let _ = elapsed;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`start()` validates all fixed metadata before it emits `Started`. `report()` validates the new snapshot before it emits `Running`. A terminal call returns the elapsed `Duration`; if terminal delivery fails, `TerminalError` retains both that duration and the underlying `ProgressError`.
+`start()` validates all fixed metadata before it emits `Started`. `report()` emits the current metric snapshots as `Running`. A terminal call returns the elapsed `Duration`; if terminal delivery fails, `TerminalError` retains both that duration and the underlying `ProgressError`.
 
-## Snapshot rules and validation
+## Metric lifecycle and validation
 
-Each snapshot must configure every declared metric exactly once. Empty or duplicate metric IDs, an unknown ID in `Snapshot::metric`, a duplicate update, contradictory counts, and values above a configured total are validation errors. In particular, `succeeded + failed` must not exceed `completed`, and `completed + active` must not exceed a known total.
+`start(count)` moves positive quantities from not-started to active; a negative count reverses that move. `complete`, `succeed`, `fail`, and `cancel` move positive quantities from active to their respective completed states, while a negative count reverses the corresponding move. All counts must remain non-negative. When a total is known, `active + completed` cannot exceed it; `set_total` cannot lower the total below those occupied quantities.
 
-Configure fixed metadata with `Metric` and dynamic values in report closures. Do not hide phase or stage information in counters: use `Stage` at startup, `set_stage` to replace it for future events, and `clear_stage` to remove it. Use `set_total` only when the total becomes known or changes after the operation starts.
+The completed count includes unclassified completion, success, failure, and cancellation. The handle locks and validates each transition before committing it, so every emitted metric snapshot is internally consistent. Do not hide phase or stage information in counters: use `Stage` at startup, `set_stage` to replace it for future events, and `clear_stage` to remove it.
 
 ## Choose a report schedule
 
@@ -61,36 +60,27 @@ let mut progress = Progress::builder(&reporter)
     .interval(Duration::from_secs(1))
     .metric(Metric::new("records", "Records"))
     .start()?;
+let records = progress.metric("records").expect("configured metric must exist");
 
-for completed in 1..=100 {
+for _ in 1..=100 {
     // Process one record.
-    progress.report_if_due(|snapshot| {
-        snapshot.metric("records", |counts| {
-            counts.completed(completed).succeeded(completed);
-        });
-    })?;
+    records.start(1)?;
+    records.succeed(1)?;
+    progress.report_if_due()?;
 }
 
-progress.finish(|snapshot| {
-    snapshot.metric("records", |counts| {
-        counts.completed(100).succeeded(100);
-    });
-})?;
+progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-An interval of zero means every `report_if_due()` call is due. When an operation is not due, its closure is not invoked. A reporter failure consumes one delivery sequence number and resets the next deadline; a snapshot validation failure does neither.
+An interval of zero means every `report_if_due()` call is due. A reporter failure consumes one delivery sequence number and resets the next deadline.
 
 ## Automatically report state changed by worker threads
 
-`spawn_auto_reporter` is for state that lives outside `Progress`, such as counters shared by file-copy workers. It starts a scoped background thread that owns the mutable progress borrow and invokes a snapshot closure. The returned `AutoReporter` offers a cloneable `Notifier` and `Status`.
+`spawn_auto_reporter` reports metric state changed by worker threads. It starts a scoped background thread that owns the mutable progress borrow. The returned `AutoReporter` offers a cloneable `Notifier` and `Status`.
 
 ```rust
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::{thread, time::Duration};
 use qubit_progress::{Metric, Progress, TextReporter};
 
 let reporter = TextReporter::new(std::io::stderr());
@@ -98,22 +88,16 @@ let mut progress = Progress::builder(&reporter)
     .interval(Duration::ZERO)
     .metric(Metric::new("files", "Files").total(3))
     .start()?;
-let completed = Arc::new(Mutex::new(0_u64));
+let files = progress.metric("files").expect("configured metric must exist");
 
 thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
-    let observed = Arc::clone(&completed);
-    let auto = progress.spawn_auto_reporter(scope, move |snapshot| {
-        let completed = *observed.lock().expect("progress mutex poisoned");
-        snapshot.metric("files", |counts| {
-            counts.completed(completed).succeeded(completed);
-        });
-    });
+    let auto = progress.spawn_auto_reporter(scope);
     let status = auto.status();
     let notifier = auto.notifier();
 
-    let updated = Arc::clone(&completed);
     let worker = scope.spawn(move || {
-        *updated.lock().expect("progress mutex poisoned") = 3;
+        files.start(3).expect("metric update must succeed");
+        files.succeed(3).expect("metric update must succeed");
         notifier.notify();
     });
 
@@ -123,19 +107,15 @@ thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
     Ok(())
 })?;
 
-progress.finish(|snapshot| {
-    snapshot.metric("files", |counts| {
-        counts.completed(3).succeeded(3);
-    });
-})?;
+progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-For a zero interval, `notify()` coalesces repeated calls into at most one pending report. For a positive interval, the worker emits heartbeats at the minimum interval and `notify()` is a no-op, avoiding synchronization work for worker threads. `notify()` is harmless after `stop()`. Always call `stop()` and handle its result before calling a terminal method. While the `AutoReporter` exists, the exclusive borrow prevents manual reporting, stage changes, total changes, and termination.
+For a zero interval, `notify()` coalesces repeated calls into at most one pending report. For a positive interval, the worker emits heartbeats at the minimum interval and `notify()` is a no-op, avoiding synchronization work for worker threads. `notify()` is harmless after `stop()`. Always call `stop()` and handle its result before calling a terminal method. While the `AutoReporter` exists, the exclusive borrow prevents manual reporting, stage changes, and termination.
 
 ## Disabled operations
 
-Enablement belongs to `Reporter::is_enabled()` and is sampled once by `start()`. A disabled operation still validates its fixed configuration, but it emits no `Started` event; report and terminal closures are not executed; no events are allocated; and automatic reporting starts no background thread. This makes an unconditional reporting path cheap when a sink is disabled.
+Enablement belongs to `Reporter::is_enabled()` and is sampled once by `start()`. A disabled operation still validates its fixed configuration and maintains metric state, but emits no events and starts no automatic reporting thread. This makes an unconditional reporting path cheap when a sink is disabled.
 
 `NoopReporter` is useful when the caller needs a reporter that explicitly disables output. A custom reporter can override `is_enabled()` to connect enablement to application configuration.
 

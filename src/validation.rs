@@ -11,10 +11,12 @@ use std::collections::HashSet;
 
 use crate::{
     Metric,
-    MetricCounts,
     Stage,
     ValidationError,
 };
+
+#[cfg(feature = "serde")]
+use crate::MetricSnapshot;
 
 /// Validates the fixed metric configuration for one operation.
 pub(crate) fn validate_metrics(
@@ -63,41 +65,43 @@ pub(crate) fn validate_stage(stage: &Stage) -> Result<(), ValidationError> {
 }
 
 /// Validates one metric's dynamic counts against its configured total.
-pub(crate) fn validate_counts(
-    metric: &Metric,
-    counts: MetricCounts,
+#[cfg(feature = "serde")]
+pub(crate) fn validate_snapshot_counts(
+    snapshot: &MetricSnapshot,
 ) -> Result<(), ValidationError> {
-    let classified =
-        counts.succeeded.checked_add(counts.failed).ok_or_else(|| {
-            ValidationError::CountOverflow {
-                metric_id: metric.id.to_string(),
-            }
+    let classified = snapshot
+        .succeeded()
+        .checked_add(snapshot.failed())
+        .and_then(|value| value.checked_add(snapshot.cancelled()))
+        .ok_or_else(|| ValidationError::CountOverflow {
+            metric_id: snapshot.id().into(),
         })?;
-    if classified > counts.completed {
+    if classified > snapshot.completed() {
         return Err(ValidationError::ClassifiedExceedsCompleted {
-            metric_id: metric.id.to_string(),
+            metric_id: snapshot.id().into(),
         });
     }
-    if let Some(total) = metric.total {
+    if let Some(total) = snapshot.total() {
         if total == 0
-            && (counts.completed != 0
-                || counts.active != 0
-                || counts.succeeded != 0
-                || counts.failed != 0)
+            && (snapshot.completed() != 0
+                || snapshot.active() != 0
+                || snapshot.succeeded() != 0
+                || snapshot.failed() != 0
+                || snapshot.cancelled() != 0)
         {
             return Err(ValidationError::NonZeroCountsForZeroTotal {
-                metric_id: metric.id.to_string(),
+                metric_id: snapshot.id().into(),
             });
         }
-        let occupied =
-            counts.completed.checked_add(counts.active).ok_or_else(|| {
-                ValidationError::CountOverflow {
-                    metric_id: metric.id.to_string(),
-                }
+        let occupied = snapshot
+            .completed()
+            .checked_add(snapshot.active())
+            .ok_or_else(|| ValidationError::CountOverflow {
+                metric_id: snapshot.id().into(),
             })?;
         if occupied > total {
             return Err(ValidationError::CountsExceedTotal {
-                metric_id: metric.id.to_string(),
+                metric_id: snapshot.id().into(),
             });
         }
     }
