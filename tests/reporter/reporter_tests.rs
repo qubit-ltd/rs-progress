@@ -7,7 +7,10 @@
 // =============================================================================
 //! Reporter output and event serialization tests.
 
-use std::io::{self, Write};
+use std::io::{
+    self,
+    Write,
+};
 
 use qubit_progress::{
     Metric,
@@ -82,7 +85,8 @@ impl Write for FailingWriter {
     }
 }
 
-/// Verifies TextReporter surfaces writer failures without losing the event path.
+/// Verifies TextReporter surfaces writer failures without losing the event
+/// path.
 #[test]
 fn test_text_reporter_propagates_writer_failure() {
     let reporter = TextReporter::new(FailingWriter);
