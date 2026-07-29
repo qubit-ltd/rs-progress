@@ -139,8 +139,12 @@ fn test_metric_rejects_invalid_totals_and_counts() {
     let overflow = overflow_progress
         .metric("overflow")
         .expect("overflow metric must exist");
-    overflow.start(i64::MAX).expect("first large count must fit");
-    overflow.start(i64::MAX).expect("second large count must fit");
+    overflow
+        .start(i64::MAX)
+        .expect("first large count must fit");
+    overflow
+        .start(i64::MAX)
+        .expect("second large count must fit");
     overflow.start(1).expect("maximum count must fit");
     assert!(matches!(
         overflow.start(1),

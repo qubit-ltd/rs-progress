@@ -220,7 +220,9 @@ fn test_progress_updates_stage_and_respects_due_interval() {
         .expect("progress must start");
     assert!(progress.is_enabled());
     assert!(progress.elapsed() < Duration::from_secs(1));
-    progress.report_if_due().expect("early report must be skipped");
+    progress
+        .report_if_due()
+        .expect("early report must be skipped");
     progress
         .set_stage(Stage::new("verify", "Verify").position(2, 2))
         .expect("replacement stage must be valid");

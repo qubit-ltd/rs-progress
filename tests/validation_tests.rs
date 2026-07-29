@@ -12,8 +12,8 @@ use qubit_progress::{
     NoopReporter,
     Progress,
     ProgressError,
-    ValidationError,
     Stage,
+    ValidationError,
 };
 
 /// Verifies that operations require at least one configured metric.
@@ -51,7 +51,9 @@ fn test_progress_rejects_invalid_fixed_metadata() {
     let reporter = NoopReporter;
     let cases = [
         (
-            Progress::builder(&reporter).metric(Metric::new("tasks", " ")).start(),
+            Progress::builder(&reporter)
+                .metric(Metric::new("tasks", " "))
+                .start(),
             "empty metric name",
         ),
         (

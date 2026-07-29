@@ -121,7 +121,8 @@ fn test_event_json_deserializes_canonical_durations() {
             }],
             "elapsed": elapsed,
         });
-        let event: Event = serde_json::from_value(value).expect("event JSON must deserialize");
+        let event: Event =
+            serde_json::from_value(value).expect("event JSON must deserialize");
         assert_eq!(event.phase().as_str(), phase);
         assert_eq!(event.sequence(), sequence);
         assert_eq!(event.stage().expect("stage must exist").total(), Some(1));
@@ -148,11 +149,17 @@ fn test_event_json_rejects_invalid_invariants() {
         ("/elapsed", json!("1xs")),
         ("/elapsed", json!("-1s")),
         ("/elapsed", json!("")),
-        ("/elapsed", json!("340282366920938463463374607431768211456ns")),
+        (
+            "/elapsed",
+            json!("340282366920938463463374607431768211456ns"),
+        ),
         ("/elapsed", json!("18446744073709551615h")),
         ("/sequence", json!(1)),
         ("/metrics/0/active", json!(1)),
-        ("/stage", json!({"id":"copy", "name":"Copy", "position":1, "total":0})),
+        (
+            "/stage",
+            json!({"id":"copy", "name":"Copy", "position":1, "total":0}),
+        ),
     ] {
         let mut invalid = valid.clone();
         *invalid.pointer_mut(pointer).expect("field must exist") = replacement;

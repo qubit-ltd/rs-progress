@@ -38,7 +38,8 @@ fn test_text_reporter_includes_cancelled_count() {
     assert!(output.contains("cancelled=1"));
 }
 
-/// Verifies that text records escape control characters and retain stage progress.
+/// Verifies that text records escape control characters and retain stage
+/// progress.
 #[test]
 fn test_text_reporter_escapes_metadata_and_includes_stage_progress() {
     let reporter = TextReporter::new(Vec::new());
@@ -56,6 +57,8 @@ fn test_text_reporter_escapes_metadata_and_includes_stage_progress() {
     )
     .expect("text output must be UTF-8");
     assert_eq!(output.lines().count(), 1);
-    assert!(output.contains("stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"));
+    assert!(output.contains(
+        "stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"
+    ));
     assert!(output.contains("metric=tasks\\nall(Tasks\\rAll)"));
 }

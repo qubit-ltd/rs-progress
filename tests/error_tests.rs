@@ -209,10 +209,20 @@ fn test_progress_and_terminal_errors_preserve_sources() {
         .finish()
         .expect_err("terminal event must fail");
     assert!(terminal.elapsed() < std::time::Duration::from_secs(1));
-    assert!(matches!(terminal.progress_error(), ProgressError::Report(_)));
-    assert!(terminal.to_string().contains("terminal progress report failed"));
+    assert!(matches!(
+        terminal.progress_error(),
+        ProgressError::Report(_)
+    ));
+    assert!(
+        terminal
+            .to_string()
+            .contains("terminal progress report failed")
+    );
     assert!(Error::source(&terminal).is_some());
-    assert!(matches!(terminal.into_progress_error(), ProgressError::Report(_)));
+    assert!(matches!(
+        terminal.into_progress_error(),
+        ProgressError::Report(_)
+    ));
 }
 
 /// Verifies message-backed errors expose the original text and error source.

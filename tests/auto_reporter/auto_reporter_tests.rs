@@ -8,7 +8,10 @@
 //! Tests for scoped automatic progress reporting.
 
 use std::{
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{
+        AtomicUsize,
+        Ordering,
+    },
     sync::mpsc::{
         Receiver,
         SyncSender,
