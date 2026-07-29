@@ -58,6 +58,9 @@ fn test_auto_reporter_reports_zero_interval_after_notification() {
         .metric(Metric::new("tasks", "Tasks").total(1))
         .start()
         .expect("progress run must start");
+    let tasks = progress
+        .metric("tasks")
+        .expect("configured metric must exist");
     assert_eq!(
         phases
             .recv_timeout(Duration::from_secs(1))
@@ -66,11 +69,9 @@ fn test_auto_reporter_reports_zero_interval_after_notification() {
     );
 
     thread::scope(|scope| {
-        let auto = progress.spawn_auto_reporter(scope, |snapshot| {
-            snapshot.metric("tasks", |counts| {
-                counts.completed(1).succeeded(1);
-            });
-        });
+        let auto = progress.spawn_auto_reporter(scope);
+        tasks.start(1).expect("work must start");
+        tasks.succeed(1).expect("work must succeed");
         auto.notifier().notify();
         assert_eq!(
             phases
@@ -82,11 +83,7 @@ fn test_auto_reporter_reports_zero_interval_after_notification() {
     });
 
     progress
-        .finish(|snapshot| {
-            snapshot.metric("tasks", |counts| {
-                counts.completed(1).succeeded(1);
-            });
-        })
+        .finish()
         .expect("terminal event must report after auto reporter stops");
     assert_eq!(
         phases

@@ -21,10 +21,9 @@ use crate::{
 #[cfg(feature = "serde")]
 use crate::{
     Metric,
-    MetricCounts,
     validation::{
-        validate_counts,
         validate_metrics,
+        validate_snapshot_counts,
         validate_stage,
     },
 };
@@ -289,7 +288,7 @@ fn validate_wire_event(
         if !ids.insert(snapshot.id()) {
             return Err(format!("metric ID {:?} is duplicated", snapshot.id()));
         }
-        validate_counts(&metric_definition(snapshot), metric_counts(snapshot))
+        validate_snapshot_counts(snapshot)
             .map_err(|error| error.to_string())?;
     }
     if let Some(stage) = &wire.stage {
@@ -334,17 +333,6 @@ fn metric_definition(snapshot: &MetricSnapshot) -> Metric {
     }
 }
 
-/// Reconstructs dynamic counts from an immutable metric snapshot.
-#[cfg(feature = "serde")]
-const fn metric_counts(snapshot: &MetricSnapshot) -> MetricCounts {
-    MetricCounts {
-        completed: snapshot.completed(),
-        active: snapshot.active(),
-        succeeded: snapshot.succeeded(),
-        failed: snapshot.failed(),
-    }
-}
-
 /// Returns whether one metric snapshot carries any dynamic count.
 #[cfg(feature = "serde")]
 const fn has_dynamic_counts(snapshot: &MetricSnapshot) -> bool {
@@ -352,4 +340,5 @@ const fn has_dynamic_counts(snapshot: &MetricSnapshot) -> bool {
         || snapshot.active() != 0
         || snapshot.succeeded() != 0
         || snapshot.failed() != 0
+        || snapshot.cancelled() != 0
 }

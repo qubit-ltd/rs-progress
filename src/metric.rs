@@ -8,7 +8,20 @@
 //! Metric configuration and immutable metric snapshots.
 // qubit-style: allow multiple-public-types
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    Mutex,
+    MutexGuard,
+    atomic::{
+        AtomicBool,
+        Ordering,
+    },
+};
+
+use crate::{
+    MetricError,
+    MetricTransition,
+};
 
 /// Stable metadata for one metric in a progress operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -64,40 +77,369 @@ impl Metric {
     }
 }
 
-/// Mutable dynamic counts available only while configuring a report snapshot.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct MetricCounts {
-    /// Work items that are no longer active.
-    pub(crate) completed: u64,
-    /// Work items currently in flight.
-    pub(crate) active: u64,
-    /// Completed work items explicitly known to have succeeded.
-    pub(crate) succeeded: u64,
-    /// Completed work items explicitly known to have failed.
-    pub(crate) failed: u64,
+/// Cloneable capability for one live metric owned by a progress operation.
+///
+/// All mutation methods are serialized by one short mutex critical section.
+/// A handle remains readable after its progress operation closes, but rejects
+/// all later mutations.
+#[derive(Clone)]
+pub struct MetricHandle {
+    /// Shared metadata and mutable count state.
+    inner: Arc<MetricInner>,
+    /// Shared lifecycle gate owned by the enclosing progress operation.
+    operation_open: Arc<AtomicBool>,
 }
 
-impl MetricCounts {
-    /// Sets the number of completed work items.
-    pub fn completed(&mut self, completed: u64) -> &mut Self {
-        self.completed = completed;
-        self
+impl MetricHandle {
+    /// Creates one live handle from validated metric metadata.
+    pub(crate) fn new(metric: Metric, operation_open: Arc<AtomicBool>) -> Self {
+        let total = metric.total;
+        Self {
+            inner: Arc::new(MetricInner {
+                metric,
+                state: Mutex::new(MetricState::new(total)),
+            }),
+            operation_open,
+        }
     }
-    /// Sets the number of active work items.
-    pub fn active(&mut self, active: u64) -> &mut Self {
-        self.active = active;
-        self
+
+    /// Returns the stable metric ID.
+    #[must_use]
+    pub fn id(&self) -> &str {
+        self.inner.metric.id()
     }
-    /// Sets the number of completed work items known to have succeeded.
-    pub fn succeeded(&mut self, succeeded: u64) -> &mut Self {
-        self.succeeded = succeeded;
-        self
+
+    /// Returns the stable metric display name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        self.inner.metric.name()
     }
-    /// Sets the number of completed work items known to have failed.
-    pub fn failed(&mut self, failed: u64) -> &mut Self {
-        self.failed = failed;
-        self
+
+    /// Replaces the known total for this metric.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metric error after closure, when total is below occupied
+    /// work, or when a previous panic poisoned the state lock.
+    pub fn set_total(&self, total: u64) -> Result<(), MetricError> {
+        let mut state = self.lock_state()?;
+        self.ensure_open()?;
+        let occupied = state.occupied(self.id())?;
+        if total < occupied {
+            return Err(MetricError::TotalBelowOccupied {
+                metric_id: self.id().into(),
+                total,
+                occupied,
+            });
+        }
+        state.total = Some(total);
+        Ok(())
     }
+
+    /// Moves signed work between the not-started and active states.
+    ///
+    /// A positive value starts work; a negative value rolls active work back
+    /// to not-started.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metric error when the transition violates aggregate state
+    /// invariants or when the owning operation is closed.
+    pub fn start(&self, count: i64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Start, count)
+    }
+
+    /// Moves signed work between the active and unclassified-completed states.
+    ///
+    /// A positive value completes active work without a terminal
+    /// classification; a negative value rolls that completion back to active.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metric error when the transition violates aggregate state
+    /// invariants or when the owning operation is closed.
+    pub fn complete(&self, count: i64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Complete, count)
+    }
+
+    /// Moves signed work between the active and succeeded states.
+    ///
+    /// A positive value marks active work as succeeded; a negative value rolls
+    /// succeeded work back to active.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metric error when the transition violates aggregate state
+    /// invariants or when the owning operation is closed.
+    pub fn succeed(&self, count: i64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Succeed, count)
+    }
+
+    /// Moves signed work between the active and failed states.
+    ///
+    /// A positive value marks active work as failed; a negative value rolls
+    /// failed work back to active.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metric error when the transition violates aggregate state
+    /// invariants or when the owning operation is closed.
+    pub fn fail(&self, count: i64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Fail, count)
+    }
+
+    /// Moves signed work between the active and cancelled states.
+    ///
+    /// A positive value marks active work as cancelled; a negative value rolls
+    /// cancelled work back to active.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metric error when the transition violates aggregate state
+    /// invariants or when the owning operation is closed.
+    pub fn cancel(&self, count: i64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Cancel, count)
+    }
+
+    /// Returns one internally consistent immutable metric snapshot.
+    ///
+    /// This read remains available after the owning operation closes.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metric error if a previous panic poisoned the lock or if
+    /// invalid internal state cannot be represented in a snapshot.
+    pub fn snapshot(&self) -> Result<MetricSnapshot, MetricError> {
+        let state = self.lock_state()?;
+        MetricSnapshot::from_state(&self.inner.metric, *state)
+    }
+
+    /// Updates state through one validated signed transition.
+    fn transition(
+        &self,
+        transition: MetricTransition,
+        count: i64,
+    ) -> Result<(), MetricError> {
+        let mut state = self.lock_state()?;
+        self.ensure_open()?;
+        let mut next = *state;
+        let amount = count.unsigned_abs();
+        let reverse = count.is_negative();
+        match transition {
+            MetricTransition::Start => {
+                move_count(
+                    &mut next.active,
+                    None,
+                    amount,
+                    reverse,
+                    transition,
+                    self.id(),
+                )?;
+            }
+            MetricTransition::Complete => {
+                move_count(
+                    &mut next.active,
+                    Some(&mut next.completed_unclassified),
+                    amount,
+                    reverse,
+                    transition,
+                    self.id(),
+                )?;
+            }
+            MetricTransition::Succeed => {
+                move_count(
+                    &mut next.active,
+                    Some(&mut next.succeeded),
+                    amount,
+                    reverse,
+                    transition,
+                    self.id(),
+                )?;
+            }
+            MetricTransition::Fail => {
+                move_count(
+                    &mut next.active,
+                    Some(&mut next.failed),
+                    amount,
+                    reverse,
+                    transition,
+                    self.id(),
+                )?;
+            }
+            MetricTransition::Cancel => {
+                move_count(
+                    &mut next.active,
+                    Some(&mut next.cancelled),
+                    amount,
+                    reverse,
+                    transition,
+                    self.id(),
+                )?;
+            }
+        }
+        next.validate(self.id())?;
+        *state = next;
+        Ok(())
+    }
+
+    /// Locks the mutable state or maps lock poisoning to a public error.
+    fn lock_state(&self) -> Result<MutexGuard<'_, MetricState>, MetricError> {
+        self.inner
+            .state
+            .lock()
+            .map_err(|_| MetricError::StatePoisoned {
+                metric_id: self.id().into(),
+            })
+    }
+
+    /// Rejects writes after the owning progress operation has closed.
+    fn ensure_open(&self) -> Result<(), MetricError> {
+        if self.operation_open.load(Ordering::Acquire) {
+            Ok(())
+        } else {
+            Err(MetricError::Closed {
+                metric_id: self.id().into(),
+            })
+        }
+    }
+}
+
+/// Immutable metadata and mutex-protected dynamic state for one handle.
+struct MetricInner {
+    /// Fixed metric definition supplied to the progress builder.
+    metric: Metric,
+    /// Dynamic state guarded for transactional changes and snapshots.
+    state: Mutex<MetricState>,
+}
+
+/// Dynamic metric counts stored only inside one metric transaction lock.
+#[derive(Clone, Copy)]
+struct MetricState {
+    /// Current optional total, mutable through the handle.
+    total: Option<u64>,
+    /// Work that has started but is not terminal.
+    active: u64,
+    /// Terminal work without explicit success, failure, or cancellation.
+    completed_unclassified: u64,
+    /// Terminal work classified as successful.
+    succeeded: u64,
+    /// Terminal work classified as failed.
+    failed: u64,
+    /// Terminal work classified as cancelled.
+    cancelled: u64,
+}
+
+impl MetricState {
+    /// Creates a zeroed state carrying the builder-provided total.
+    const fn new(total: Option<u64>) -> Self {
+        Self {
+            total,
+            active: 0,
+            completed_unclassified: 0,
+            succeeded: 0,
+            failed: 0,
+            cancelled: 0,
+        }
+    }
+
+    /// Returns the derived public completed count with checked arithmetic.
+    fn completed(&self, metric_id: &str) -> Result<u64, MetricError> {
+        self.completed_unclassified
+            .checked_add(self.succeeded)
+            .and_then(|value| value.checked_add(self.failed))
+            .and_then(|value| value.checked_add(self.cancelled))
+            .ok_or_else(|| MetricError::CountOverflow {
+                metric_id: metric_id.into(),
+            })
+    }
+
+    /// Returns active plus completed work with checked arithmetic.
+    fn occupied(&self, metric_id: &str) -> Result<u64, MetricError> {
+        self.completed(metric_id)?
+            .checked_add(self.active)
+            .ok_or_else(|| MetricError::CountOverflow {
+                metric_id: metric_id.into(),
+            })
+    }
+
+    /// Validates the aggregate conservation invariants for one pending state.
+    fn validate(&self, metric_id: &str) -> Result<(), MetricError> {
+        let occupied = self.occupied(metric_id)?;
+        if let Some(total) = self.total
+            && occupied > total
+        {
+            return Err(MetricError::TotalExceeded {
+                metric_id: metric_id.into(),
+                total,
+                attempted: occupied,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Moves an amount between active work and an optional terminal state.
+fn move_count(
+    active: &mut u64,
+    terminal: Option<&mut u64>,
+    amount: u64,
+    reverse: bool,
+    transition: MetricTransition,
+    metric_id: &str,
+) -> Result<(), MetricError> {
+    if reverse {
+        if let Some(terminal) = terminal {
+            let available = *terminal;
+            *terminal = terminal.checked_sub(amount).ok_or_else(|| {
+                MetricError::InsufficientCount {
+                    metric_id: metric_id.into(),
+                    transition,
+                    requested: amount,
+                    available,
+                }
+            })?;
+            *active = active.checked_add(amount).ok_or_else(|| {
+                MetricError::CountOverflow {
+                    metric_id: metric_id.into(),
+                }
+            })?;
+        } else {
+            let available = *active;
+            *active = active.checked_sub(amount).ok_or_else(|| {
+                MetricError::InsufficientCount {
+                    metric_id: metric_id.into(),
+                    transition,
+                    requested: amount,
+                    available,
+                }
+            })?;
+        }
+        return Ok(());
+    }
+
+    if let Some(terminal) = terminal {
+        let available = *active;
+        *active = active.checked_sub(amount).ok_or_else(|| {
+            MetricError::InsufficientCount {
+                metric_id: metric_id.into(),
+                transition,
+                requested: amount,
+                available,
+            }
+        })?;
+        *terminal = terminal.checked_add(amount).ok_or_else(|| {
+            MetricError::CountOverflow {
+                metric_id: metric_id.into(),
+            }
+        })?;
+    } else {
+        *active = active.checked_add(amount).ok_or_else(|| {
+            MetricError::CountOverflow {
+                metric_id: metric_id.into(),
+            }
+        })?;
+    }
+    Ok(())
 }
 
 /// Immutable complete state for one metric in an emitted event.
@@ -118,20 +460,26 @@ pub struct MetricSnapshot {
     succeeded: u64,
     /// Failed count.
     failed: u64,
+    /// Cancelled count.
+    cancelled: u64,
 }
 
 impl MetricSnapshot {
-    /// Combines one stable metric definition with one validated count set.
-    pub(crate) fn new(metric: &Metric, counts: MetricCounts) -> Self {
-        Self {
+    /// Builds an immutable snapshot from one internally validated metric state.
+    fn from_state(
+        metric: &Metric,
+        state: MetricState,
+    ) -> Result<Self, MetricError> {
+        Ok(Self {
             id: Arc::clone(&metric.id),
             name: Arc::clone(&metric.name),
-            total: metric.total,
-            completed: counts.completed,
-            active: counts.active,
-            succeeded: counts.succeeded,
-            failed: counts.failed,
-        }
+            total: state.total,
+            completed: state.completed(metric.id())?,
+            active: state.active,
+            succeeded: state.succeeded,
+            failed: state.failed,
+            cancelled: state.cancelled,
+        })
     }
     /// Returns the metric's stable ID.
     #[must_use]
@@ -167,6 +515,11 @@ impl MetricSnapshot {
     #[must_use]
     pub const fn failed(&self) -> u64 {
         self.failed
+    }
+    /// Returns the number of explicitly cancelled work items.
+    #[must_use]
+    pub const fn cancelled(&self) -> u64 {
+        self.cancelled
     }
     /// Returns the completed fraction when the total is positive and known.
     #[must_use]

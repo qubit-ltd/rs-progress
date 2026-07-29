@@ -37,7 +37,6 @@ use std::{
 use crate::{
     Progress,
     ProgressError,
-    Snapshot,
 };
 
 /// Handle controlling one scoped automatic reporter.
@@ -178,14 +177,12 @@ struct AutoReporterInner {
 }
 
 /// Spawns the worker for one enabled progress operation.
-pub(crate) fn spawn<'scope, 'env, 'reporter, F>(
+pub(crate) fn spawn<'scope, 'env, 'reporter>(
     progress: &'scope mut Progress<'reporter>,
     scope: &'scope thread::Scope<'scope, 'env>,
-    snapshot: F,
 ) -> AutoReporter<'scope, 'reporter>
 where
     'reporter: 'scope,
-    F: FnMut(&mut Snapshot) + Send + 'scope,
 {
     let status = Status::healthy();
     if !progress.is_enabled() {
@@ -207,7 +204,7 @@ where
     let worker_status = status.clone();
     let join = scope.spawn(move || {
         match catch_unwind(AssertUnwindSafe(|| {
-            run(progress, snapshot, Arc::clone(&worker_inner), wake_receiver)
+            run(progress, Arc::clone(&worker_inner), wake_receiver)
         })) {
             Ok(result) => {
                 if result.is_err() {
@@ -232,35 +229,27 @@ where
 }
 
 /// Runs one background reporting loop until stopped or a report fails.
-fn run<F>(
+fn run(
     progress: &mut Progress<'_>,
-    mut snapshot: F,
     inner: Arc<AutoReporterInner>,
     receiver: Receiver<()>,
-) -> Result<(), ProgressError>
-where
-    F: FnMut(&mut Snapshot),
-{
+) -> Result<(), ProgressError> {
     if progress.report_interval().is_zero() {
-        run_notified(progress, &mut snapshot, &inner, receiver)
+        run_notified(progress, &inner, receiver)
     } else {
-        run_heartbeat(progress, &mut snapshot, &inner, receiver)
+        run_heartbeat(progress, &inner, receiver)
     }
 }
 
 /// Runs notification-driven reporting for a zero interval.
-fn run_notified<F>(
+fn run_notified(
     progress: &mut Progress<'_>,
-    snapshot: &mut F,
     inner: &AutoReporterInner,
     receiver: Receiver<()>,
-) -> Result<(), ProgressError>
-where
-    F: FnMut(&mut Snapshot),
-{
+) -> Result<(), ProgressError> {
     while receiver.recv().is_ok() {
         if inner.pending.swap(false, Ordering::AcqRel) {
-            progress.report(&mut *snapshot)?;
+            progress.report()?;
         }
         if inner.stopped.load(Ordering::Acquire) {
             return Ok(());
@@ -270,15 +259,11 @@ where
 }
 
 /// Runs deadline-based heartbeat reporting for a positive interval.
-fn run_heartbeat<F>(
+fn run_heartbeat(
     progress: &mut Progress<'_>,
-    snapshot: &mut F,
     inner: &AutoReporterInner,
     receiver: Receiver<()>,
-) -> Result<(), ProgressError>
-where
-    F: FnMut(&mut Snapshot),
-{
+) -> Result<(), ProgressError> {
     loop {
         if inner.stopped.load(Ordering::Acquire) {
             return Ok(());
@@ -288,7 +273,7 @@ where
             Ok(()) if inner.stopped.load(Ordering::Acquire) => return Ok(()),
             Ok(()) => continue,
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                progress.report_if_due(&mut *snapshot)?;
+                progress.report_if_due()?;
             }
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 return Ok(());

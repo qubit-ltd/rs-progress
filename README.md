@@ -13,7 +13,7 @@
 
 Progress reporting is often coupled to a terminal progress bar or scattered across a copy loop as ad-hoc counters. That makes it difficult to send the same state to logs, JSON, a UI, or telemetry; it also makes consumers reconstruct state from deltas. Threaded work adds another problem: the code that owns the operation and the code that changes the counters are usually different.
 
-This crate separates the two kinds of state. Configure each `Metric`—its stable ID, display name, and optional total—once at startup. Each report closure supplies only the current counts. The crate validates the snapshot and delivers a self-contained `Event`. Its consuming terminal methods permit at most one terminal event and prevent later reports in safe Rust; dropping or unwinding before a terminal call can still abandon an operation.
+This crate separates the two kinds of state. Configure each `Metric`—its stable ID, display name, and optional total—once at startup. `Progress` then owns the dynamic counts; cloneable metric handles apply validated lifecycle transitions and every event reads one internally consistent snapshot. Its consuming terminal methods permit at most one terminal event and prevent later reports in safe Rust; dropping or unwinding before a terminal call can still abandon an operation.
 
 ## Installation
 
@@ -38,22 +38,15 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
         .metric(Metric::new("files", "Files").total(files.len() as u64))
         .start()?;
 
-    for (index, (source, destination)) in files.iter().enumerate() {
+    let files_metric = progress.metric("files").expect("configured metric must exist");
+    for (source, destination) in files {
         fs::copy(source, destination)?;
-        let completed = index as u64 + 1;
-        progress.report(|snapshot| {
-            snapshot.metric("files", |counts| {
-                counts.completed(completed).succeeded(completed);
-            });
-        })?;
+        files_metric.start(1)?;
+        files_metric.succeed(1)?;
+        progress.report()?;
     }
 
-    progress.finish(|snapshot| {
-        snapshot.metric("files", |counts| {
-            let total = files.len() as u64;
-            counts.completed(total).succeeded(total);
-        });
-    })?;
+    progress.finish()?;
     Ok(())
 }
 ```
@@ -62,14 +55,10 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
 
 ## Worker-thread use: automatically report shared copy state
 
-For parallel or worker-driven work, let `Progress` own a scoped background reporter. The snapshot closure reads the shared counters, while workers call the cloneable `Notifier` after changing them. With `Duration::ZERO`, notifications are coalesced and trigger reports without polling. Call `stop()` before the terminal event: the scoped exclusive borrow prevents manual reporting or termination while the background reporter is active.
+For parallel or worker-driven work, let `Progress` own a scoped background reporter. Workers update a cloneable metric handle, then call the cloneable `Notifier`. With `Duration::ZERO`, notifications are coalesced and trigger reports without polling. Call `stop()` before the terminal event: the scoped exclusive borrow prevents manual reporting or termination while the background reporter is active.
 
 ```rust
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::{thread, time::Duration};
 use qubit_progress::{Metric, Progress, TextReporter};
 
 let reporter = TextReporter::new(std::io::stderr());
@@ -77,22 +66,16 @@ let mut progress = Progress::builder(&reporter)
     .interval(Duration::ZERO)
     .metric(Metric::new("files", "Files").total(2))
     .start()?;
-let copied = Arc::new(Mutex::new(0_u64));
+let files_metric = progress.metric("files").expect("configured metric must exist");
 
 thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
-    let copied_for_snapshot = Arc::clone(&copied);
-    let auto = progress.spawn_auto_reporter(scope, move |snapshot| {
-        let completed = *copied_for_snapshot.lock().expect("copy counter mutex poisoned");
-        snapshot.metric("files", |counts| {
-            counts.completed(completed).succeeded(completed);
-        });
-    });
+    let auto = progress.spawn_auto_reporter(scope);
 
     let notifier = auto.notifier();
-    let copied_for_worker = Arc::clone(&copied);
     let worker = scope.spawn(move || {
         // Perform one copy here, then publish the new shared state.
-        *copied_for_worker.lock().expect("copy counter mutex poisoned") = 2;
+        files_metric.start(2).expect("metric update must succeed");
+        files_metric.succeed(2).expect("metric update must succeed");
         notifier.notify();
     });
     worker.join().expect("copy worker panicked");
@@ -100,11 +83,7 @@ thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
     Ok(())
 })?;
 
-progress.finish(|snapshot| {
-    snapshot.metric("files", |counts| {
-        counts.completed(2).succeeded(2);
-    });
-})?;
+progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 

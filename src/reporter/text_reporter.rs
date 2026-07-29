@@ -78,7 +78,7 @@ fn format_event(event: &Event) -> String {
     for metric in event.metrics() {
         let _ = write!(
             line,
-            " metric={}({}) total={:?} completed={} active={} succeeded={} failed={}",
+            " metric={}({}) total={:?} completed={} active={} succeeded={} failed={} cancelled={}",
             metric.id(),
             metric.name(),
             metric.total(),
@@ -86,6 +86,7 @@ fn format_event(event: &Event) -> String {
             metric.active(),
             metric.succeeded(),
             metric.failed(),
+            metric.cancelled(),
         );
     }
     line
