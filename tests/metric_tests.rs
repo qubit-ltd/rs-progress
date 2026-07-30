@@ -36,6 +36,7 @@ fn test_metric_handle_transitions_publish_one_consistent_snapshot() {
     assert_eq!(snapshot.succeeded(), 2);
     assert_eq!(snapshot.failed(), 1);
     assert_eq!(snapshot.cancelled(), 0);
+    assert_eq!(snapshot.completion_fraction(), Some(0.75));
 }
 
 /// Verifies that signed transitions roll back only their matching state.
@@ -101,6 +102,7 @@ fn test_metric_metadata_and_all_transition_directions() {
     assert_eq!(snapshot.succeeded(), 0);
     assert_eq!(snapshot.failed(), 0);
     assert_eq!(snapshot.cancelled(), 0);
+    assert_eq!(snapshot.completion_fraction(), Some(0.0));
 }
 
 /// Verifies dynamic totals reject occupied work and constrained transitions.
@@ -128,6 +130,14 @@ fn test_metric_rejects_invalid_totals_and_counts() {
         Err(MetricError::InsufficientCount { .. })
     ));
     assert!(matches!(
+        tasks.succeed(-1),
+        Err(MetricError::InsufficientCount { .. })
+    ));
+    assert!(matches!(
+        tasks.start(-3),
+        Err(MetricError::InsufficientCount { .. })
+    ));
+    assert!(matches!(
         tasks.start(i64::MIN),
         Err(MetricError::InsufficientCount { .. })
     ));
@@ -150,4 +160,40 @@ fn test_metric_rejects_invalid_totals_and_counts() {
         overflow.start(1),
         Err(MetricError::CountOverflow { .. })
     ));
+    assert_eq!(
+        overflow
+            .snapshot()
+            .expect("overflow snapshot must work")
+            .completion_fraction(),
+        None
+    );
+}
+
+/// Verifies terminal count arithmetic accepts the largest representable count.
+#[test]
+fn test_metric_accepts_maximum_terminal_count() {
+    let reporter = NoopReporter;
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress must start");
+    let tasks = progress.metric("tasks").expect("metric must exist");
+
+    tasks.start(i64::MAX).expect("large work must start");
+    tasks.succeed(i64::MAX).expect("large work must succeed");
+    tasks.start(i64::MAX).expect("second large work must start");
+    tasks
+        .succeed(i64::MAX)
+        .expect("second large work must succeed");
+    tasks.start(1).expect("additional work must start");
+    tasks
+        .succeed(1)
+        .expect("maximum terminal count must succeed");
+    assert_eq!(
+        tasks
+            .snapshot()
+            .expect("maximum terminal snapshot must succeed")
+            .succeeded(),
+        u64::MAX,
+    );
 }
