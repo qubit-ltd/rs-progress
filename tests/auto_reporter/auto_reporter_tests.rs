@@ -156,6 +156,37 @@ impl Reporter for RunningFailingReporter {
     }
 }
 
+/// Reporter that declines event delivery before an operation starts.
+struct DisabledReporter;
+
+impl Reporter for DisabledReporter {
+    /// Prevents the bound operation from emitting events.
+    fn is_enabled(&self) -> bool {
+        false
+    }
+
+    /// Is never called because the operation remains disabled.
+    fn report(&self, _event: &Event) -> Result<(), ReportError> {
+        panic!("disabled progress must not deliver events")
+    }
+}
+
+/// Verifies a disabled operation creates an inert automatic reporter.
+#[test]
+fn test_auto_reporter_is_inert_for_disabled_progress() {
+    let reporter = DisabledReporter;
+    let mut progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("disabled progress must start");
+
+    thread::scope(|scope| {
+        let auto = progress.spawn_auto_reporter(scope);
+        auto.notifier().notify();
+        auto.stop().expect("inert reporter must stop cleanly");
+    });
+}
+
 /// Verifies automatic reporter failures are exposed through status and stop.
 #[test]
 fn test_auto_reporter_exposes_background_delivery_failure() {
@@ -177,5 +208,28 @@ fn test_auto_reporter_exposes_background_delivery_failure() {
         }
         assert!(auto.status().is_failed());
         assert!(auto.stop().is_err());
+    });
+}
+
+/// Verifies dropping a failed automatic reporter records its failed status.
+#[test]
+fn test_auto_reporter_drop_joins_a_failed_worker() {
+    let reporter = RunningFailingReporter::new();
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::ZERO)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("Started event must succeed");
+
+    thread::scope(|scope| {
+        let auto = progress.spawn_auto_reporter(scope);
+        auto.notifier().notify();
+        for _ in 0..100 {
+            if auto.status().is_failed() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(auto.status().is_failed());
     });
 }

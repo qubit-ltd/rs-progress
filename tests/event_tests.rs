@@ -126,6 +126,13 @@ fn test_event_json_deserializes_canonical_durations() {
         assert_eq!(event.phase().as_str(), phase);
         assert_eq!(event.sequence(), sequence);
         assert_eq!(event.stage().expect("stage must exist").total(), Some(1));
+        assert_eq!(
+            serde_json::to_value(&event)
+                .expect("event JSON must serialize")
+                .pointer("/elapsed")
+                .expect("elapsed must serialize"),
+            if elapsed == "0ns" { "0s" } else { elapsed },
+        );
     }
 }
 
@@ -160,6 +167,10 @@ fn test_event_json_rejects_invalid_invariants() {
             "/stage",
             json!({"id":"copy", "name":"Copy", "position":1, "total":0}),
         ),
+        (
+            "/stage",
+            json!({"id":"copy", "name":"Copy", "position":null, "total":1}),
+        ),
     ] {
         let mut invalid = valid.clone();
         *invalid.pointer_mut(pointer).expect("field must exist") = replacement;
@@ -171,6 +182,18 @@ fn test_event_json_rejects_invalid_invariants() {
             "operation_id": 1, "sequence": 1, "phase": "running", "stage": null,
             "metrics": [
                 {"id":"tasks", "name":"Tasks", "total":1, "completed":1, "active":1, "succeeded":0, "failed":0, "cancelled":0}
+            ], "elapsed": "1ns"
+        }),
+        json!({
+            "operation_id": 1, "sequence": 1, "phase": "running", "stage": null,
+            "metrics": [
+                {"id":"tasks", "name":"Tasks", "total":null, "completed":18446744073709551615_u64, "active":0, "succeeded":18446744073709551615_u64, "failed":1, "cancelled":0}
+            ], "elapsed": "1ns"
+        }),
+        json!({
+            "operation_id": 1, "sequence": 1, "phase": "running", "stage": null,
+            "metrics": [
+                {"id":"tasks", "name":"Tasks", "total":18446744073709551615_u64, "completed":18446744073709551615_u64, "active":1, "succeeded":0, "failed":0, "cancelled":0}
             ], "elapsed": "1ns"
         }),
         json!({

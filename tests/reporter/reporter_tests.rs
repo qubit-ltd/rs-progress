@@ -7,9 +7,16 @@
 // =============================================================================
 //! Reporter output and event serialization tests.
 
-use std::io::{
-    self,
-    Write,
+use std::{
+    io::{
+        self,
+        Write,
+    },
+    panic::{
+        AssertUnwindSafe,
+        catch_unwind,
+    },
+    sync::Mutex,
 };
 
 use qubit_progress::{
@@ -135,6 +142,122 @@ fn test_json_lines_reporter_propagates_writer_failure() {
 struct NewlineFailingWriter {
     /// Number of writes accepted before returning an error.
     writes: usize,
+}
+
+/// Writer that panics while a reporter holds its mutex.
+struct PanickingWriter;
+
+impl Write for PanickingWriter {
+    /// Panics to poison the enclosing reporter mutex.
+    fn write(&mut self, _buffer: &[u8]) -> io::Result<usize> {
+        panic!("writer panicked")
+    }
+
+    /// Is unreachable because writing always panics.
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Builds an event suitable for direct reporter delivery checks.
+fn create_started_event() -> qubit_progress::Event {
+    let events = Mutex::new(Vec::new());
+    {
+        let capture = |event: &qubit_progress::Event| {
+            events
+                .lock()
+                .expect("event collection mutex must not be poisoned")
+                .push(event.clone());
+            Ok(())
+        };
+        let progress = Progress::builder(&capture)
+            .metric(Metric::new("tasks", "Tasks"))
+            .start()
+            .expect("capture must accept the Started event");
+        drop(progress);
+    }
+    events
+        .into_inner()
+        .expect("event collection mutex must not be poisoned")
+        .pop()
+        .expect("Started event must be captured")
+}
+
+/// Verifies each generic line reporter implementation is directly executable.
+#[test]
+fn test_line_reporters_report_every_writer_shape() {
+    let event = create_started_event();
+    TextReporter::new(Vec::new())
+        .report(&event)
+        .expect("text Vec writer must accept an event");
+    assert!(TextReporter::new(FailingWriter).report(&event).is_err());
+    assert!(
+        TextReporter::new(NewlineFailingWriter { writes: 0 })
+            .report(&event)
+            .is_err()
+    );
+    assert!(
+        catch_unwind(AssertUnwindSafe(|| {
+            let _ = TextReporter::new(PanickingWriter).report(&event);
+        }))
+        .is_err()
+    );
+
+    #[cfg(feature = "json-lines")]
+    {
+        use qubit_progress::JsonLinesReporter;
+
+        JsonLinesReporter::new(Vec::new())
+            .report(&event)
+            .expect("JSON Lines Vec writer must accept an event");
+        assert!(
+            JsonLinesReporter::new(FailingWriter)
+                .report(&event)
+                .is_err()
+        );
+        assert!(
+            JsonLinesReporter::new(NewlineFailingWriter { writes: 0 })
+                .report(&event)
+                .is_err()
+        );
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                let _ = JsonLinesReporter::new(PanickingWriter).report(&event);
+            }))
+            .is_err()
+        );
+    }
+}
+
+/// Verifies TextReporter returns its writer when a prior delivery panicked.
+#[test]
+fn test_text_reporter_into_inner_exposes_poisoned_writer() {
+    let reporter = TextReporter::new(PanickingWriter);
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let _ = Progress::builder(&reporter)
+            .metric(Metric::new("tasks", "Tasks"))
+            .start();
+    }));
+    assert!(result.is_err());
+    assert!(reporter.report(&create_started_event()).is_err());
+    assert!(reporter.into_inner().is_err());
+}
+
+/// Verifies JSON Lines returns its writer when a prior delivery panicked.
+#[cfg(feature = "json-lines")]
+#[test]
+fn test_json_lines_reporter_into_inner_exposes_poisoned_writer() {
+    use qubit_progress::JsonLinesReporter;
+
+    let reporter = JsonLinesReporter::new(PanickingWriter);
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let _ = Progress::builder(&reporter)
+            .metric(Metric::new("tasks", "Tasks"))
+            .start();
+    }));
+    assert!(result.is_err());
+    assert!(reporter.report(&create_started_event()).is_err());
+    assert!(reporter.into_inner().is_err());
 }
 
 impl Write for NewlineFailingWriter {
