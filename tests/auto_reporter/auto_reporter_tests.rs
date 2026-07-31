@@ -8,6 +8,10 @@
 //! Tests for scoped automatic progress reporting.
 
 use std::{
+    panic::{
+        AssertUnwindSafe,
+        catch_unwind,
+    },
     sync::atomic::{
         AtomicUsize,
         Ordering,
@@ -156,6 +160,32 @@ impl Reporter for RunningFailingReporter {
     }
 }
 
+/// Reporter that panics on its first running event.
+struct RunningPanickingReporter {
+    /// Number of report attempts observed by this reporter.
+    reports: AtomicUsize,
+}
+
+impl RunningPanickingReporter {
+    /// Creates a reporter that accepts Started and panics on Running.
+    const fn new() -> Self {
+        Self {
+            reports: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl Reporter for RunningPanickingReporter {
+    /// Panics after the initial lifecycle event to exercise worker propagation.
+    fn report(&self, _event: &Event) -> Result<(), ReportError> {
+        if self.reports.fetch_add(1, Ordering::Relaxed) == 0 {
+            Ok(())
+        } else {
+            panic!("running reporter panicked");
+        }
+    }
+}
+
 /// Reporter that declines event delivery before an operation starts.
 struct DisabledReporter;
 
@@ -232,4 +262,26 @@ fn test_auto_reporter_drop_joins_a_failed_worker() {
         }
         assert!(auto.status().is_failed());
     });
+}
+
+/// Verifies that stopping an automatic reporter resumes a worker panic.
+#[test]
+fn test_auto_reporter_stop_resumes_worker_panic() {
+    let reporter = RunningPanickingReporter::new();
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::ZERO)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("Started event must succeed");
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        thread::scope(|scope| {
+            let auto = progress.spawn_auto_reporter(scope);
+            auto.notifier().notify();
+            auto.stop()
+                .expect("worker panic must resume before this point");
+        });
+    }));
+
+    assert!(result.is_err());
 }
