@@ -10,6 +10,7 @@
 use qubit_progress::{
     Metric,
     MetricError,
+    MetricTransition,
     NoopReporter,
     Progress,
 };
@@ -39,10 +40,10 @@ fn test_metric_handle_transitions_publish_one_consistent_snapshot() {
     assert_eq!(snapshot.completion_fraction(), Some(0.75));
 }
 
-/// Verifies that signed transitions roll back only their matching state.
+/// Verifies that explicit rollbacks affect only their matching state.
 #[test]
-fn test_metric_handle_reverses_matching_transitions_and_rejects_closed_updates()
-{
+fn test_metric_handle_rolls_back_matching_transitions_and_rejects_closed_updates()
+ {
     let reporter = NoopReporter;
     let progress = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks").total(2))
@@ -54,9 +55,13 @@ fn test_metric_handle_reverses_matching_transitions_and_rejects_closed_updates()
 
     tasks.start(2).expect("work must start");
     tasks.cancel(1).expect("work must cancel");
-    tasks.cancel(-1).expect("cancellation must roll back");
+    tasks
+        .rollback(MetricTransition::Cancel, 1)
+        .expect("cancellation must roll back");
     tasks.complete(1).expect("work must complete");
-    tasks.complete(-1).expect("completion must roll back");
+    tasks
+        .rollback(MetricTransition::Complete, 1)
+        .expect("completion must roll back");
     let snapshot = tasks.snapshot().expect("snapshot must remain readable");
     assert_eq!(snapshot.active(), 2);
     assert_eq!(snapshot.completed(), 0);
@@ -65,7 +70,7 @@ fn test_metric_handle_reverses_matching_transitions_and_rejects_closed_updates()
     assert!(matches!(tasks.start(1), Err(MetricError::Closed { .. })));
 }
 
-/// Verifies metric metadata and every public transition direction.
+/// Verifies metric metadata and every public forward and rollback transition.
 #[test]
 fn test_metric_metadata_and_all_transition_directions() {
     let metric = Metric::new("tasks", "Tasks").total(6);
@@ -84,14 +89,24 @@ fn test_metric_metadata_and_all_transition_directions() {
 
     tasks.start(6).expect("work must start");
     tasks.complete(1).expect("work must complete");
-    tasks.complete(-1).expect("completion must reverse");
+    tasks
+        .rollback(MetricTransition::Complete, 1)
+        .expect("completion must reverse");
     tasks.succeed(1).expect("work must succeed");
-    tasks.succeed(-1).expect("success must reverse");
+    tasks
+        .rollback(MetricTransition::Succeed, 1)
+        .expect("success must reverse");
     tasks.fail(1).expect("work must fail");
-    tasks.fail(-1).expect("failure must reverse");
+    tasks
+        .rollback(MetricTransition::Fail, 1)
+        .expect("failure must reverse");
     tasks.cancel(1).expect("work must cancel");
-    tasks.cancel(-1).expect("cancellation must reverse");
-    tasks.start(-6).expect("start must reverse");
+    tasks
+        .rollback(MetricTransition::Cancel, 1)
+        .expect("cancellation must reverse");
+    tasks
+        .rollback(MetricTransition::Start, 6)
+        .expect("start must reverse");
 
     let snapshot = tasks.snapshot().expect("snapshot must succeed");
     assert_eq!(snapshot.id(), "tasks");
@@ -130,15 +145,11 @@ fn test_metric_rejects_invalid_totals_and_counts() {
         Err(MetricError::InsufficientCount { .. })
     ));
     assert!(matches!(
-        tasks.succeed(-1),
+        tasks.rollback(MetricTransition::Succeed, 1),
         Err(MetricError::InsufficientCount { .. })
     ));
     assert!(matches!(
-        tasks.start(-3),
-        Err(MetricError::InsufficientCount { .. })
-    ));
-    assert!(matches!(
-        tasks.start(i64::MIN),
+        tasks.rollback(MetricTransition::Start, 3),
         Err(MetricError::InsufficientCount { .. })
     ));
 
@@ -150,12 +161,8 @@ fn test_metric_rejects_invalid_totals_and_counts() {
         .metric("overflow")
         .expect("overflow metric must exist");
     overflow
-        .start(i64::MAX)
+        .start(u64::MAX)
         .expect("first large count must fit");
-    overflow
-        .start(i64::MAX)
-        .expect("second large count must fit");
-    overflow.start(1).expect("maximum count must fit");
     assert!(matches!(
         overflow.start(1),
         Err(MetricError::CountOverflow { .. })
@@ -179,15 +186,9 @@ fn test_metric_accepts_maximum_terminal_count() {
         .expect("progress must start");
     let tasks = progress.metric("tasks").expect("metric must exist");
 
-    tasks.start(i64::MAX).expect("large work must start");
-    tasks.succeed(i64::MAX).expect("large work must succeed");
-    tasks.start(i64::MAX).expect("second large work must start");
+    tasks.start(u64::MAX).expect("large work must start");
     tasks
-        .succeed(i64::MAX)
-        .expect("second large work must succeed");
-    tasks.start(1).expect("additional work must start");
-    tasks
-        .succeed(1)
+        .succeed(u64::MAX)
         .expect("maximum terminal count must succeed");
     assert_eq!(
         tasks
@@ -196,4 +197,32 @@ fn test_metric_accepts_maximum_terminal_count() {
             .succeeded(),
         u64::MAX,
     );
+}
+
+/// Verifies concurrent updates preserve a coherent aggregate snapshot.
+#[test]
+fn test_metric_handle_concurrent_updates_preserve_snapshot_invariants() {
+    let reporter = NoopReporter;
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks").total(64))
+        .start()
+        .expect("progress must start");
+    let tasks = progress.metric("tasks").expect("metric must exist");
+
+    std::thread::scope(|scope| {
+        for _ in 0..4 {
+            let tasks = tasks.clone();
+            scope.spawn(move || {
+                tasks.start(16).expect("concurrent work must start");
+                tasks.succeed(16).expect("concurrent work must succeed");
+            });
+        }
+    });
+
+    let snapshot = tasks.snapshot().expect("snapshot must succeed");
+    assert_eq!(snapshot.active(), 0);
+    assert_eq!(snapshot.completed(), 64);
+    assert_eq!(snapshot.succeeded(), 64);
+    assert_eq!(snapshot.failed(), 0);
+    assert_eq!(snapshot.cancelled(), 0);
 }

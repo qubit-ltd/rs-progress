@@ -18,6 +18,17 @@ use std::sync::{
     },
 };
 
+#[cfg(feature = "serde")]
+use serde::{
+    Deserialize,
+    Deserializer,
+};
+
+#[cfg(feature = "serde")]
+use crate::validation::{
+    validate_metrics,
+    validate_snapshot_counts,
+};
 use crate::{
     MetricError,
     MetricTransition,
@@ -136,69 +147,71 @@ impl MetricHandle {
         Ok(())
     }
 
-    /// Moves signed work between the not-started and active states.
-    ///
-    /// A positive value starts work; a negative value rolls active work back
-    /// to not-started.
+    /// Moves work from the not-started state to the active state.
     ///
     /// # Errors
     ///
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
-    pub fn start(&self, count: i64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Start, count)
+    pub fn start(&self, count: u64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Start, count, Direction::Forward)
     }
 
-    /// Moves signed work between the active and unclassified-completed states.
-    ///
-    /// A positive value completes active work without a terminal
-    /// classification; a negative value rolls that completion back to active.
+    /// Moves work from the active state to unclassified completion.
     ///
     /// # Errors
     ///
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
-    pub fn complete(&self, count: i64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Complete, count)
+    pub fn complete(&self, count: u64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Complete, count, Direction::Forward)
     }
 
-    /// Moves signed work between the active and succeeded states.
-    ///
-    /// A positive value marks active work as succeeded; a negative value rolls
-    /// succeeded work back to active.
+    /// Moves work from the active state to the succeeded state.
     ///
     /// # Errors
     ///
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
-    pub fn succeed(&self, count: i64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Succeed, count)
+    pub fn succeed(&self, count: u64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Succeed, count, Direction::Forward)
     }
 
-    /// Moves signed work between the active and failed states.
-    ///
-    /// A positive value marks active work as failed; a negative value rolls
-    /// failed work back to active.
+    /// Moves work from the active state to the failed state.
     ///
     /// # Errors
     ///
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
-    pub fn fail(&self, count: i64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Fail, count)
+    pub fn fail(&self, count: u64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Fail, count, Direction::Forward)
     }
 
-    /// Moves signed work between the active and cancelled states.
-    ///
-    /// A positive value marks active work as cancelled; a negative value rolls
-    /// cancelled work back to active.
+    /// Moves work from the active state to the cancelled state.
     ///
     /// # Errors
     ///
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
-    pub fn cancel(&self, count: i64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Cancel, count)
+    pub fn cancel(&self, count: u64) -> Result<(), MetricError> {
+        self.transition(MetricTransition::Cancel, count, Direction::Forward)
+    }
+
+    /// Rolls work back along one named transition.
+    ///
+    /// `Start` returns active work to the not-started state. Every other
+    /// transition returns work from its terminal state to the active state.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metric error when the selected source state does not contain
+    /// `count` work or when the owning operation is closed.
+    pub fn rollback(
+        &self,
+        transition: MetricTransition,
+        count: u64,
+    ) -> Result<(), MetricError> {
+        self.transition(transition, count, Direction::Rollback)
     }
 
     /// Returns one internally consistent immutable metric snapshot.
@@ -214,24 +227,23 @@ impl MetricHandle {
         MetricSnapshot::from_state(&self.inner.metric, *state)
     }
 
-    /// Updates state through one validated signed transition.
+    /// Updates state through one validated directional transition.
     fn transition(
         &self,
         transition: MetricTransition,
-        count: i64,
+        count: u64,
+        direction: Direction,
     ) -> Result<(), MetricError> {
         let mut state = self.lock_state()?;
         self.ensure_open()?;
         let mut next = *state;
-        let amount = count.unsigned_abs();
-        let reverse = count.is_negative();
         match transition {
             MetricTransition::Start => {
                 move_count(
                     &mut next.active,
                     None,
-                    amount,
-                    reverse,
+                    count,
+                    direction,
                     transition,
                     self.id(),
                 )?;
@@ -240,8 +252,8 @@ impl MetricHandle {
                 move_count(
                     &mut next.active,
                     Some(&mut next.completed_unclassified),
-                    amount,
-                    reverse,
+                    count,
+                    direction,
                     transition,
                     self.id(),
                 )?;
@@ -250,8 +262,8 @@ impl MetricHandle {
                 move_count(
                     &mut next.active,
                     Some(&mut next.succeeded),
-                    amount,
-                    reverse,
+                    count,
+                    direction,
                     transition,
                     self.id(),
                 )?;
@@ -260,8 +272,8 @@ impl MetricHandle {
                 move_count(
                     &mut next.active,
                     Some(&mut next.failed),
-                    amount,
-                    reverse,
+                    count,
+                    direction,
                     transition,
                     self.id(),
                 )?;
@@ -270,8 +282,8 @@ impl MetricHandle {
                 move_count(
                     &mut next.active,
                     Some(&mut next.cancelled),
-                    amount,
-                    reverse,
+                    count,
+                    direction,
                     transition,
                     self.id(),
                 )?;
@@ -302,6 +314,15 @@ impl MetricHandle {
             })
         }
     }
+}
+
+/// Direction in which a metric state transition moves work.
+#[derive(Clone, Copy)]
+enum Direction {
+    /// Moves work from the transition source to its target.
+    Forward,
+    /// Moves work from the transition target back to its source.
+    Rollback,
 }
 
 /// Immutable metadata and mutex-protected dynamic state for one handle.
@@ -383,11 +404,11 @@ fn move_count(
     active: &mut u64,
     terminal: Option<&mut u64>,
     amount: u64,
-    reverse: bool,
+    direction: Direction,
     transition: MetricTransition,
     metric_id: &str,
 ) -> Result<(), MetricError> {
-    if reverse {
+    if matches!(direction, Direction::Rollback) {
         if let Some(terminal) = terminal {
             let available = *terminal;
             *terminal = terminal.checked_sub(amount).ok_or_else(|| {
@@ -443,7 +464,7 @@ fn move_count(
 }
 
 /// Immutable complete state for one metric in an emitted event.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetricSnapshot {
     /// Machine-readable metric ID.
@@ -527,5 +548,57 @@ impl MetricSnapshot {
         self.total
             .filter(|total| *total > 0)
             .map(|total| self.completed as f64 / total as f64)
+    }
+}
+
+/// Serializable wire representation used to validate standalone snapshots.
+#[cfg(feature = "serde")]
+#[derive(Deserialize)]
+struct MetricSnapshotWire {
+    /// Machine-readable metric ID.
+    id: Arc<str>,
+    /// Human-readable metric name.
+    name: Arc<str>,
+    /// Configured total, if known.
+    total: Option<u64>,
+    /// Completed count.
+    completed: u64,
+    /// Active count.
+    active: u64,
+    /// Succeeded count.
+    succeeded: u64,
+    /// Failed count.
+    failed: u64,
+    /// Cancelled count.
+    cancelled: u64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for MetricSnapshot {
+    /// Deserializes and validates one standalone metric snapshot.
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = MetricSnapshotWire::deserialize(deserializer)?;
+        let snapshot = Self {
+            id: wire.id,
+            name: wire.name,
+            total: wire.total,
+            completed: wire.completed,
+            active: wire.active,
+            succeeded: wire.succeeded,
+            failed: wire.failed,
+            cancelled: wire.cancelled,
+        };
+        let metric = Metric {
+            id: Arc::clone(&snapshot.id),
+            name: Arc::clone(&snapshot.name),
+            total: snapshot.total,
+        };
+        validate_metrics(&[metric]).map_err(serde::de::Error::custom)?;
+        validate_snapshot_counts(&snapshot)
+            .map_err(serde::de::Error::custom)?;
+        Ok(snapshot)
     }
 }
