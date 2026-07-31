@@ -12,6 +12,7 @@ use std::sync::Mutex;
 use qubit_progress::{
     Event,
     Metric,
+    MetricSnapshot,
     Phase,
     Progress,
     ReportError,
@@ -224,5 +225,20 @@ fn test_event_json_rejects_invalid_invariants() {
         }),
     ] {
         assert!(serde_json::from_value::<Event>(invalid).is_err());
+    }
+}
+
+/// Verifies standalone metric snapshots reject invalid definitions and counts.
+#[cfg(feature = "serde")]
+#[test]
+fn test_metric_snapshot_deserialization_rejects_invalid_invariants() {
+    for value in [
+        json!({"id":"", "name":"Tasks", "total":null, "completed":0, "active":0, "succeeded":0, "failed":0, "cancelled":0}),
+        json!({"id":"tasks", "name":"", "total":null, "completed":0, "active":0, "succeeded":0, "failed":0, "cancelled":0}),
+        json!({"id":"tasks", "name":"Tasks", "total":1, "completed":1, "active":1, "succeeded":0, "failed":0, "cancelled":0}),
+        json!({"id":"tasks", "name":"Tasks", "total":1, "completed":1, "active":0, "succeeded":2, "failed":0, "cancelled":0}),
+        json!({"id":"tasks", "name":"Tasks", "total":0, "completed":0, "active":1, "succeeded":0, "failed":0, "cancelled":0}),
+    ] {
+        assert!(serde_json::from_value::<MetricSnapshot>(value).is_err());
     }
 }
