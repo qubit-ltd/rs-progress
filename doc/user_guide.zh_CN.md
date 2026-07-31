@@ -61,7 +61,7 @@ let elapsed = progress.finish()?;
 
 ## 指标生命周期与校验
 
-`start(count)` 的正数把数量从未开始移动到 active，负数执行反向移动。`complete`、`succeed`、`fail` 和 `cancel` 的正数把 active 移动到对应完成状态，负数执行反向移动。任何计数都不能变为负数；已知总量时，`active + completed` 不能超过总量，`set_total` 也不能把总量下调到低于该已占用数量。
+`start(count)` 把无符号数量从未开始移动到 active。`complete`、`succeed`、`fail` 和 `cancel` 把无符号数量从 active 移动到各自的完成状态。若要撤销其中一次移动，使用匹配的 `MetricTransition` 调用 `rollback(transition, count)`：终态数量回到 active，而 `MetricTransition::Start` 则把 active 数量回到未开始。任何计数都不能变为负数；已知总量时，`active + completed` 不能超过总量，`set_total` 也不能把总量下调到低于该已占用数量。
 
 `completed` 包含未分类完成、成功、失败和取消。每次转换均在内部锁中校验后
 提交，因此每个发送出的指标快照都内部一致。不要用计数表达阶段信息：在启动时
@@ -225,6 +225,8 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 应检查 `TerminalError`：即使最终事件无法投递，它仍会保留操作耗时。自动上报
 场景下，`AutoReporter::stop()` 会返回后台校验或上报器错误，并在调用线程恢复
 后台上报线程的 panic。
+
+启用 `serde` 特性后，反序列化 `Stage`、`MetricSnapshot` 或 `Event` 时会校验与在线进度操作相同的元数据和计数不变量。反序列化错误表示外部进度数据无效，而不是可恢复的事件状态。
 
 ## 进一步参考
 

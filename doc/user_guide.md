@@ -56,7 +56,7 @@ let elapsed = progress.finish()?;
 
 ## Metric lifecycle and validation
 
-`start(count)` moves positive quantities from not-started to active; a negative count reverses that move. `complete`, `succeed`, `fail`, and `cancel` move positive quantities from active to their respective completed states, while a negative count reverses the corresponding move. All counts must remain non-negative. When a total is known, `active + completed` cannot exceed it; `set_total` cannot lower the total below those occupied quantities.
+`start(count)` moves an unsigned quantity from not-started to active. `complete`, `succeed`, `fail`, and `cancel` move unsigned quantities from active to their respective completed states. To undo one of these moves, call `rollback(transition, count)` with the matching `MetricTransition`; it returns terminal work to active, or active work to not-started for `MetricTransition::Start`. All counts remain non-negative. When a total is known, `active + completed` cannot exceed it; `set_total` cannot lower the total below those occupied quantities.
 
 The completed count includes unclassified completion, success, failure, and cancellation. The handle locks and validates each transition before committing it, so every emitted metric snapshot is internally consistent. Do not hide phase or stage information in counters: use `Stage` at startup, `set_stage` to replace it for future events, and `clear_stage` to remove it.
 
@@ -216,6 +216,8 @@ state means no event was delivered, while a sink error means the delivery
 attempt failed.
 
 Terminal methods return `Result<Duration, TerminalError>`. Inspect `TerminalError` when completion must be recorded reliably: it preserves elapsed time even when the final event cannot be delivered. For automatic reporting, `AutoReporter::stop()` returns background validation or reporter errors and resumes any worker panic on the caller thread.
+
+When the `serde` feature is enabled, deserializing `Stage`, `MetricSnapshot`, or `Event` validates the same metadata and count invariants used by live progress operations. Treat a deserialization error as invalid external progress data rather than a recoverable event state.
 
 ## Further reference
 
