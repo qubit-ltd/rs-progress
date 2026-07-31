@@ -57,7 +57,9 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     #[must_use]
     pub fn notifier(&self) -> Notifier {
         Notifier {
-            inner: self.inner.as_ref().map_or_else(Weak::new, Arc::downgrade),
+            inner: self.inner.as_ref().and_then(|inner| {
+                inner.notification_driven.then(|| Arc::downgrade(inner))
+            }),
         }
     }
 
@@ -107,7 +109,7 @@ impl Drop for AutoReporter<'_, '_> {
         self.signal_stop();
         match self.join_worker() {
             Ok(Ok(())) => {}
-            Ok(Err(_)) => self.status.failed.store(true, Ordering::Release),
+            Ok(Err(_)) => self.status.mark_failed(),
             Err(payload) if !thread::panicking() => resume_unwind(payload),
             Err(_) => {}
         }
@@ -117,22 +119,20 @@ impl Drop for AutoReporter<'_, '_> {
 /// Notification handle that coalesces state changes without claiming delivery.
 #[derive(Clone)]
 pub struct Notifier {
-    /// Non-owning link to the automatic reporter control state.
-    inner: Weak<AutoReporterInner>,
+    /// Non-owning link present only for notification-driven reporters.
+    inner: Option<Weak<AutoReporterInner>>,
 }
 
 impl Notifier {
     /// Records that shared work state changed and wakes a zero-interval loop.
     ///
-    /// The method is a no-op after the reporter stops and multiple calls merge
+    /// The method is a no-op for disabled and heartbeat-driven reporters, after
+    /// the reporter stops, and when no worker remains. Multiple calls merge
     /// into at most one pending report.
     pub fn notify(&self) {
-        let Some(inner) = self.inner.upgrade() else {
+        let Some(inner) = self.inner.as_ref().and_then(Weak::upgrade) else {
             return;
         };
-        if !inner.notification_driven {
-            return;
-        }
         if inner.stopped.load(Ordering::Acquire) {
             return;
         }
@@ -154,6 +154,11 @@ impl Status {
         Self {
             failed: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Records that the reporter has failed.
+    fn mark_failed(&self) {
+        self.failed.store(true, Ordering::Release);
     }
 
     /// Returns whether the automatic reporter terminated with an error or
@@ -208,13 +213,13 @@ where
         })) {
             Ok(result) => {
                 if result.is_err() {
-                    worker_status.failed.store(true, Ordering::Release);
+                    worker_status.mark_failed();
                     worker_inner.stopped.store(true, Ordering::Release);
                 }
                 result
             }
             Err(payload) => {
-                worker_status.failed.store(true, Ordering::Release);
+                worker_status.mark_failed();
                 worker_inner.stopped.store(true, Ordering::Release);
                 resume_unwind(payload)
             }

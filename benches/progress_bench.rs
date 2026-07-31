@@ -9,6 +9,7 @@
 
 use std::{
     hint::black_box,
+    thread,
     time::Duration,
 };
 
@@ -45,7 +46,10 @@ fn bench_disabled_report(criterion: &mut Criterion) {
 
 /// Benchmarks an enabled running report with one fully configured metric.
 fn bench_enabled_report(criterion: &mut Criterion) {
-    let reporter = |_event: &qubit_progress::Event| Ok::<(), ReportError>(());
+    let reporter = |event: &qubit_progress::Event| {
+        black_box(event);
+        Ok::<(), ReportError>(())
+    };
     let mut progress = Progress::builder(&reporter)
         .metric(Metric::new("entries", "Entries").total(1))
         .start()
@@ -66,7 +70,10 @@ fn bench_enabled_report(criterion: &mut Criterion) {
 
 /// Benchmarks the positive-interval path that skips an undued report closure.
 fn bench_not_due_report(criterion: &mut Criterion) {
-    let reporter = |_event: &qubit_progress::Event| Ok::<(), ReportError>(());
+    let reporter = |event: &qubit_progress::Event| {
+        black_box(event);
+        Ok::<(), ReportError>(())
+    };
     let mut progress = Progress::builder(&reporter)
         .interval(Duration::from_secs(60))
         .metric(Metric::new("entries", "Entries").total(1))
@@ -83,7 +90,10 @@ fn bench_not_due_report(criterion: &mut Criterion) {
 
 /// Benchmarks creation and terminal delivery of a complete multi-metric event.
 fn bench_multi_metric_terminal(criterion: &mut Criterion) {
-    let reporter = |_event: &qubit_progress::Event| Ok::<(), ReportError>(());
+    let reporter = |event: &qubit_progress::Event| {
+        black_box(event);
+        Ok::<(), ReportError>(())
+    };
     criterion.bench_function("multi_metric_terminal", |bencher| {
         bencher.iter(|| {
             let progress = Progress::builder(&reporter)
@@ -118,11 +128,56 @@ fn bench_multi_metric_terminal(criterion: &mut Criterion) {
     });
 }
 
+/// Benchmarks status polling for a disabled automatic reporter.
+fn bench_disabled_auto_reporter_status(criterion: &mut Criterion) {
+    let reporter = NoopReporter;
+    let mut progress = Progress::builder(&reporter)
+        .metric(Metric::new("entries", "Entries"))
+        .start()
+        .expect("disabled progress must start");
+
+    thread::scope(|scope| {
+        let auto = progress.spawn_auto_reporter(scope);
+        let status = auto.status();
+        criterion.bench_function("disabled_auto_reporter_status", |bencher| {
+            bencher.iter(|| black_box(status.is_failed()));
+        });
+        auto.stop().expect("inert reporter must stop cleanly");
+    });
+}
+
+/// Benchmarks notification calls for a heartbeat-driven automatic reporter.
+fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
+    let reporter = |event: &qubit_progress::Event| {
+        black_box(event);
+        Ok::<(), ReportError>(())
+    };
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::from_secs(60))
+        .metric(Metric::new("entries", "Entries"))
+        .start()
+        .expect("enabled progress must start");
+
+    thread::scope(|scope| {
+        let auto = progress.spawn_auto_reporter(scope);
+        let notifier = auto.notifier();
+        criterion.bench_function(
+            "heartbeat_auto_reporter_notification",
+            |bencher| {
+                bencher.iter(|| notifier.notify());
+            },
+        );
+        auto.stop().expect("heartbeat reporter must stop cleanly");
+    });
+}
+
 criterion_group!(
     progress_benches,
     bench_disabled_report,
     bench_enabled_report,
     bench_not_due_report,
-    bench_multi_metric_terminal
+    bench_multi_metric_terminal,
+    bench_disabled_auto_reporter_status,
+    bench_heartbeat_auto_reporter_notification
 );
 criterion_main!(progress_benches);
