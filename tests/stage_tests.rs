@@ -7,7 +7,7 @@
 // =============================================================================
 //! Stage metadata behavior.
 
-use qubit_progress::Stage;
+use qubit_progress::{Metric, Progress, Stage, TextReporter};
 
 #[cfg(feature = "serde")]
 use serde_json::json;
@@ -20,6 +20,18 @@ fn test_stage_retains_position_metadata() {
     assert_eq!(stage.name(), "Copy");
     assert_eq!(stage.position_value(), Some(2));
     assert_eq!(stage.total(), Some(3));
+}
+
+/// Verifies a stage without optional position metadata is accepted by start.
+#[test]
+fn test_progress_accepts_stage_without_position() {
+    let reporter = TextReporter::new(Vec::new());
+    let progress = Progress::builder(&reporter)
+        .stage(Stage::new("copy", "Copy"))
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("stage without position must be valid");
+    assert!(progress.is_enabled());
 }
 
 /// Verifies standalone stage deserialization rejects invalid metadata.

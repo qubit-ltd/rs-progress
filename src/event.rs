@@ -10,9 +10,6 @@
 
 use std::time::Duration;
 
-#[cfg(feature = "serde")]
-use std::collections::HashSet;
-
 use crate::{MetricSnapshot, Stage};
 
 #[cfg(feature = "serde")]
@@ -266,11 +263,7 @@ fn validate_wire_event(wire: &EventWire, elapsed: Duration) -> Result<(), String
         .map(metric_definition)
         .collect::<Vec<_>>();
     validate_metrics(&definitions).map_err(|error| error.to_string())?;
-    let mut ids = HashSet::with_capacity(wire.metrics.len());
     for snapshot in &wire.metrics {
-        if !ids.insert(snapshot.id()) {
-            return Err(format!("metric ID {:?} is duplicated", snapshot.id()));
-        }
         validate_snapshot_counts(snapshot).map_err(|error| error.to_string())?;
     }
     if let Some(stage) = &wire.stage {
