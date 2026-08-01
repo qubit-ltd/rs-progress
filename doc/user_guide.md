@@ -22,7 +22,7 @@ An operation has stable configuration and changing state:
 - `Progress` owns the changing state for every configured metric. Obtain a cloneable `MetricHandle` with `Progress::metric` and use it to move quantities through the metric lifecycle.
 - `Event` is an immutable, complete observation. A reporter does not need earlier events to reconstruct its state. Enabled operations receive a process-local `operation_id`; `sequence` is zero for `Started` and then counts delivery attempts, including failed attempts.
 
-The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
+The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. `finish()` is intentionally permissive: `Succeeded` means that the operation ended, not that every metric reached its configured total. Use `finish_checked()` when success also requires zero active work and every known total to be satisfied; validation failure closes the operation without sending `Succeeded`. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
 
 ## Start an operation and update its metrics
 
@@ -53,6 +53,26 @@ let elapsed = progress.finish()?;
 ```
 
 `start()` validates all fixed metadata and, for an enabled operation, emits `Started`. `report()` emits the current metric snapshots as `Running`. A terminal call returns the elapsed `Duration`; if terminal delivery fails, `TerminalError` retains both that duration and the underlying `ProgressError`.
+
+Event delivery is at-most-once. The crate does not automatically retry a
+reporter failure; it returns the error to the caller. If an application retries
+at a higher level, the reporter may have accepted the event before returning
+the error, so the retry can produce a duplicate. Sinks that need idempotency
+should deduplicate using the event's `operation_id` and `sequence`.
+
+For a permissive successful close, call `finish()`. For a checked successful
+close, call `finish_checked()` instead:
+
+```rust
+files.start(10)?;
+files.succeed(10)?;
+progress.finish_checked()?;
+```
+
+`finish_checked()` rejects any metric with active work, and rejects a metric
+with a known total unless `completed == total`. It consumes and closes the
+operation even when validation fails, so choose `finish()` or a different
+terminal phase before making the call.
 
 ## Metric lifecycle and validation
 
@@ -151,7 +171,11 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-An interval of zero means every `report_if_due()` call is due. A reporter failure consumes one delivery sequence number and resets the next deadline; sequence gaps therefore identify failed delivery attempts rather than missing state transitions.
+An interval of zero means every `report_if_due()` call is due. A nonzero
+interval that cannot be represented by `Instant` is rejected by `start()`.
+A reporter failure consumes one delivery sequence number and resets the next
+deadline; sequence gaps therefore identify failed delivery attempts rather than
+missing state transitions.
 
 ## Automatically report state changed by worker threads
 
