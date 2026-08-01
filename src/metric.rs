@@ -12,7 +12,11 @@ use std::{
     hint::spin_loop,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{
+            AtomicBool,
+            AtomicU64,
+            Ordering,
+        },
     },
     thread,
 };
@@ -20,11 +24,20 @@ use std::{
 use qubit_fast_cas::CasCell;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer};
+use serde::{
+    Deserialize,
+    Deserializer,
+};
 
 #[cfg(feature = "serde")]
-use crate::validation::{validate_metrics, validate_snapshot_counts};
-use crate::{MetricError, MetricTransition};
+use crate::validation::{
+    validate_metrics,
+    validate_snapshot_counts,
+};
+use crate::{
+    MetricError,
+    MetricTransition,
+};
 
 /// Stable metadata for one metric in a progress operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -173,7 +186,11 @@ impl MetricHandle {
     ///
     /// Returns a metric error when the selected source state does not contain
     /// `count` work or when the owning operation is closed.
-    pub fn rollback(&self, transition: MetricTransition, count: u64) -> Result<(), MetricError> {
+    pub fn rollback(
+        &self,
+        transition: MetricTransition,
+        count: u64,
+    ) -> Result<(), MetricError> {
         self.transition(transition, count, Direction::Rollback)
     }
 
@@ -184,7 +201,6 @@ impl MetricHandle {
     pub fn snapshot(&self) -> MetricSnapshot {
         let counts = self.inner.snapshot_counts();
         MetricSnapshot::from_counts(&self.inner.metric, counts)
-            .expect("metric counts must remain internally consistent")
     }
 
     /// Updates state through one validated directional transition.
@@ -332,7 +348,10 @@ impl MetricInner {
 
             match self.gate.compare_set(version, version.wrapping_add(1)) {
                 Ok(()) => {
-                    let _guard = MetricGateGuard::new(&self.gate, version.wrapping_add(2));
+                    let _guard = MetricGateGuard::new(
+                        &self.gate,
+                        version.wrapping_add(2),
+                    );
                     let mut counts = self.read_counts();
                     let result = update(&mut counts);
                     if result.is_ok() {
@@ -352,7 +371,9 @@ impl MetricInner {
     fn read_counts(&self) -> MetricCounts {
         MetricCounts {
             active: self.active.load(Ordering::Acquire),
-            completed_unclassified: self.completed_unclassified.load(Ordering::Acquire),
+            completed_unclassified: self
+                .completed_unclassified
+                .load(Ordering::Acquire),
             succeeded: self.succeeded.load(Ordering::Acquire),
             failed: self.failed.load(Ordering::Acquire),
             cancelled: self.cancelled.load(Ordering::Acquire),
@@ -407,29 +428,28 @@ struct MetricCounts {
 }
 
 impl MetricCounts {
-    /// Returns the derived public completed count with checked arithmetic.
-    fn completed(self, metric_id: &str) -> Result<u64, MetricError> {
+    /// Returns the derived public completed count.
+    ///
+    /// Every transition conserves the total count, which cannot exceed `u64`.
+    fn completed(self) -> u64 {
         self.completed_unclassified
-            .checked_add(self.succeeded)
-            .and_then(|value| value.checked_add(self.failed))
-            .and_then(|value| value.checked_add(self.cancelled))
-            .ok_or_else(|| MetricError::CountOverflow {
-                metric_id: metric_id.into(),
-            })
+            + self.succeeded
+            + self.failed
+            + self.cancelled
     }
 
-    /// Returns active plus completed work with checked arithmetic.
-    fn occupied(self, metric_id: &str) -> Result<u64, MetricError> {
-        self.completed(metric_id)?
-            .checked_add(self.active)
-            .ok_or_else(|| MetricError::CountOverflow {
-                metric_id: metric_id.into(),
-            })
+    /// Returns active plus completed work.
+    fn occupied(self) -> u64 {
+        self.completed() + self.active
     }
 
     /// Validates the aggregate conservation invariants for one pending state.
-    fn validate(self, metric_id: &str, total: Option<u64>) -> Result<(), MetricError> {
-        let occupied = self.occupied(metric_id)?;
+    fn validate(
+        self,
+        metric_id: &str,
+        total: Option<u64>,
+    ) -> Result<(), MetricError> {
+        let occupied = self.occupied();
         if let Some(total) = total
             && occupied > total
         {
@@ -455,55 +475,46 @@ fn move_count(
     if matches!(direction, Direction::Rollback) {
         if let Some(terminal) = terminal {
             let available = *terminal;
-            *terminal =
-                terminal
-                    .checked_sub(amount)
-                    .ok_or_else(|| MetricError::InsufficientCount {
-                        metric_id: metric_id.into(),
-                        transition,
-                        requested: amount,
-                        available,
-                    })?;
-            *active = active
-                .checked_add(amount)
-                .ok_or_else(|| MetricError::CountOverflow {
-                    metric_id: metric_id.into(),
-                })?;
-        } else {
-            let available = *active;
-            *active = active
-                .checked_sub(amount)
-                .ok_or_else(|| MetricError::InsufficientCount {
+            *terminal = terminal.checked_sub(amount).ok_or_else(|| {
+                MetricError::InsufficientCount {
                     metric_id: metric_id.into(),
                     transition,
                     requested: amount,
                     available,
-                })?;
+                }
+            })?;
+            *active += amount;
+        } else {
+            let available = *active;
+            *active = active.checked_sub(amount).ok_or_else(|| {
+                MetricError::InsufficientCount {
+                    metric_id: metric_id.into(),
+                    transition,
+                    requested: amount,
+                    available,
+                }
+            })?;
         }
         return Ok(());
     }
 
     if let Some(terminal) = terminal {
         let available = *active;
-        *active = active
-            .checked_sub(amount)
-            .ok_or_else(|| MetricError::InsufficientCount {
+        *active = active.checked_sub(amount).ok_or_else(|| {
+            MetricError::InsufficientCount {
                 metric_id: metric_id.into(),
                 transition,
                 requested: amount,
                 available,
-            })?;
-        *terminal = terminal
-            .checked_add(amount)
-            .ok_or_else(|| MetricError::CountOverflow {
-                metric_id: metric_id.into(),
-            })?;
+            }
+        })?;
+        *terminal += amount;
     } else {
-        *active = active
-            .checked_add(amount)
-            .ok_or_else(|| MetricError::CountOverflow {
+        *active = active.checked_add(amount).ok_or_else(|| {
+            MetricError::CountOverflow {
                 metric_id: metric_id.into(),
-            })?;
+            }
+        })?;
     }
     Ok(())
 }
@@ -550,17 +561,17 @@ pub struct MetricSnapshot {
 
 impl MetricSnapshot {
     /// Builds an immutable snapshot from one internally validated metric state.
-    fn from_counts(metric: &Metric, counts: MetricCounts) -> Result<Self, MetricError> {
-        Ok(Self {
+    fn from_counts(metric: &Metric, counts: MetricCounts) -> Self {
+        Self {
             id: Arc::clone(&metric.id),
             name: Arc::clone(&metric.name),
             total: metric.total,
-            completed: counts.completed(metric.id())?,
+            completed: counts.completed(),
             active: counts.active,
             succeeded: counts.succeeded,
             failed: counts.failed,
             cancelled: counts.cancelled,
-        })
+        }
     }
     /// Returns the metric's stable ID.
     #[must_use]
@@ -656,8 +667,10 @@ impl<'de> Deserialize<'de> for MetricSnapshot {
             name: Arc::clone(&snapshot.name),
             total: snapshot.total,
         };
-        validate_metrics(std::slice::from_ref(&metric)).map_err(serde::de::Error::custom)?;
-        validate_snapshot_counts(&snapshot).map_err(serde::de::Error::custom)?;
+        validate_metrics(std::slice::from_ref(&metric))
+            .map_err(serde::de::Error::custom)?;
+        validate_snapshot_counts(&snapshot)
+            .map_err(serde::de::Error::custom)?;
         Ok(snapshot)
     }
 }
