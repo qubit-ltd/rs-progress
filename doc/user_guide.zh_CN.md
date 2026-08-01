@@ -21,7 +21,7 @@
 - `Progress` 持有每个指标的动态状态。通过 `Progress::metric` 取得可克隆的指标句柄（`MetricHandle`）后，调用方只需执行状态转换，无需维护外部计数器。
 - `Event` 是不可变的完整观察结果，上报器无需依赖先前事件重建状态。已启用的操作会获得进程内唯一的 `operation_id`；`Started` 的 `sequence` 为零，后续序号按投递尝试递增，包括失败的尝试。
 
-生命周期为 `Started → Running* → Succeeded | Failed | Cancelled`。`finish`、`fail` 和 `cancel` 会消费 `Progress`，因此安全 Rust 中最多只能发送一个终态事件。终态前丢弃对象或 unwind 仍可能使操作没有终态事件。
+生命周期为 `Started → Running* → Succeeded | Failed | Cancelled`。`finish`、`fail` 和 `cancel` 会消费 `Progress`，因此安全 Rust 中最多只能发送一个终态事件。`finish()` 有意保持宽松：`Succeeded` 表示操作已经结束，不表示每个指标都已达到配置的总量；如果成功结束还必须满足 active 为零且所有已知总量都完成，应改用 `finish_checked()`。校验失败时操作会关闭，但不会发送 `Succeeded`。终态前丢弃对象或 unwind 仍可能使操作没有终态事件。
 
 ## 启动并更新指标
 
@@ -58,6 +58,24 @@ let elapsed = progress.finish()?;
 `report()` 将当前指标快照作为 `Running` 发送。终态方法返回耗时
 `Duration`；终态投递失败时，`TerminalError` 同时保留耗时和底层
 `ProgressError`。
+
+事件投递采用“最多一次”语义。库不会自动重试上报器错误，而是将错误返回给
+调用方。如果业务层选择重试，上报器可能已经接受事件但随后返回错误，因此重试
+可能产生重复事件；需要幂等性的 sink 应使用事件的 `operation_id` 和 `sequence`
+进行去重。
+
+宽松成功结束使用 `finish()`；需要检查指标状态时使用
+`finish_checked()`：
+
+```rust
+files.start(10)?;
+files.succeed(10)?;
+progress.finish_checked()?;
+```
+
+`finish_checked()` 会拒绝仍有 active 工作的指标，也会拒绝
+`completed != total` 的已知总量指标。即使校验失败，它仍会消费并关闭操作，
+因此应在调用前选择好使用 `finish()` 还是其他终态方法。
 
 ## 指标生命周期与校验
 
@@ -155,8 +173,9 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-间隔为零时，每次 `report_if_due()` 都到期。上报器失败会消耗一个投递序号并
-重置下次截止时间；因此序号空洞表示投递尝试失败，而不是缺少状态转换。
+间隔为零时，每次 `report_if_due()` 都到期。无法由 `Instant` 表示的非零间隔会在
+`start()` 时被拒绝。上报器失败会消耗一个投递序号并重置下次截止时间；因此序号
+空洞表示投递尝试失败，而不是缺少状态转换。
 
 ## 自动上报工作线程的状态
 

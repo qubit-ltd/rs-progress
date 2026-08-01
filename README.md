@@ -13,7 +13,14 @@
 
 Progress reporting is often coupled to a terminal progress bar or scattered across a copy loop as ad-hoc counters. That makes it difficult to send the same state to logs, JSON, a UI, or telemetry; it also makes consumers reconstruct state from deltas. Threaded work adds another problem: the code that owns the operation and the code that changes the counters are usually different.
 
-This crate separates the two kinds of state. Configure each `Metric`—its stable ID, display name, and optional total—once at startup. `Progress` then owns the dynamic counts; cloneable metric handles apply validated lifecycle transitions and every event reads one internally consistent snapshot. With multiple metrics, snapshots are consistent per metric rather than a globally atomic cross-metric view while the operation is running. Its consuming terminal methods permit at most one terminal event and prevent later reports in safe Rust; dropping or unwinding before a terminal call can still abandon an operation.
+This crate separates the two kinds of state. Configure each `Metric`—its stable ID, display name, and optional total—once at startup. `Progress` then owns the dynamic counts; cloneable metric handles apply validated lifecycle transitions and every event reads one internally consistent snapshot. With multiple metrics, snapshots are consistent per metric rather than a globally atomic cross-metric view while the operation is running. Its consuming terminal methods permit at most one terminal event and prevent later reports in safe Rust; `finish()` means that the operation ended, not that every metric reached its configured total. Use `finish_checked()` when successful termination must also require zero active work and satisfied known totals. Dropping or unwinding before a terminal call can still abandon an operation.
+
+Event delivery is at-most-once: the crate returns reporter failures to the
+caller and does not automatically retry them. Applications that retry at a
+higher level must account for a reporter that accepted an event before
+returning an error, which can make a retry duplicate the event; idempotent
+reporter sinks should use the event's `operation_id` and `sequence` when
+deduplicating.
 
 ## Installation
 
@@ -92,7 +99,7 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Use a positive interval when a periodic heartbeat is more useful than immediate notifications. In this mode, `notify()` is a no-op so workers avoid synchronization work; the background reporter wakes only for its timer or `stop()`.
+Use a positive interval when a periodic heartbeat is more useful than immediate notifications. In this mode, `notify()` is a no-op so workers avoid synchronization work; the background reporter wakes only for its timer or `stop()`. A nonzero interval that cannot be represented by `Instant` is rejected by `start()`.
 
 ## Next steps
 
