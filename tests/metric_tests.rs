@@ -202,3 +202,58 @@ fn test_metric_handle_concurrent_updates_preserve_snapshot_invariants() {
     assert_eq!(snapshot.failed(), 0);
     assert_eq!(snapshot.cancelled(), 0);
 }
+
+/// Verifies readers observe conservation while writers update one metric.
+#[test]
+fn test_metric_handle_concurrent_snapshots_preserve_conservation() {
+    use std::sync::{Arc, Barrier};
+
+    const WRITERS: usize = 4;
+    const READERS: usize = 4;
+    const UPDATES_PER_WRITER: u64 = 25_000;
+    const TOTAL: u64 = WRITERS as u64 * UPDATES_PER_WRITER;
+
+    let reporter = NoopReporter;
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks").total(TOTAL))
+        .start()
+        .expect("progress must start");
+    let tasks = progress.metric("tasks").expect("metric must exist");
+    tasks.start(TOTAL).expect("work must start");
+
+    let barrier = Arc::new(Barrier::new(WRITERS + READERS));
+    std::thread::scope(|scope| {
+        for _ in 0..WRITERS {
+            let barrier = Arc::clone(&barrier);
+            let tasks = tasks.clone();
+            scope.spawn(move || {
+                barrier.wait();
+                for _ in 0..UPDATES_PER_WRITER {
+                    tasks.complete(1).expect("work must complete");
+                }
+            });
+        }
+        for _ in 0..READERS {
+            let barrier = Arc::clone(&barrier);
+            let tasks = tasks.clone();
+            scope.spawn(move || {
+                barrier.wait();
+                for _ in 0..UPDATES_PER_WRITER {
+                    let snapshot = tasks.snapshot();
+                    assert_eq!(
+                        snapshot
+                            .active()
+                            .checked_add(snapshot.completed())
+                            .expect("metric counts must not overflow"),
+                        TOTAL,
+                        "snapshot must conserve total work"
+                    );
+                }
+            });
+        }
+    });
+
+    let snapshot = tasks.snapshot();
+    assert_eq!(snapshot.active(), 0);
+    assert_eq!(snapshot.completed(), TOTAL);
+}
