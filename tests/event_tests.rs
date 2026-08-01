@@ -217,6 +217,12 @@ fn test_event_json_rejects_invalid_invariants() {
                 {"id":"tasks", "name":"Tasks", "total":null, "completed":0, "active":0, "succeeded":0, "failed":0, "cancelled":0}
             ], "elapsed": "1ns"
         }),
+        json!({
+            "operation_id": 1, "sequence": 0, "phase": "running", "stage": null,
+            "metrics": [
+                {"id":"tasks", "name":"Tasks", "total":null, "completed":0, "active":0, "succeeded":0, "failed":0, "cancelled":0}
+            ], "elapsed": "1ns"
+        }),
     ] {
         assert!(serde_json::from_value::<Event>(invalid).is_err());
     }

@@ -1,0 +1,11 @@
+{
+  "scope": "package",
+  "threshold_exempt_files": {
+    "qubit-progress": [
+      "src/auto_reporter.rs",
+      "src/event.rs",
+      "src/metric.rs",
+      "src/reporter/json_lines_reporter.rs"
+    ]
+  }
+}

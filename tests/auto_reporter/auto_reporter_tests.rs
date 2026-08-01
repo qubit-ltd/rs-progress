@@ -212,7 +212,8 @@ fn test_auto_reporter_exposes_background_delivery_failure() {
 
     thread::scope(|scope| {
         let auto = progress.spawn_auto_reporter(scope);
-        auto.notifier().notify();
+        let notifier = auto.notifier();
+        notifier.notify();
         for _ in 0..100 {
             if auto.status().is_failed() {
                 break;
@@ -220,6 +221,7 @@ fn test_auto_reporter_exposes_background_delivery_failure() {
             thread::sleep(Duration::from_millis(1));
         }
         assert!(auto.status().is_failed());
+        notifier.notify();
         assert!(auto.stop().is_err());
     });
 }
