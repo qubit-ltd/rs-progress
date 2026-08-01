@@ -22,7 +22,7 @@ An operation has stable configuration and changing state:
 - `Progress` owns the changing state for every configured metric. Obtain a cloneable `MetricHandle` with `Progress::metric` and use it to move quantities through the metric lifecycle.
 - `Event` is an immutable, complete observation. A reporter does not need earlier events to reconstruct its state. Enabled operations receive a process-local `operation_id`; `sequence` is zero for `Started` and then counts delivery attempts, including failed attempts.
 
-The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. `finish()` is intentionally permissive: `Succeeded` means that the operation ended, not that every metric reached its configured total. Use `finish_checked()` when success also requires zero active work and every known total to be satisfied; validation failure closes the operation without sending `Succeeded`. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
+The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `finish_unchecked`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. `finish()` requires zero active work and every known total to be satisfied. Use `finish_unchecked()` only when an intentionally incomplete successful outcome is meaningful; it records that the operation ended without checking metric completion. A validation failure closes the operation without sending `Succeeded`. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
 
 ## Start an operation and update its metrics
 
@@ -60,18 +60,18 @@ at a higher level, the reporter may have accepted the event before returning
 the error, so the retry can produce a duplicate. Sinks that need idempotency
 should deduplicate using the event's `operation_id` and `sequence`.
 
-For a permissive successful close, call `finish()`. For a checked successful
-close, call `finish_checked()` instead:
+For an intentionally unchecked successful close, call `finish_unchecked()`. For
+the normal checked successful close, call `finish()`:
 
 ```rust
 files.start(10)?;
 files.succeed(10)?;
-progress.finish_checked()?;
+progress.finish()?;
 ```
 
-`finish_checked()` rejects any metric with active work, and rejects a metric
+`finish()` rejects any metric with active work, and rejects a metric
 with a known total unless `completed == total`. It consumes and closes the
-operation even when validation fails, so choose `finish()` or a different
+operation even when validation fails, so choose `finish_unchecked()` or a different
 terminal phase before making the call.
 
 ## Metric lifecycle and validation
@@ -215,6 +215,11 @@ progress.finish()?;
 ```
 
 For a zero interval, `notify()` coalesces repeated calls into at most one pending report. For a positive interval, the worker emits heartbeats at the minimum interval and `notify()` is a no-op, avoiding synchronization work for worker threads. `notify()` is harmless after `stop()`. Always call `stop()` and handle its result before calling a terminal method. While the `AutoReporter` exists, the exclusive borrow prevents manual reporting, stage changes, and termination.
+
+The current automatic driver uses one scoped `std::thread` per enabled
+operation. It is intended for thread-based workers and does not integrate with
+an async runtime; async callers should drive `report_if_due()` from their own
+runtime until a dedicated async driver is added.
 
 `Status::is_failed()` becomes true when the background reporter exits with an
 error or panic. Workers can observe a cloned `Status` to stop expensive work

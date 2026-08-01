@@ -12,31 +12,20 @@
 //! through cloneable [`MetricHandle`] values. Every emitted [`Event`] is
 //! complete.
 //!
-//! # Contention benchmark
+//! # Benchmark interpretation
 //!
-//! The contention benchmark compares concurrent [`MetricHandle`] updates with
-//! a mutex-protected counter baseline. The measurements below were collected
-//! with `cargo bench --bench progress_bench -- --noplot` on a six-CPU machine,
-//! using 2,048 updates per worker. Throughput is reported in million elements
-//! per second; each value is the Criterion median from the benchmark run.
+//! Run `cargo bench --bench progress_bench -- --noplot` to compare complete
+//! event delivery, scheduling paths, and concurrent [`MetricHandle`] updates
+//! with a mutex-protected counter baseline. The contention benchmarks use
+//! Criterion's batched iteration so setup allocation is excluded from the
+//! measured update path; worker thread creation and joining remain part of the
+//! workload. Throughput is reported in elements per second for 2,048 updates
+//! per worker across 1, 2, 4, 8, 16, 32, and 64 workers.
 //!
-//! | Workers | `MetricHandle` | Mutex baseline |
-//! | -------: | --------------: | --------------: |
-//! | 1        | 39.1            | 39.9            |
-//! | 2        | 32.7            | 32.6            |
-//! | 4        | 15.1            | 14.6            |
-//! | 8        | 15.6            | 12.7            |
-//! | 16       | 13.9            | 15.4            |
-//! | 32       | 10.2            | 19.5            |
-//! | 64       | 12.3            | 15.9            |
-//!
-//! The CAS-based metric path is competitive for ordinary concurrency and does
-//! not currently require further optimization. Revisit the implementation if
-//! an application sustains substantially more update workers than available
-//! CPU cores, especially around 32 or more workers, where retry and scheduler
-//! contention can make the mutex baseline faster. In that case, measure on the
-//! target hardware before considering bounded backoff, yielding, or sharded
-//! counters.
+//! These measurements are workload- and hardware-dependent. The CAS-based
+//! metric path is not assumed to beat a mutex at every worker count; measure
+//! on target hardware before changing the synchronization strategy or adding
+//! backoff, yielding, or sharded counters.
 //!
 //! # Examples
 //!
