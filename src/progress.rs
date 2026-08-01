@@ -152,7 +152,8 @@ impl<'reporter> Progress<'reporter> {
     ///
     /// # Errors
     ///
-    /// Returns a metric-state or reporter delivery error. Disabled
+    /// Returns a sequence-validation or reporter delivery error. Metric-handle
+    /// transition failures are reported directly by [`MetricHandle`]. Disabled
     /// operations return success without sending an event.
     pub fn report(&mut self) -> Result<(), ProgressError> {
         if !self.enabled {
