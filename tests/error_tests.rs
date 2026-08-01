@@ -174,11 +174,8 @@ fn test_metric_errors_and_transitions_format_every_variant() {
 #[test]
 fn test_progress_and_terminal_errors_preserve_sources() {
     let validation = ProgressError::from(ValidationError::NoMetrics);
-    let metric = ProgressError::from(MetricError::Closed {
-        metric_id: "tasks".into(),
-    });
     let report = ProgressError::from(ReportError::message("sink unavailable"));
-    for error in [&validation, &metric, &report] {
+    for error in [&validation, &report] {
         assert!(!error.to_string().is_empty());
         assert!(Error::source(error).is_some());
     }

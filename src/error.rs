@@ -260,8 +260,6 @@ impl Error for ReportError {
 pub enum ProgressError {
     /// Caller supplied invalid state.
     Validation(ValidationError),
-    /// A stateful metric rejected an operation.
-    Metric(Box<MetricError>),
     /// The reporter rejected an event.
     Report(ReportError),
 }
@@ -269,7 +267,6 @@ impl fmt::Display for ProgressError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Validation(error) => error.fmt(formatter),
-            Self::Metric(error) => error.fmt(formatter),
             Self::Report(error) => error.fmt(formatter),
         }
     }
@@ -278,7 +275,6 @@ impl Error for ProgressError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Validation(error) => Some(error),
-            Self::Metric(error) => Some(error),
             Self::Report(error) => Some(error),
         }
     }
@@ -287,12 +283,6 @@ impl From<ValidationError> for ProgressError {
     /// Converts validation failure.
     fn from(error: ValidationError) -> Self {
         Self::Validation(error)
-    }
-}
-impl From<MetricError> for ProgressError {
-    /// Converts a metric state failure.
-    fn from(error: MetricError) -> Self {
-        Self::Metric(Box::new(error))
     }
 }
 impl From<ReportError> for ProgressError {
