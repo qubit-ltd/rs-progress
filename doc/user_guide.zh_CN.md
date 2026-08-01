@@ -21,7 +21,7 @@
 - `Progress` 持有每个指标的动态状态。通过 `Progress::metric` 取得可克隆的指标句柄（`MetricHandle`）后，调用方只需执行状态转换，无需维护外部计数器。
 - `Event` 是不可变的完整观察结果，上报器无需依赖先前事件重建状态。已启用的操作会获得进程内唯一的 `operation_id`；`Started` 的 `sequence` 为零，后续序号按投递尝试递增，包括失败的尝试。
 
-生命周期为 `Started → Running* → Succeeded | Failed | Cancelled`。`finish`、`fail` 和 `cancel` 会消费 `Progress`，因此安全 Rust 中最多只能发送一个终态事件。`finish()` 有意保持宽松：`Succeeded` 表示操作已经结束，不表示每个指标都已达到配置的总量；如果成功结束还必须满足 active 为零且所有已知总量都完成，应改用 `finish_checked()`。校验失败时操作会关闭，但不会发送 `Succeeded`。终态前丢弃对象或 unwind 仍可能使操作没有终态事件。
+生命周期为 `Started → Running* → Succeeded | Failed | Cancelled`。`finish`、`finish_unchecked`、`fail` 和 `cancel` 会消费 `Progress`，因此安全 Rust 中最多只能发送一个终态事件。`finish()` 要求 active 为零且所有已知总量都完成。只有在业务上允许以未完成状态成功结束时，才使用 `finish_unchecked()`；它只记录操作结束，不校验指标完成情况。校验失败时操作会关闭，但不会发送 `Succeeded`。终态前丢弃对象或 unwind 仍可能使操作没有终态事件。
 
 ## 启动并更新指标
 
@@ -64,18 +64,18 @@ let elapsed = progress.finish()?;
 可能产生重复事件；需要幂等性的 sink 应使用事件的 `operation_id` 和 `sequence`
 进行去重。
 
-宽松成功结束使用 `finish()`；需要检查指标状态时使用
-`finish_checked()`：
+有意跳过指标校验时使用 `finish_unchecked()`；正常成功结束使用
+`finish()`：
 
 ```rust
 files.start(10)?;
 files.succeed(10)?;
-progress.finish_checked()?;
+progress.finish()?;
 ```
 
-`finish_checked()` 会拒绝仍有 active 工作的指标，也会拒绝
+`finish()` 会拒绝仍有 active 工作的指标，也会拒绝
 `completed != total` 的已知总量指标。即使校验失败，它仍会消费并关闭操作，
-因此应在调用前选择好使用 `finish()` 还是其他终态方法。
+因此应在调用前选择好使用 `finish_unchecked()` 还是其他终态方法。
 
 ## 指标生命周期与校验
 
@@ -218,6 +218,10 @@ progress.finish()?;
 按最小间隔发送心跳，`notify()` 是无操作，从而避免工作线程承担同步开销。
 `notify()` 在 `stop()` 后无害。调用终态方法前必须调用 `stop()` 并处理其结果。
 `AutoReporter` 存活期间，独占借用会阻止手工上报、修改阶段和结束操作。
+
+当前自动驱动器会为每个启用的操作创建一个有作用域的
+`std::thread`。它面向基于线程的工作，不直接集成异步运行时；异步调用方应在
+自己的运行时中驱动 `report_if_due()`，等待未来提供专用的异步驱动器。
 
 后台上报器因错误或 panic 退出后，`Status::is_failed()` 会变为 `true`。工作线程
 可以观察克隆的 `Status`，以便提前停止高成本工作；但 `stop()` 才是最终依据：
