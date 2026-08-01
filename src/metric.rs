@@ -663,7 +663,7 @@ impl<'de> Deserialize<'de> for MetricSnapshot {
 /// Busy-wait helper for writer contention and snapshot retries.
 #[inline]
 fn wait_for_contention(attempts: usize) {
-    if attempts > 0 && attempts % 16 == 0 {
+    if attempts > 0 && attempts.is_multiple_of(16) {
         thread::yield_now();
     } else {
         spin_loop();
