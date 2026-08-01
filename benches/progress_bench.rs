@@ -9,7 +9,7 @@
 
 use std::{hint::black_box, thread, time::Duration};
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use qubit_progress::{Metric, NoopReporter, Progress, ReportError};
 
 /// Benchmarks the disabled report fast path.
@@ -155,6 +155,49 @@ fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
     });
 }
 
+/// Benchmarks contention from concurrent worker updates on a single metric.
+fn bench_metric_handle_contention(criterion: &mut Criterion) {
+    const UPDATES_PER_WORKER: u64 = 2048;
+    let mut group = criterion.benchmark_group("metric_handle_contention");
+    for workers in [1usize, 2, 4, 8] {
+        let total = UPDATES_PER_WORKER * workers as u64;
+        group.throughput(Throughput::Elements(total));
+        group.bench_with_input(
+            BenchmarkId::new("metric_handle_contention", workers),
+            &workers,
+            |bencher, &workers| {
+                bencher.iter(|| {
+                    let reporter = NoopReporter;
+                    let mut progress = Progress::builder(&reporter)
+                        .metric(Metric::new("entries", "Entries").total(total))
+                        .start()
+                        .expect("enabled progress must start");
+                    let metric = progress
+                        .metric("entries")
+                        .expect("configured metric must exist");
+                    metric.start(total).expect("metric start must succeed");
+
+                    thread::scope(|scope| {
+                        for _ in 0..workers {
+                            let metric = metric.clone();
+                            scope.spawn(move || {
+                                for _ in 0..UPDATES_PER_WORKER {
+                                    metric
+                                        .complete(1)
+                                        .expect("metric update must succeed");
+                                }
+                            });
+                        }
+                    });
+
+                    progress.finish().expect("terminal event must report");
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
 criterion_group!(
     progress_benches,
     bench_disabled_report,
@@ -162,6 +205,7 @@ criterion_group!(
     bench_not_due_report,
     bench_multi_metric_terminal,
     bench_disabled_auto_reporter_status,
-    bench_heartbeat_auto_reporter_notification
+    bench_heartbeat_auto_reporter_notification,
+    bench_metric_handle_contention
 );
 criterion_main!(progress_benches);
