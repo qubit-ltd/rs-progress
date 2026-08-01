@@ -9,12 +9,23 @@
 
 use std::sync::{
     Mutex,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{
+        AtomicUsize,
+        Ordering,
+    },
 };
 use std::time::Duration;
 
 use qubit_progress::{
-    Event, Metric, MetricError, Phase, Progress, ProgressError, ReportError, Reporter, Stage,
+    Event,
+    Metric,
+    MetricError,
+    Phase,
+    Progress,
+    ProgressError,
+    ReportError,
+    Reporter,
+    Stage,
     ValidationError,
 };
 
@@ -163,9 +174,9 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
         .start(1)
         .expect_err("occupied work beyond a known total must fail");
     assert!(matches!(error, MetricError::TotalExceeded { .. }));
-    progress
-        .cancel()
-        .expect("a valid terminal snapshot must be accepted after validation failure");
+    progress.cancel().expect(
+        "a valid terminal snapshot must be accepted after validation failure",
+    );
     assert_eq!(
         reporter
             .events()
@@ -223,7 +234,7 @@ fn test_progress_updates_stage_and_respects_due_interval() {
     assert_eq!(events[3].phase(), Phase::Cancelled);
 }
 
-/// Reporter that rejects every delivery to exercise start and running errors.
+/// Reporter that rejects every delivery to exercise start errors.
 struct RejectingReporter;
 
 impl Reporter for RejectingReporter {
@@ -233,7 +244,7 @@ impl Reporter for RejectingReporter {
     }
 }
 
-/// Verifies reporter failures propagate from start and running delivery.
+/// Verifies reporter failures propagate from Started delivery.
 #[test]
 fn test_progress_propagates_reporter_failures() {
     let result = Progress::builder(&RejectingReporter)
@@ -244,11 +255,71 @@ fn test_progress_propagates_reporter_failures() {
         Err(error) => error,
     };
     assert!(matches!(error, ProgressError::Report(_)));
+}
 
-    let reporter = RecordingReporter::default();
-    let progress = Progress::builder(&reporter)
+/// Reporter that accepts Started and rejects the first Running event.
+struct RunningRejectingReporter {
+    /// Number of delivery attempts accepted or rejected so far.
+    reports: AtomicUsize,
+    /// Sequences observed before deciding whether to reject delivery.
+    sequences: Mutex<Vec<u64>>,
+}
+
+impl RunningRejectingReporter {
+    /// Creates a reporter whose first report succeeds and second report fails.
+    const fn new() -> Self {
+        Self {
+            reports: AtomicUsize::new(0),
+            sequences: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl Reporter for RunningRejectingReporter {
+    /// Accepts Started, rejects the first Running event, then accepts later
+    /// events.
+    fn report(&self, event: &Event) -> Result<(), ReportError> {
+        let report_index = self.reports.fetch_add(1, Ordering::Relaxed);
+        self.sequences
+            .lock()
+            .expect("sequence collection mutex must not be poisoned")
+            .push(event.sequence());
+        if report_index == 1 {
+            Err(ReportError::message("running delivery rejected"))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Verifies failed Running delivery consumes its sequence and remains
+/// recoverable.
+#[test]
+fn test_progress_propagates_running_report_failure_and_preserves_sequence() {
+    let reporter = RunningRejectingReporter::new();
+    let mut progress = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks"))
         .start()
-        .expect("healthy operation must start");
-    assert!(progress.is_enabled());
+        .expect("Started delivery must succeed");
+
+    let error = progress
+        .report()
+        .expect_err("the first Running delivery must fail");
+    assert!(matches!(error, ProgressError::Report(_)));
+
+    progress
+        .report()
+        .expect("a later Running delivery must remain possible");
+    progress.finish().expect(
+        "terminal delivery must remain possible after a Running failure",
+    );
+    assert_eq!(reporter.reports.load(Ordering::Relaxed), 4);
+    assert_eq!(
+        reporter
+            .sequences
+            .lock()
+            .expect("sequence collection mutex must not be poisoned")
+            .as_slice(),
+        &[0, 1, 2, 3],
+    );
 }

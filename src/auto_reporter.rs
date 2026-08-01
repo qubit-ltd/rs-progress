@@ -10,16 +10,34 @@
 
 use std::{
     marker::PhantomData,
-    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
-    sync::{
-        Arc, Weak,
-        atomic::{AtomicBool, Ordering},
-        mpsc::{Receiver, SyncSender, sync_channel},
+    panic::{
+        AssertUnwindSafe,
+        catch_unwind,
+        resume_unwind,
     },
-    thread::{self, ScopedJoinHandle},
+    sync::{
+        Arc,
+        Weak,
+        atomic::{
+            AtomicBool,
+            Ordering,
+        },
+        mpsc::{
+            Receiver,
+            SyncSender,
+            sync_channel,
+        },
+    },
+    thread::{
+        self,
+        ScopedJoinHandle,
+    },
 };
 
-use crate::{Progress, ProgressError};
+use crate::{
+    Progress,
+    ProgressError,
+};
 
 /// Handle controlling one scoped automatic reporter.
 #[must_use]
@@ -39,10 +57,9 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     #[must_use]
     pub fn notifier(&self) -> Notifier {
         Notifier {
-            inner: self
-                .inner
-                .as_ref()
-                .and_then(|inner| inner.notification_driven.then(|| Arc::downgrade(inner))),
+            inner: self.inner.as_ref().and_then(|inner| {
+                inner.notification_driven.then(|| Arc::downgrade(inner))
+            }),
         }
     }
 
@@ -75,7 +92,10 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     /// Joins the scoped worker once and returns either its result or panic.
     fn join_worker(
         &mut self,
-    ) -> Result<Result<(), ProgressError>, Box<dyn std::any::Any + Send + 'static>> {
+    ) -> Result<
+        Result<(), ProgressError>,
+        Box<dyn std::any::Any + Send + 'static>,
+    > {
         let Some(join) = self.join.take() else {
             return Ok(Ok(()));
         };
@@ -232,7 +252,10 @@ fn run_notified(
     inner: &AutoReporterInner,
     receiver: Receiver<()>,
 ) -> Result<(), ProgressError> {
-    while receiver.recv().is_ok() {
+    loop {
+        receiver
+            .recv()
+            .expect("notification sender must outlive the reporter worker");
         if inner.pending.swap(false, Ordering::AcqRel) {
             progress.report()?;
         }
@@ -240,7 +263,6 @@ fn run_notified(
             return Ok(());
         }
     }
-    Ok(())
 }
 
 /// Runs deadline-based heartbeat reporting for a positive interval.
@@ -254,16 +276,10 @@ fn run_heartbeat(
             return Ok(());
         }
         let timeout = progress.time_until_due();
-        match receiver.recv_timeout(timeout) {
-            Ok(()) if inner.stopped.load(Ordering::Acquire) => return Ok(()),
-            Ok(()) => continue,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                progress.report_if_due()?;
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                return Ok(());
-            }
+        if receiver.recv_timeout(timeout).is_ok() {
+            return Ok(());
         }
+        progress.report_if_due()?;
     }
 }
 

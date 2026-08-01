@@ -9,7 +9,14 @@
 
 use std::sync::Mutex;
 
-use qubit_progress::{Event, Metric, Phase, Progress, ReportError, Reporter};
+use qubit_progress::{
+    Event,
+    Metric,
+    Phase,
+    Progress,
+    ReportError,
+    Reporter,
+};
 
 #[cfg(feature = "serde")]
 use qubit_progress::MetricSnapshot;
@@ -117,7 +124,8 @@ fn test_event_json_deserializes_canonical_durations() {
             }],
             "elapsed": elapsed,
         });
-        let event: Event = serde_json::from_value(value).expect("event JSON must deserialize");
+        let event: Event =
+            serde_json::from_value(value).expect("event JSON must deserialize");
         assert_eq!(event.phase().as_str(), phase);
         assert_eq!(event.sequence(), sequence);
         assert_eq!(event.stage().expect("stage must exist").total(), Some(1));
@@ -154,6 +162,10 @@ fn test_event_json_rejects_invalid_invariants() {
         (
             "/elapsed",
             json!("340282366920938463463374607431768211456ns"),
+        ),
+        (
+            "/elapsed",
+            json!("340282366920938463463374607431768211455h"),
         ),
         ("/elapsed", json!("18446744073709551615h")),
         ("/sequence", json!(1)),
