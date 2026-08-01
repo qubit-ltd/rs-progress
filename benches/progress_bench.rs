@@ -9,13 +9,27 @@
 
 use std::{
     hint::black_box,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc,
+        Mutex,
+    },
     thread,
     time::Duration,
 };
 
-use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use qubit_progress::{Metric, NoopReporter, Progress, ReportError};
+use criterion::{
+    BenchmarkId,
+    Criterion,
+    Throughput,
+    criterion_group,
+    criterion_main,
+};
+use qubit_progress::{
+    Metric,
+    NoopReporter,
+    Progress,
+    ReportError,
+};
 
 /// Benchmarks the disabled report fast path.
 fn bench_disabled_report(criterion: &mut Criterion) {
@@ -153,9 +167,12 @@ fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
     thread::scope(|scope| {
         let auto = progress.spawn_auto_reporter(scope);
         let notifier = auto.notifier();
-        criterion.bench_function("heartbeat_auto_reporter_notification", |bencher| {
-            bencher.iter(|| notifier.notify());
-        });
+        criterion.bench_function(
+            "heartbeat_auto_reporter_notification",
+            |bencher| {
+                bencher.iter(|| notifier.notify());
+            },
+        );
         auto.stop().expect("heartbeat reporter must stop cleanly");
     });
 }
@@ -187,7 +204,9 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
                             let metric = metric.clone();
                             scope.spawn(move || {
                                 for _ in 0..UPDATES_PER_WORKER {
-                                    metric.complete(1).expect("metric update must succeed");
+                                    metric
+                                        .complete(1)
+                                        .expect("metric update must succeed");
                                 }
                             });
                         }
@@ -206,8 +225,14 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
 struct MutexMetricCounts {
     /// Work that remains active.
     active: u64,
-    /// Work that has completed.
-    completed: u64,
+    /// Terminal work without an explicit classification.
+    completed_unclassified: u64,
+    /// Terminal work classified as successful.
+    succeeded: u64,
+    /// Terminal work classified as failed.
+    failed: u64,
+    /// Terminal work classified as cancelled.
+    cancelled: u64,
 }
 
 /// Benchmarks a mutex-protected equivalent of one metric's hot update path.
@@ -224,22 +249,33 @@ fn bench_mutex_metric_contention(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     let state = Arc::new(Mutex::new(MutexMetricCounts {
                         active: total,
-                        completed: 0,
+                        completed_unclassified: 0,
+                        succeeded: 0,
+                        failed: 0,
+                        cancelled: 0,
                     }));
                     thread::scope(|scope| {
                         for _ in 0..workers {
                             let state = Arc::clone(&state);
                             scope.spawn(move || {
                                 for _ in 0..UPDATES_PER_WORKER {
-                                    let mut state = state.lock().expect("mutex must not poison");
+                                    let mut state = state
+                                        .lock()
+                                        .expect("mutex must not poison");
                                     state.active -= 1;
-                                    state.completed += 1;
+                                    state.completed_unclassified += 1;
                                 }
                             });
                         }
                     });
-                    let completed = state.lock().expect("mutex must not poison").completed;
-                    black_box(completed);
+                    let state = state.lock().expect("mutex must not poison");
+                    black_box((
+                        state.active,
+                        state.completed_unclassified,
+                        state.succeeded,
+                        state.failed,
+                        state.cancelled,
+                    ));
                 });
             },
         );
