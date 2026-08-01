@@ -87,9 +87,9 @@ fn test_progress_carries_configured_total_in_every_event() {
     }
 }
 
-/// Verifies that the permissive finish behavior remains available.
+/// Verifies that the explicitly unchecked finish behavior remains available.
 #[test]
-fn test_progress_finish_allows_incomplete_metrics() {
+fn test_progress_finish_unchecked_allows_incomplete_metrics() {
     let reporter = RecordingReporter::default();
     let progress = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks").total(2))
@@ -97,17 +97,17 @@ fn test_progress_finish_allows_incomplete_metrics() {
         .expect("progress run must start");
 
     progress
-        .finish()
-        .expect("permissive finish must allow incomplete metrics");
+        .finish_unchecked()
+        .expect("unchecked finish must allow incomplete metrics");
     assert_eq!(
         reporter.events().last().expect("terminal event").phase(),
         Phase::Succeeded
     );
 }
 
-/// Verifies that checked finish rejects work that remains active.
+/// Verifies that finish rejects work that remains active.
 #[test]
-fn test_progress_finish_checked_requires_active_work_to_be_zero() {
+fn test_progress_finish_requires_active_work_to_be_zero() {
     let reporter = RecordingReporter::default();
     let progress = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks").total(1))
@@ -119,8 +119,8 @@ fn test_progress_finish_checked_requires_active_work_to_be_zero() {
     tasks.start(1).expect("work must start");
 
     let error = progress
-        .finish_checked()
-        .expect_err("checked finish must reject active work");
+        .finish()
+        .expect_err("finish must reject active work");
     assert!(matches!(
         error.progress_error(),
         ProgressError::Validation(ValidationError::ActiveWorkAtFinish {
@@ -135,9 +135,9 @@ fn test_progress_finish_checked_requires_active_work_to_be_zero() {
     ));
 }
 
-/// Verifies that checked finish rejects an incompletely satisfied known total.
+/// Verifies that finish rejects an incompletely satisfied known total.
 #[test]
-fn test_progress_finish_checked_requires_known_total_to_be_completed() {
+fn test_progress_finish_requires_known_total_to_be_completed() {
     let reporter = RecordingReporter::default();
     let progress = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks").total(2))
@@ -150,8 +150,8 @@ fn test_progress_finish_checked_requires_known_total_to_be_completed() {
     tasks.succeed(1).expect("work must succeed");
 
     let error = progress
-        .finish_checked()
-        .expect_err("checked finish must reject an incomplete total");
+        .finish()
+        .expect_err("finish must reject an incomplete total");
     assert!(matches!(
         error.progress_error(),
         ProgressError::Validation(ValidationError::IncompleteMetricTotal {
@@ -163,9 +163,9 @@ fn test_progress_finish_checked_requires_known_total_to_be_completed() {
     assert_eq!(reporter.events().len(), 1);
 }
 
-/// Verifies that checked finish accepts complete known and unknown totals.
+/// Verifies that finish accepts complete known and unknown totals.
 #[test]
-fn test_progress_finish_checked_accepts_complete_known_and_unknown_metrics() {
+fn test_progress_finish_accepts_complete_known_and_unknown_metrics() {
     let reporter = RecordingReporter::default();
     let progress = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks").total(1))
@@ -184,8 +184,8 @@ fn test_progress_finish_checked_accepts_complete_known_and_unknown_metrics() {
     bytes.complete(4).expect("bytes must complete");
 
     progress
-        .finish_checked()
-        .expect("complete metrics must pass checked finish");
+        .finish()
+        .expect("complete metrics must pass finish");
     assert_eq!(
         reporter.events().last().expect("terminal event").phase(),
         Phase::Succeeded

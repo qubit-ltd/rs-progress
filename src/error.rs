@@ -138,7 +138,7 @@ impl fmt::Display for ValidationError {
             }
             Self::ActiveWorkAtFinish { metric_id, active } => write!(
                 formatter,
-                "metric {metric_id:?} still has {active} active work items at checked finish"
+                "metric {metric_id:?} still has {active} active work items at finish"
             ),
             Self::IncompleteMetricTotal {
                 metric_id,

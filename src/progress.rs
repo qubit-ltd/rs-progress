@@ -192,25 +192,32 @@ impl<'reporter> Progress<'reporter> {
     pub fn clear_stage(&mut self) {
         self.stage = None;
     }
-    /// Consumes this operation and emits a successful terminal event.
+    /// Consumes this operation and emits a successful terminal event without
+    /// checking whether metric work is complete.
     ///
-    /// `Succeeded` records that the operation ended. This method intentionally
-    /// does not require active work to be zero or known totals to be complete;
-    /// use [`Progress::finish_checked`] when those checks are required.
-    pub fn finish(self) -> Result<Duration, TerminalError> {
+    /// Use [`Progress::finish`] when successful termination must require zero
+    /// active work and satisfied known totals.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TerminalError`] when the reporter rejects the terminal event.
+    pub fn finish_unchecked(self) -> Result<Duration, TerminalError> {
         self.terminal(Phase::Succeeded)
     }
     /// Consumes this operation and emits a successful terminal event only when
     /// no metric has active work and every known total has been completed.
     ///
-    /// Unlike [`Progress::finish`], this method validates the metric state
-    /// before sending `Succeeded`. The operation is closed even when
-    /// validation fails, so callers must choose the appropriate terminal
-    /// method before invoking it.
-    pub fn finish_checked(self) -> Result<Duration, TerminalError> {
+    /// The operation is closed even when validation fails, so callers must
+    /// choose the appropriate terminal method before invoking it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TerminalError`] when metric validation or terminal delivery
+    /// fails. Validation errors are returned without sending `Succeeded`.
+    pub fn finish(self) -> Result<Duration, TerminalError> {
         let elapsed = self.elapsed();
         self.close();
-        if let Err(error) = self.validate_checked_finish() {
+        if let Err(error) = self.validate_finish() {
             return Err(TerminalError::new(elapsed, error));
         }
         self.terminal(Phase::Succeeded)
@@ -242,8 +249,8 @@ impl<'reporter> Progress<'reporter> {
     fn metric_snapshots(&self) -> Vec<MetricSnapshot> {
         self.metrics.iter().map(MetricHandle::snapshot).collect()
     }
-    /// Validates the metric invariants required for checked success.
-    fn validate_checked_finish(&self) -> Result<(), ProgressError> {
+    /// Validates the metric invariants required for successful finish.
+    fn validate_finish(&self) -> Result<(), ProgressError> {
         for metric in &self.metrics {
             let snapshot = metric.snapshot();
             if snapshot.active() != 0 {
