@@ -18,6 +18,7 @@ use std::{
 };
 
 use criterion::{
+    BatchSize,
     BenchmarkId,
     Criterion,
     Throughput,
@@ -177,9 +178,11 @@ fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
     });
 }
 
-/// Benchmarks contention from concurrent worker updates on a single metric.
+/// Benchmarks concurrent metric updates after setup has been removed from
+/// timing.
 fn bench_metric_handle_contention(criterion: &mut Criterion) {
     const UPDATES_PER_WORKER: u64 = 2048;
+    let reporter = NoopReporter;
     let mut group = criterion.benchmark_group("metric_handle_contention");
     for workers in [1usize, 2, 4, 8, 16, 32, 64] {
         let total = UPDATES_PER_WORKER * workers as u64;
@@ -188,32 +191,35 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
             BenchmarkId::new("metric_handle_contention", workers),
             &workers,
             |bencher, &workers| {
-                bencher.iter(|| {
-                    let reporter = NoopReporter;
-                    let progress = Progress::builder(&reporter)
-                        .metric(Metric::new("entries", "Entries").total(total))
-                        .start()
-                        .expect("enabled progress must start");
-                    let metric = progress
-                        .metric("entries")
-                        .expect("configured metric must exist");
-                    metric.start(total).expect("metric start must succeed");
-
-                    thread::scope(|scope| {
-                        for _ in 0..workers {
-                            let metric = metric.clone();
-                            scope.spawn(move || {
-                                for _ in 0..UPDATES_PER_WORKER {
-                                    metric
-                                        .complete(1)
-                                        .expect("metric update must succeed");
-                                }
-                            });
-                        }
-                    });
-
-                    progress.finish().expect("terminal event must report");
-                });
+                bencher.iter_batched(
+                    || {
+                        let progress = Progress::builder(&reporter)
+                            .metric(Metric::new("entries", "Entries").total(total))
+                            .start()
+                            .expect("enabled progress must start");
+                        let metric = progress
+                            .metric("entries")
+                            .expect("configured metric must exist");
+                        metric.start(total).expect("metric start must succeed");
+                        (progress, metric)
+                    },
+                    |(_progress, metric)| {
+                        thread::scope(|scope| {
+                            for _ in 0..workers {
+                                let metric = metric.clone();
+                                scope.spawn(move || {
+                                    for _ in 0..UPDATES_PER_WORKER {
+                                        metric
+                                            .complete(1)
+                                            .expect("metric update must succeed");
+                                    }
+                                });
+                            }
+                        });
+                        black_box(metric.snapshot());
+                    },
+                    BatchSize::SmallInput,
+                );
             },
         );
     }
@@ -235,7 +241,7 @@ struct MutexMetricCounts {
     cancelled: u64,
 }
 
-/// Benchmarks a mutex-protected equivalent of one metric's hot update path.
+/// Benchmarks a mutex-protected update path with setup removed from timing.
 fn bench_mutex_metric_contention(criterion: &mut Criterion) {
     const UPDATES_PER_WORKER: u64 = 2048;
     let mut group = criterion.benchmark_group("mutex_metric_contention");
@@ -246,37 +252,42 @@ fn bench_mutex_metric_contention(criterion: &mut Criterion) {
             BenchmarkId::new("mutex_metric_contention", workers),
             &workers,
             |bencher, &workers| {
-                bencher.iter(|| {
-                    let state = Arc::new(Mutex::new(MutexMetricCounts {
-                        active: total,
-                        completed_unclassified: 0,
-                        succeeded: 0,
-                        failed: 0,
-                        cancelled: 0,
-                    }));
-                    thread::scope(|scope| {
-                        for _ in 0..workers {
-                            let state = Arc::clone(&state);
-                            scope.spawn(move || {
-                                for _ in 0..UPDATES_PER_WORKER {
-                                    let mut state = state
-                                        .lock()
-                                        .expect("mutex must not poison");
-                                    state.active -= 1;
-                                    state.completed_unclassified += 1;
-                                }
-                            });
-                        }
-                    });
-                    let state = state.lock().expect("mutex must not poison");
-                    black_box((
-                        state.active,
-                        state.completed_unclassified,
-                        state.succeeded,
-                        state.failed,
-                        state.cancelled,
-                    ));
-                });
+                bencher.iter_batched(
+                    || {
+                        Arc::new(Mutex::new(MutexMetricCounts {
+                            active: total,
+                            completed_unclassified: 0,
+                            succeeded: 0,
+                            failed: 0,
+                            cancelled: 0,
+                        }))
+                    },
+                    |state| {
+                        thread::scope(|scope| {
+                            for _ in 0..workers {
+                                let state = Arc::clone(&state);
+                                scope.spawn(move || {
+                                    for _ in 0..UPDATES_PER_WORKER {
+                                        let mut state = state
+                                            .lock()
+                                            .expect("mutex must not poison");
+                                        state.active -= 1;
+                                        state.completed_unclassified += 1;
+                                    }
+                                });
+                            }
+                        });
+                        let state = state.lock().expect("mutex must not poison");
+                        black_box((
+                            state.active,
+                            state.completed_unclassified,
+                            state.succeeded,
+                            state.failed,
+                            state.cancelled,
+                        ));
+                    },
+                    BatchSize::SmallInput,
+                );
             },
         );
     }
