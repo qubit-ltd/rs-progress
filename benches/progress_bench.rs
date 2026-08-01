@@ -7,7 +7,12 @@
 // =============================================================================
 //! Criterion benchmarks for the redesigned progress reporting paths.
 
-use std::{hint::black_box, thread, time::Duration};
+use std::{
+    hint::black_box,
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use qubit_progress::{Metric, NoopReporter, Progress, ReportError};
@@ -182,15 +187,59 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
                             let metric = metric.clone();
                             scope.spawn(move || {
                                 for _ in 0..UPDATES_PER_WORKER {
-                                    metric
-                                        .complete(1)
-                                        .expect("metric update must succeed");
+                                    metric.complete(1).expect("metric update must succeed");
                                 }
                             });
                         }
                     });
 
                     progress.finish().expect("terminal event must report");
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
+/// Counts completed work for the mutex contention baseline.
+#[derive(Debug)]
+struct MutexMetricCounts {
+    /// Work that remains active.
+    active: u64,
+    /// Work that has completed.
+    completed: u64,
+}
+
+/// Benchmarks a mutex-protected equivalent of one metric's hot update path.
+fn bench_mutex_metric_contention(criterion: &mut Criterion) {
+    const UPDATES_PER_WORKER: u64 = 2048;
+    let mut group = criterion.benchmark_group("mutex_metric_contention");
+    for workers in [1usize, 2, 4, 8] {
+        let total = UPDATES_PER_WORKER * workers as u64;
+        group.throughput(Throughput::Elements(total));
+        group.bench_with_input(
+            BenchmarkId::new("mutex_metric_contention", workers),
+            &workers,
+            |bencher, &workers| {
+                bencher.iter(|| {
+                    let state = Arc::new(Mutex::new(MutexMetricCounts {
+                        active: total,
+                        completed: 0,
+                    }));
+                    thread::scope(|scope| {
+                        for _ in 0..workers {
+                            let state = Arc::clone(&state);
+                            scope.spawn(move || {
+                                for _ in 0..UPDATES_PER_WORKER {
+                                    let mut state = state.lock().expect("mutex must not poison");
+                                    state.active -= 1;
+                                    state.completed += 1;
+                                }
+                            });
+                        }
+                    });
+                    let completed = state.lock().expect("mutex must not poison").completed;
+                    black_box(completed);
                 });
             },
         );
@@ -206,6 +255,7 @@ criterion_group!(
     bench_multi_metric_terminal,
     bench_disabled_auto_reporter_status,
     bench_heartbeat_auto_reporter_notification,
-    bench_metric_handle_contention
+    bench_metric_handle_contention,
+    bench_mutex_metric_contention
 );
 criterion_main!(progress_benches);
