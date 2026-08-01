@@ -181,7 +181,7 @@ fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
 fn bench_metric_handle_contention(criterion: &mut Criterion) {
     const UPDATES_PER_WORKER: u64 = 2048;
     let mut group = criterion.benchmark_group("metric_handle_contention");
-    for workers in [1usize, 2, 4, 8] {
+    for workers in [1usize, 2, 4, 8, 16, 32, 64] {
         let total = UPDATES_PER_WORKER * workers as u64;
         group.throughput(Throughput::Elements(total));
         group.bench_with_input(
@@ -239,7 +239,7 @@ struct MutexMetricCounts {
 fn bench_mutex_metric_contention(criterion: &mut Criterion) {
     const UPDATES_PER_WORKER: u64 = 2048;
     let mut group = criterion.benchmark_group("mutex_metric_contention");
-    for workers in [1usize, 2, 4, 8] {
+    for workers in [1usize, 2, 4, 8, 16, 32, 64] {
         let total = UPDATES_PER_WORKER * workers as u64;
         group.throughput(Throughput::Elements(total));
         group.bench_with_input(
