@@ -175,6 +175,30 @@ fn test_metric_accepts_maximum_terminal_count() {
     assert_eq!(tasks.snapshot().succeeded(), u64::MAX,);
 }
 
+/// Verifies a new active count cannot overflow completed work.
+#[test]
+fn test_metric_rejects_start_after_maximum_completed_count() {
+    let reporter = NoopReporter;
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("unbounded progress must start");
+    let tasks = progress.metric("tasks").expect("metric must exist");
+
+    tasks.start(u64::MAX).expect("large work must start");
+    tasks
+        .succeed(u64::MAX)
+        .expect("maximum terminal count must succeed");
+
+    assert!(matches!(
+        tasks.start(1),
+        Err(MetricError::CountOverflow { metric_id }) if metric_id == "tasks"
+    ));
+    let snapshot = tasks.snapshot();
+    assert_eq!(snapshot.completed(), u64::MAX);
+    assert_eq!(snapshot.active(), 0);
+}
+
 /// Verifies concurrent updates preserve a coherent aggregate snapshot.
 #[test]
 fn test_metric_handle_concurrent_updates_preserve_snapshot_invariants() {

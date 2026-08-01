@@ -431,16 +431,16 @@ impl MetricCounts {
     /// Returns the derived public completed count.
     ///
     /// Every transition conserves the total count, which cannot exceed `u64`.
-    fn completed(self) -> u64 {
+    fn completed(self) -> Option<u64> {
         self.completed_unclassified
-            + self.succeeded
-            + self.failed
-            + self.cancelled
+            .checked_add(self.succeeded)?
+            .checked_add(self.failed)?
+            .checked_add(self.cancelled)
     }
 
     /// Returns active plus completed work.
-    fn occupied(self) -> u64 {
-        self.completed() + self.active
+    fn occupied(self) -> Option<u64> {
+        self.completed()?.checked_add(self.active)
     }
 
     /// Validates the aggregate conservation invariants for one pending state.
@@ -449,7 +449,9 @@ impl MetricCounts {
         metric_id: &str,
         total: Option<u64>,
     ) -> Result<(), MetricError> {
-        let occupied = self.occupied();
+        let occupied = self.occupied().ok_or_else(|| MetricError::CountOverflow {
+            metric_id: metric_id.into(),
+        })?;
         if let Some(total) = total
             && occupied > total
         {
@@ -566,7 +568,9 @@ impl MetricSnapshot {
             id: Arc::clone(&metric.id),
             name: Arc::clone(&metric.name),
             total: metric.total,
-            completed: counts.completed(),
+            completed: counts
+                .completed()
+                .expect("validated metric counts must fit in u64"),
             active: counts.active,
             succeeded: counts.succeeded,
             failed: counts.failed,
