@@ -63,9 +63,11 @@ let elapsed = progress.finish()?;
 
 `start(count)` 把无符号数量从未开始移动到 active。`complete`、`succeed`、`fail` 和 `cancel` 把无符号数量从 active 移动到各自的完成状态。若要撤销其中一次移动，使用匹配的 `MetricTransition` 调用 `rollback(transition, count)`：终态数量回到 active，而 `MetricTransition::Start` 则把 active 数量回到未开始。任何计数都不能变为负数；已知总量时，`active + completed` 不能超过总量。
 
-`completed` 包含未分类完成、成功、失败和取消。每次转换均在内部锁中校验后
-提交，因此每个发送出的指标快照都内部一致。不要用计数表达阶段信息：在启动时
-使用 `Stage`，用 `set_stage` 替换后续事件的阶段，或用 `clear_stage` 清除它。
+`completed` 包含未分类完成、成功、失败和取消。每次转换均在 CAS 临界区中校验后
+提交，因此每个发送出的指标快照都内部一致。包含多个指标的事件只保证每个指标
+快照各自一致；运行中的多个指标之间不是全局原子视图，操作关闭后的终态事件则
+保持稳定。不要用计数表达阶段信息：在启动时使用 `Stage`，用 `set_stage` 替换后续
+事件的阶段，或用 `clear_stage` 清除它。
 
 ## 结束每次操作
 
@@ -218,8 +220,8 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 ## 错误与关闭
 
 大多数非终态操作返回 `Result<(), ProgressError>`。`ProgressError` 会区分校验
-失败、指标状态转换被拒绝，以及上报器返回错误。不要忽略它：状态无效
-表示事件没有发送，而输出目标错误表示本次投递失败。
+失败和上报器返回错误；指标句柄的状态转换会直接返回 `MetricError`。不要忽略
+这些错误：状态无效表示事件没有发送，而输出目标错误表示本次投递失败。
 
 终态方法返回 `Result<Duration, TerminalError>`。如果必须可靠记录完成结果，
 应检查 `TerminalError`：即使最终事件无法投递，它仍会保留操作耗时。自动上报

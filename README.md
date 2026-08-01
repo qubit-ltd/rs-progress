@@ -13,7 +13,7 @@
 
 Progress reporting is often coupled to a terminal progress bar or scattered across a copy loop as ad-hoc counters. That makes it difficult to send the same state to logs, JSON, a UI, or telemetry; it also makes consumers reconstruct state from deltas. Threaded work adds another problem: the code that owns the operation and the code that changes the counters are usually different.
 
-This crate separates the two kinds of state. Configure each `Metric`—its stable ID, display name, and optional total—once at startup. `Progress` then owns the dynamic counts; cloneable metric handles apply validated lifecycle transitions and every event reads one internally consistent snapshot. Its consuming terminal methods permit at most one terminal event and prevent later reports in safe Rust; dropping or unwinding before a terminal call can still abandon an operation.
+This crate separates the two kinds of state. Configure each `Metric`—its stable ID, display name, and optional total—once at startup. `Progress` then owns the dynamic counts; cloneable metric handles apply validated lifecycle transitions and every event reads one internally consistent snapshot. With multiple metrics, snapshots are consistent per metric rather than a globally atomic cross-metric view while the operation is running. Its consuming terminal methods permit at most one terminal event and prevent later reports in safe Rust; dropping or unwinding before a terminal call can still abandon an operation.
 
 ## Installation
 
