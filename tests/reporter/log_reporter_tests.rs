@@ -8,10 +8,7 @@
 //! Log reporter behavior.
 
 #[cfg(feature = "log")]
-use qubit_progress::{
-    LogReporter,
-    Reporter,
-};
+use qubit_progress::{LogReporter, Reporter};
 
 /// Verifies that the log sink samples the facade info-level setting.
 #[cfg(feature = "log")]

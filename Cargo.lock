@@ -242,11 +242,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "qubit-fast-cas"
+version = "0.3.0"
+
+[[package]]
 name = "qubit-progress"
 version = "0.6.0"
 dependencies = [
  "criterion",
  "log",
+ "qubit-fast-cas",
  "serde",
  "serde_json",
 ]

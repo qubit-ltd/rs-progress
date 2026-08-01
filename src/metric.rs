@@ -2,37 +2,27 @@
 //    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
-//
-//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Metric configuration and immutable metric snapshots.
 // qubit-style: allow multiple-public-types
 
-use std::sync::{
-    Arc,
-    Mutex,
-    MutexGuard,
-    atomic::{
-        AtomicBool,
-        Ordering,
+use std::{
+    hint::spin_loop,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
+    thread,
 };
 
-#[cfg(feature = "serde")]
-use serde::{
-    Deserialize,
-    Deserializer,
-};
+use qubit_fast_cas::CasCell;
 
 #[cfg(feature = "serde")]
-use crate::validation::{
-    validate_metrics,
-    validate_snapshot_counts,
-};
-use crate::{
-    MetricError,
-    MetricTransition,
-};
+use serde::{Deserialize, Deserializer};
+
+#[cfg(feature = "serde")]
+use crate::validation::{validate_metrics, validate_snapshot_counts};
+use crate::{MetricError, MetricTransition};
 
 /// Stable metadata for one metric in a progress operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,7 +80,7 @@ impl Metric {
 
 /// Cloneable capability for one live metric owned by a progress operation.
 ///
-/// All mutation methods are serialized by one short mutex critical section.
+/// All mutation methods are serialized by one CAS gate critical section.
 /// A handle remains readable after its progress operation closes, but rejects
 /// all later mutations.
 #[derive(Clone)]
@@ -104,12 +94,8 @@ pub struct MetricHandle {
 impl MetricHandle {
     /// Creates one live handle from validated metric metadata.
     pub(crate) fn new(metric: Metric, operation_open: Arc<AtomicBool>) -> Self {
-        let total = metric.total;
         Self {
-            inner: Arc::new(MetricInner {
-                metric,
-                state: Mutex::new(MetricState::new(total)),
-            }),
+            inner: Arc::new(MetricInner::new(metric)),
             operation_open,
         }
     }
@@ -124,27 +110,6 @@ impl MetricHandle {
     #[must_use]
     pub fn name(&self) -> &str {
         self.inner.metric.name()
-    }
-
-    /// Replaces the known total for this metric.
-    ///
-    /// # Errors
-    ///
-    /// Returns a metric error after closure, when total is below occupied
-    /// work, or when a previous panic poisoned the state lock.
-    pub fn set_total(&self, total: u64) -> Result<(), MetricError> {
-        let mut state = self.lock_state()?;
-        self.ensure_open()?;
-        let occupied = state.occupied(self.id())?;
-        if total < occupied {
-            return Err(MetricError::TotalBelowOccupied {
-                metric_id: self.id().into(),
-                total,
-                occupied,
-            });
-        }
-        state.total = Some(total);
-        Ok(())
     }
 
     /// Moves work from the not-started state to the active state.
@@ -206,25 +171,18 @@ impl MetricHandle {
     ///
     /// Returns a metric error when the selected source state does not contain
     /// `count` work or when the owning operation is closed.
-    pub fn rollback(
-        &self,
-        transition: MetricTransition,
-        count: u64,
-    ) -> Result<(), MetricError> {
+    pub fn rollback(&self, transition: MetricTransition, count: u64) -> Result<(), MetricError> {
         self.transition(transition, count, Direction::Rollback)
     }
 
     /// Returns one internally consistent immutable metric snapshot.
     ///
     /// This read remains available after the owning operation closes.
-    ///
-    /// # Errors
-    ///
-    /// Returns a metric error if a previous panic poisoned the lock or if
-    /// invalid internal state cannot be represented in a snapshot.
-    pub fn snapshot(&self) -> Result<MetricSnapshot, MetricError> {
-        let state = self.lock_state()?;
-        MetricSnapshot::from_state(&self.inner.metric, *state)
+    #[must_use]
+    pub fn snapshot(&self) -> MetricSnapshot {
+        let counts = self.inner.snapshot_counts();
+        MetricSnapshot::from_counts(&self.inner.metric, counts)
+            .expect("metric counts must remain internally consistent")
     }
 
     /// Updates state through one validated directional transition.
@@ -234,74 +192,73 @@ impl MetricHandle {
         count: u64,
         direction: Direction,
     ) -> Result<(), MetricError> {
-        let mut state = self.lock_state()?;
         self.ensure_open()?;
-        let mut next = *state;
-        match transition {
-            MetricTransition::Start => {
-                move_count(
-                    &mut next.active,
-                    None,
-                    count,
-                    direction,
-                    transition,
-                    self.id(),
-                )?;
-            }
-            MetricTransition::Complete => {
-                move_count(
-                    &mut next.active,
-                    Some(&mut next.completed_unclassified),
-                    count,
-                    direction,
-                    transition,
-                    self.id(),
-                )?;
-            }
-            MetricTransition::Succeed => {
-                move_count(
-                    &mut next.active,
-                    Some(&mut next.succeeded),
-                    count,
-                    direction,
-                    transition,
-                    self.id(),
-                )?;
-            }
-            MetricTransition::Fail => {
-                move_count(
-                    &mut next.active,
-                    Some(&mut next.failed),
-                    count,
-                    direction,
-                    transition,
-                    self.id(),
-                )?;
-            }
-            MetricTransition::Cancel => {
-                move_count(
-                    &mut next.active,
-                    Some(&mut next.cancelled),
-                    count,
-                    direction,
-                    transition,
-                    self.id(),
-                )?;
-            }
-        }
-        next.validate(self.id())?;
-        *state = next;
-        Ok(())
-    }
+        let metric_id = self.id().to_string();
+        let total = self.inner.metric.configured_total();
 
-    /// Locks the mutable state or maps lock poisoning to a public error.
-    fn lock_state(&self) -> Result<MutexGuard<'_, MetricState>, MetricError> {
-        self.inner
-            .state
-            .lock()
-            .map_err(|_| MetricError::StatePoisoned {
-                metric_id: self.id().into(),
-            })
+        self.inner.with_update(|counts| {
+            if !self.operation_open.load(Ordering::Acquire) {
+                return Err(MetricError::Closed {
+                    metric_id: metric_id.clone(),
+                });
+            }
+            let mut next = *counts;
+            match transition {
+                MetricTransition::Start => {
+                    move_count(
+                        &mut next.active,
+                        None,
+                        count,
+                        direction,
+                        transition,
+                        &metric_id,
+                    )?;
+                }
+                MetricTransition::Complete => {
+                    move_count(
+                        &mut next.active,
+                        Some(&mut next.completed_unclassified),
+                        count,
+                        direction,
+                        transition,
+                        &metric_id,
+                    )?;
+                }
+                MetricTransition::Succeed => {
+                    move_count(
+                        &mut next.active,
+                        Some(&mut next.succeeded),
+                        count,
+                        direction,
+                        transition,
+                        &metric_id,
+                    )?;
+                }
+                MetricTransition::Fail => {
+                    move_count(
+                        &mut next.active,
+                        Some(&mut next.failed),
+                        count,
+                        direction,
+                        transition,
+                        &metric_id,
+                    )?;
+                }
+                MetricTransition::Cancel => {
+                    move_count(
+                        &mut next.active,
+                        Some(&mut next.cancelled),
+                        count,
+                        direction,
+                        transition,
+                        &metric_id,
+                    )?;
+                }
+            }
+            next.validate(&metric_id, total)?;
+            *counts = next;
+            Ok(())
+        })
     }
 
     /// Rejects writes after the owning progress operation has closed.
@@ -325,19 +282,116 @@ enum Direction {
     Rollback,
 }
 
-/// Immutable metadata and mutex-protected dynamic state for one handle.
+/// Immutable metadata and atomic dynamic state for one handle.
 struct MetricInner {
     /// Fixed metric definition supplied to the progress builder.
     metric: Metric,
-    /// Dynamic state guarded for transactional changes and snapshots.
-    state: Mutex<MetricState>,
+    /// Dynamic updates are serialized by this gate.
+    gate: CasCell,
+    /// Work that has started but is not terminal.
+    active: AtomicU64,
+    /// Terminal work without explicit success, failure, or cancellation.
+    completed_unclassified: AtomicU64,
+    /// Terminal work classified as successful.
+    succeeded: AtomicU64,
+    /// Terminal work classified as failed.
+    failed: AtomicU64,
+    /// Terminal work classified as cancelled.
+    cancelled: AtomicU64,
 }
 
-/// Dynamic metric counts stored only inside one metric transaction lock.
+impl MetricInner {
+    /// Builds one live metric inner state with zeroed counters.
+    fn new(metric: Metric) -> Self {
+        Self {
+            metric,
+            gate: CasCell::new(0),
+            active: AtomicU64::new(0),
+            completed_unclassified: AtomicU64::new(0),
+            succeeded: AtomicU64::new(0),
+            failed: AtomicU64::new(0),
+            cancelled: AtomicU64::new(0),
+        }
+    }
+
+    /// Runs one validated update while exclusively holding the gate.
+    fn with_update<R, F>(&self, mut update: F) -> Result<R, MetricError>
+    where
+        F: FnMut(&mut MetricCounts) -> Result<R, MetricError>,
+    {
+        let mut attempts = 0;
+        loop {
+            let version = self.gate.load();
+            if version & 1 != 0 {
+                wait_for_contention(attempts);
+                attempts += 1;
+                continue;
+            }
+
+            match self.gate.compare_set(version, version.wrapping_add(1)) {
+                Ok(()) => {
+                    let _guard = MetricGateGuard::new(&self.gate, version.wrapping_add(2));
+                    let mut counts = self.read_counts();
+                    let result = update(&mut counts);
+                    if result.is_ok() {
+                        self.write_counts(&counts);
+                    }
+                    return result;
+                }
+                Err(_) => {
+                    wait_for_contention(attempts);
+                    attempts += 1;
+                }
+            }
+        }
+    }
+
+    /// Reads all counter fields with acquire order and copies them by value.
+    fn read_counts(&self) -> MetricCounts {
+        MetricCounts {
+            active: self.active.load(Ordering::Acquire),
+            completed_unclassified: self.completed_unclassified.load(Ordering::Acquire),
+            succeeded: self.succeeded.load(Ordering::Acquire),
+            failed: self.failed.load(Ordering::Acquire),
+            cancelled: self.cancelled.load(Ordering::Acquire),
+        }
+    }
+
+    /// Writes all counter fields after successful validation.
+    fn write_counts(&self, counts: &MetricCounts) {
+        self.active.store(counts.active, Ordering::Release);
+        self.completed_unclassified
+            .store(counts.completed_unclassified, Ordering::Release);
+        self.succeeded.store(counts.succeeded, Ordering::Release);
+        self.failed.store(counts.failed, Ordering::Release);
+        self.cancelled.store(counts.cancelled, Ordering::Release);
+    }
+
+    /// Repeatedly reads counts and validates version stability.
+    fn snapshot_counts(&self) -> MetricCounts {
+        let mut attempts = 0;
+        loop {
+            let start = self.gate.load();
+            if start & 1 != 0 {
+                wait_for_contention(attempts);
+                attempts += 1;
+                continue;
+            }
+
+            let counts = self.read_counts();
+            if start == self.gate.load() {
+                return counts;
+            }
+
+            wait_for_contention(attempts);
+            attempts += 1;
+        }
+    }
+}
+
+/// Dynamic metric counts for a CAS transaction.
 #[derive(Clone, Copy)]
-struct MetricState {
-    /// Current optional total, mutable through the handle.
-    total: Option<u64>,
+struct MetricCounts {
     /// Work that has started but is not terminal.
     active: u64,
     /// Terminal work without explicit success, failure, or cancellation.
@@ -350,21 +404,9 @@ struct MetricState {
     cancelled: u64,
 }
 
-impl MetricState {
-    /// Creates a zeroed state carrying the builder-provided total.
-    const fn new(total: Option<u64>) -> Self {
-        Self {
-            total,
-            active: 0,
-            completed_unclassified: 0,
-            succeeded: 0,
-            failed: 0,
-            cancelled: 0,
-        }
-    }
-
+impl MetricCounts {
     /// Returns the derived public completed count with checked arithmetic.
-    fn completed(&self, metric_id: &str) -> Result<u64, MetricError> {
+    fn completed(self, metric_id: &str) -> Result<u64, MetricError> {
         self.completed_unclassified
             .checked_add(self.succeeded)
             .and_then(|value| value.checked_add(self.failed))
@@ -375,7 +417,7 @@ impl MetricState {
     }
 
     /// Returns active plus completed work with checked arithmetic.
-    fn occupied(&self, metric_id: &str) -> Result<u64, MetricError> {
+    fn occupied(self, metric_id: &str) -> Result<u64, MetricError> {
         self.completed(metric_id)?
             .checked_add(self.active)
             .ok_or_else(|| MetricError::CountOverflow {
@@ -384,9 +426,9 @@ impl MetricState {
     }
 
     /// Validates the aggregate conservation invariants for one pending state.
-    fn validate(&self, metric_id: &str) -> Result<(), MetricError> {
+    fn validate(self, metric_id: &str, total: Option<u64>) -> Result<(), MetricError> {
         let occupied = self.occupied(metric_id)?;
-        if let Some(total) = self.total
+        if let Some(total) = total
             && occupied > total
         {
             return Err(MetricError::TotalExceeded {
@@ -411,56 +453,75 @@ fn move_count(
     if matches!(direction, Direction::Rollback) {
         if let Some(terminal) = terminal {
             let available = *terminal;
-            *terminal = terminal.checked_sub(amount).ok_or_else(|| {
-                MetricError::InsufficientCount {
+            *terminal =
+                terminal
+                    .checked_sub(amount)
+                    .ok_or_else(|| MetricError::InsufficientCount {
+                        metric_id: metric_id.into(),
+                        transition,
+                        requested: amount,
+                        available,
+                    })?;
+            *active = active
+                .checked_add(amount)
+                .ok_or_else(|| MetricError::CountOverflow {
                     metric_id: metric_id.into(),
-                    transition,
-                    requested: amount,
-                    available,
-                }
-            })?;
-            *active = active.checked_add(amount).ok_or_else(|| {
-                MetricError::CountOverflow {
-                    metric_id: metric_id.into(),
-                }
-            })?;
+                })?;
         } else {
             let available = *active;
-            *active = active.checked_sub(amount).ok_or_else(|| {
-                MetricError::InsufficientCount {
+            *active = active
+                .checked_sub(amount)
+                .ok_or_else(|| MetricError::InsufficientCount {
                     metric_id: metric_id.into(),
                     transition,
                     requested: amount,
                     available,
-                }
-            })?;
+                })?;
         }
         return Ok(());
     }
 
     if let Some(terminal) = terminal {
         let available = *active;
-        *active = active.checked_sub(amount).ok_or_else(|| {
-            MetricError::InsufficientCount {
+        *active = active
+            .checked_sub(amount)
+            .ok_or_else(|| MetricError::InsufficientCount {
                 metric_id: metric_id.into(),
                 transition,
                 requested: amount,
                 available,
-            }
-        })?;
-        *terminal = terminal.checked_add(amount).ok_or_else(|| {
-            MetricError::CountOverflow {
+            })?;
+        *terminal = terminal
+            .checked_add(amount)
+            .ok_or_else(|| MetricError::CountOverflow {
                 metric_id: metric_id.into(),
-            }
-        })?;
+            })?;
     } else {
-        *active = active.checked_add(amount).ok_or_else(|| {
-            MetricError::CountOverflow {
+        *active = active
+            .checked_add(amount)
+            .ok_or_else(|| MetricError::CountOverflow {
                 metric_id: metric_id.into(),
-            }
-        })?;
+            })?;
     }
     Ok(())
+}
+
+/// RAII wrapper that always releases a locked gate.
+struct MetricGateGuard<'gate> {
+    gate: &'gate CasCell,
+    next_version: u64,
+}
+
+impl<'gate> MetricGateGuard<'gate> {
+    fn new(gate: &'gate CasCell, next_version: u64) -> Self {
+        Self { gate, next_version }
+    }
+}
+
+impl Drop for MetricGateGuard<'_> {
+    fn drop(&mut self) {
+        self.gate.store(self.next_version);
+    }
 }
 
 /// Immutable complete state for one metric in an emitted event.
@@ -487,19 +548,16 @@ pub struct MetricSnapshot {
 
 impl MetricSnapshot {
     /// Builds an immutable snapshot from one internally validated metric state.
-    fn from_state(
-        metric: &Metric,
-        state: MetricState,
-    ) -> Result<Self, MetricError> {
+    fn from_counts(metric: &Metric, counts: MetricCounts) -> Result<Self, MetricError> {
         Ok(Self {
             id: Arc::clone(&metric.id),
             name: Arc::clone(&metric.name),
-            total: state.total,
-            completed: state.completed(metric.id())?,
-            active: state.active,
-            succeeded: state.succeeded,
-            failed: state.failed,
-            cancelled: state.cancelled,
+            total: metric.total,
+            completed: counts.completed(metric.id())?,
+            active: counts.active,
+            succeeded: counts.succeeded,
+            failed: counts.failed,
+            cancelled: counts.cancelled,
         })
     }
     /// Returns the metric's stable ID.
@@ -596,9 +654,18 @@ impl<'de> Deserialize<'de> for MetricSnapshot {
             name: Arc::clone(&snapshot.name),
             total: snapshot.total,
         };
-        validate_metrics(&[metric]).map_err(serde::de::Error::custom)?;
-        validate_snapshot_counts(&snapshot)
-            .map_err(serde::de::Error::custom)?;
+        validate_metrics(std::slice::from_ref(&metric)).map_err(serde::de::Error::custom)?;
+        validate_snapshot_counts(&snapshot).map_err(serde::de::Error::custom)?;
         Ok(snapshot)
+    }
+}
+
+/// Busy-wait helper for writer contention and snapshot retries.
+#[inline]
+fn wait_for_contention(attempts: usize) {
+    if attempts > 0 && attempts % 16 == 0 {
+        thread::yield_now();
+    } else {
+        spin_loop();
     }
 }

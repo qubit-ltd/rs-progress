@@ -7,14 +7,7 @@
 // =============================================================================
 //! Validation behavior for fixed progress configuration.
 
-use qubit_progress::{
-    Metric,
-    NoopReporter,
-    Progress,
-    ProgressError,
-    Stage,
-    ValidationError,
-};
+use qubit_progress::{Metric, NoopReporter, Progress, ProgressError, Stage, ValidationError};
 
 /// Verifies that operations require at least one configured metric.
 #[test]

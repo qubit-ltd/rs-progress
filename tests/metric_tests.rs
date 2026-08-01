@@ -7,13 +7,7 @@
 // =============================================================================
 //! Behavioral coverage for stateful progress metrics.
 
-use qubit_progress::{
-    Metric,
-    MetricError,
-    MetricTransition,
-    NoopReporter,
-    Progress,
-};
+use qubit_progress::{Metric, MetricError, MetricTransition, NoopReporter, Progress};
 
 /// Verifies that constrained state transitions expose one coherent snapshot.
 #[test]
@@ -31,7 +25,7 @@ fn test_metric_handle_transitions_publish_one_consistent_snapshot() {
     tasks.succeed(2).expect("successful work must succeed");
     tasks.fail(1).expect("failed work must succeed");
 
-    let snapshot = tasks.snapshot().expect("metric snapshot must succeed");
+    let snapshot = tasks.snapshot();
     assert_eq!(snapshot.active(), 1);
     assert_eq!(snapshot.completed(), 3);
     assert_eq!(snapshot.succeeded(), 2);
@@ -42,8 +36,7 @@ fn test_metric_handle_transitions_publish_one_consistent_snapshot() {
 
 /// Verifies that explicit rollbacks affect only their matching state.
 #[test]
-fn test_metric_handle_rolls_back_matching_transitions_and_rejects_closed_updates()
- {
+fn test_metric_handle_rolls_back_matching_transitions_and_rejects_closed_updates() {
     let reporter = NoopReporter;
     let progress = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks").total(2))
@@ -62,7 +55,7 @@ fn test_metric_handle_rolls_back_matching_transitions_and_rejects_closed_updates
     tasks
         .rollback(MetricTransition::Complete, 1)
         .expect("completion must roll back");
-    let snapshot = tasks.snapshot().expect("snapshot must remain readable");
+    let snapshot = tasks.snapshot();
     assert_eq!(snapshot.active(), 2);
     assert_eq!(snapshot.completed(), 0);
 
@@ -108,7 +101,7 @@ fn test_metric_metadata_and_all_transition_directions() {
         .rollback(MetricTransition::Start, 6)
         .expect("start must reverse");
 
-    let snapshot = tasks.snapshot().expect("snapshot must succeed");
+    let snapshot = tasks.snapshot();
     assert_eq!(snapshot.id(), "tasks");
     assert_eq!(snapshot.name(), "Tasks");
     assert_eq!(snapshot.total(), Some(6));
@@ -120,22 +113,17 @@ fn test_metric_metadata_and_all_transition_directions() {
     assert_eq!(snapshot.completion_fraction(), Some(0.0));
 }
 
-/// Verifies dynamic totals reject occupied work and constrained transitions.
+/// Verifies configured totals and constrained transitions reject invalid work counts.
 #[test]
-fn test_metric_rejects_invalid_totals_and_counts() {
+fn test_metric_rejects_invalid_counts_and_overflow() {
     let reporter = NoopReporter;
     let progress = Progress::builder(&reporter)
-        .metric(Metric::new("tasks", "Tasks"))
+        .metric(Metric::new("tasks", "Tasks").total(2))
         .start()
         .expect("progress must start");
     let tasks = progress.metric("tasks").expect("metric must exist");
 
     tasks.start(2).expect("work must start");
-    assert!(matches!(
-        tasks.set_total(1),
-        Err(MetricError::TotalBelowOccupied { .. })
-    ));
-    tasks.set_total(2).expect("occupied total must be accepted");
     assert!(matches!(
         tasks.start(1),
         Err(MetricError::TotalExceeded { .. })
@@ -167,13 +155,7 @@ fn test_metric_rejects_invalid_totals_and_counts() {
         overflow.start(1),
         Err(MetricError::CountOverflow { .. })
     ));
-    assert_eq!(
-        overflow
-            .snapshot()
-            .expect("overflow snapshot must work")
-            .completion_fraction(),
-        None
-    );
+    assert_eq!(overflow.snapshot().completion_fraction(), None);
 }
 
 /// Verifies terminal count arithmetic accepts the largest representable count.
@@ -190,13 +172,7 @@ fn test_metric_accepts_maximum_terminal_count() {
     tasks
         .succeed(u64::MAX)
         .expect("maximum terminal count must succeed");
-    assert_eq!(
-        tasks
-            .snapshot()
-            .expect("maximum terminal snapshot must succeed")
-            .succeeded(),
-        u64::MAX,
-    );
+    assert_eq!(tasks.snapshot().succeeded(), u64::MAX,);
 }
 
 /// Verifies concurrent updates preserve a coherent aggregate snapshot.
@@ -219,7 +195,7 @@ fn test_metric_handle_concurrent_updates_preserve_snapshot_invariants() {
         }
     });
 
-    let snapshot = tasks.snapshot().expect("snapshot must succeed");
+    let snapshot = tasks.snapshot();
     assert_eq!(snapshot.active(), 0);
     assert_eq!(snapshot.completed(), 64);
     assert_eq!(snapshot.succeeded(), 64);

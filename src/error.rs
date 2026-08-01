@@ -8,12 +8,7 @@
 //! Error types for progress configuration and delivery.
 // qubit-style: allow multiple-public-types
 
-use std::{
-    error::Error,
-    fmt,
-    sync::Arc,
-    time::Duration,
-};
+use std::{error::Error, fmt, sync::Arc, time::Duration};
 
 /// Structured validation failure for progress configuration or snapshots.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -184,23 +179,9 @@ pub enum MetricError {
         /// Active plus completed work after the rejected transition.
         attempted: u64,
     },
-    /// A requested total is lower than active plus completed work.
-    TotalBelowOccupied {
-        /// Stable ID of the metric that rejected the total update.
-        metric_id: String,
-        /// Requested replacement total.
-        total: u64,
-        /// Active plus completed work already present.
-        occupied: u64,
-    },
     /// Arithmetic needed to preserve metric invariants overflowed.
     CountOverflow {
         /// Stable ID of the metric whose arithmetic overflowed.
-        metric_id: String,
-    },
-    /// A thread panicked while holding this metric's state lock.
-    StatePoisoned {
-        /// Stable ID of the metric whose state cannot be read safely.
         metric_id: String,
     },
 }
@@ -229,22 +210,8 @@ impl fmt::Display for MetricError {
                 formatter,
                 "metric {metric_id:?} would occupy {attempted} work items above total {total}"
             ),
-            Self::TotalBelowOccupied {
-                metric_id,
-                total,
-                occupied,
-            } => write!(
-                formatter,
-                "metric {metric_id:?} total {total} is below occupied work {occupied}"
-            ),
             Self::CountOverflow { metric_id } => {
                 write!(formatter, "counts for metric {metric_id:?} overflowed")
-            }
-            Self::StatePoisoned { metric_id } => {
-                write!(
-                    formatter,
-                    "state lock for metric {metric_id:?} is poisoned"
-                )
             }
         }
     }
@@ -257,13 +224,6 @@ impl Error for MetricError {}
 pub struct ReportError {
     source: Arc<dyn Error + Send + Sync + 'static>,
 }
-impl PartialEq for ReportError {
-    /// Compares the stable display representation of opaque reporter errors.
-    fn eq(&self, other: &Self) -> bool {
-        self.to_string() == other.to_string()
-    }
-}
-impl Eq for ReportError {}
 impl ReportError {
     /// Wraps a concrete reporter failure without discarding its source.
     pub fn new<E>(source: E) -> Self
@@ -296,7 +256,7 @@ impl Error for ReportError {
 }
 
 /// Complete error returned from non-terminal progress operations.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum ProgressError {
     /// Caller supplied invalid state.
     Validation(ValidationError),

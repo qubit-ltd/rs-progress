@@ -10,21 +10,11 @@
 use std::{
     error::Error,
     fmt,
-    sync::atomic::{
-        AtomicUsize,
-        Ordering,
-    },
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use qubit_progress::{
-    Event,
-    Metric,
-    MetricError,
-    MetricTransition,
-    Progress,
-    ProgressError,
-    ReportError,
-    Reporter,
+    Event, Metric, MetricError, MetricTransition, Progress, ProgressError, ReportError, Reporter,
     ValidationError,
 };
 
@@ -170,15 +160,7 @@ fn test_metric_errors_and_transitions_format_every_variant() {
             total: 1,
             attempted: 2,
         },
-        MetricError::TotalBelowOccupied {
-            metric_id: "tasks".into(),
-            total: 1,
-            occupied: 2,
-        },
         MetricError::CountOverflow {
-            metric_id: "tasks".into(),
-        },
-        MetricError::StatePoisoned {
             metric_id: "tasks".into(),
         },
     ];
@@ -227,10 +209,10 @@ fn test_progress_and_terminal_errors_preserve_sources() {
 
 /// Verifies message-backed errors expose the original text and error source.
 #[test]
-fn test_report_error_message_compares_and_exposes_source() {
+fn test_report_error_message_exposes_source() {
     let first = ReportError::message("sink unavailable");
     let second = ReportError::message("sink unavailable");
-    assert_eq!(first, second);
+    assert_eq!(first.to_string(), second.to_string(),);
     assert_eq!(first.to_string(), "sink unavailable");
     assert!(Error::source(&first).is_some());
 }

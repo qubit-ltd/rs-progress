@@ -9,19 +9,13 @@
 
 use std::collections::HashSet;
 
-use crate::{
-    Metric,
-    Stage,
-    ValidationError,
-};
+use crate::{Metric, Stage, ValidationError};
 
 #[cfg(feature = "serde")]
 use crate::MetricSnapshot;
 
 /// Validates the fixed metric configuration for one operation.
-pub(crate) fn validate_metrics(
-    metrics: &[Metric],
-) -> Result<(), ValidationError> {
+pub(crate) fn validate_metrics(metrics: &[Metric]) -> Result<(), ValidationError> {
     if metrics.is_empty() {
         return Err(ValidationError::NoMetrics);
     }
@@ -54,9 +48,7 @@ pub(crate) fn validate_stage(stage: &Stage) -> Result<(), ValidationError> {
     }
     match (stage.position, stage.total) {
         (None, None) => Ok(()),
-        (Some(position), Some(total)) if position > 0 && position <= total => {
-            Ok(())
-        }
+        (Some(position), Some(total)) if position > 0 && position <= total => Ok(()),
         (Some(position), Some(total)) => {
             Err(ValidationError::InvalidStagePosition { position, total })
         }
@@ -66,9 +58,7 @@ pub(crate) fn validate_stage(stage: &Stage) -> Result<(), ValidationError> {
 
 /// Validates one metric's dynamic counts against its configured total.
 #[cfg(feature = "serde")]
-pub(crate) fn validate_snapshot_counts(
-    snapshot: &MetricSnapshot,
-) -> Result<(), ValidationError> {
+pub(crate) fn validate_snapshot_counts(snapshot: &MetricSnapshot) -> Result<(), ValidationError> {
     let classified = snapshot
         .succeeded()
         .checked_add(snapshot.failed())
