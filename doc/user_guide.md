@@ -58,7 +58,7 @@ let elapsed = progress.finish()?;
 
 `start(count)` moves an unsigned quantity from not-started to active. `complete`, `succeed`, `fail`, and `cancel` move unsigned quantities from active to their respective completed states. To undo one of these moves, call `rollback(transition, count)` with the matching `MetricTransition`; it returns terminal work to active, or active work to not-started for `MetricTransition::Start`. All counts remain non-negative. When a total is known, `active + completed` cannot exceed it.
 
-The completed count includes unclassified completion, success, failure, and cancellation. The handle locks and validates each transition before committing it, so every emitted metric snapshot is internally consistent. Do not hide phase or stage information in counters: use `Stage` at startup, `set_stage` to replace it for future events, and `clear_stage` to remove it.
+The completed count includes unclassified completion, success, failure, and cancellation. The handle serializes and validates each transition before committing it, so every emitted metric snapshot is internally consistent. When an event contains multiple metrics, each metric snapshot is internally consistent, but the collection is not a globally atomic cross-metric view while the operation is running. Terminal events are stable after the operation closes. Do not hide phase or stage information in counters: use `Stage` at startup, `set_stage` to replace it for future events, and `clear_stage` to remove it.
 
 ## Close every operation
 
@@ -210,10 +210,10 @@ event invariants as runtime construction.
 ## Errors and shutdown
 
 Most non-terminal operations return `Result<(), ProgressError>`.
-`ProgressError` distinguishes validation failures, rejected metric
-transitions, and failures returned by the reporter. Do not ignore it: invalid
-state means no event was delivered, while a sink error means the delivery
-attempt failed.
+`ProgressError` distinguishes validation failures from failures returned by
+the reporter; metric-handle transitions return `MetricError` directly. Do not
+ignore these errors: invalid state means no event was delivered, while a sink
+error means the delivery attempt failed.
 
 Terminal methods return `Result<Duration, TerminalError>`. Inspect `TerminalError` when completion must be recorded reliably: it preserves elapsed time even when the final event cannot be delivered. For automatic reporting, `AutoReporter::stop()` returns background validation or reporter errors and resumes any worker panic on the caller thread.
 
