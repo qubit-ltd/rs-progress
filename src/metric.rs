@@ -2,6 +2,8 @@
 //    Copyright (c) 2025 - 2026 Haixing Hu.
 //
 //    SPDX-License-Identifier: Apache-2.0
+//
+//    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Metric configuration and immutable metric snapshots.
 // qubit-style: allow multiple-public-types
@@ -193,13 +195,13 @@ impl MetricHandle {
         direction: Direction,
     ) -> Result<(), MetricError> {
         self.ensure_open()?;
-        let metric_id = self.id().to_string();
+        let metric_id = self.id();
         let total = self.inner.metric.configured_total();
 
         self.inner.with_update(|counts| {
             if !self.operation_open.load(Ordering::Acquire) {
                 return Err(MetricError::Closed {
-                    metric_id: metric_id.clone(),
+                    metric_id: metric_id.into(),
                 });
             }
             let mut next = *counts;
@@ -211,7 +213,7 @@ impl MetricHandle {
                         count,
                         direction,
                         transition,
-                        &metric_id,
+                        metric_id,
                     )?;
                 }
                 MetricTransition::Complete => {
@@ -221,7 +223,7 @@ impl MetricHandle {
                         count,
                         direction,
                         transition,
-                        &metric_id,
+                        metric_id,
                     )?;
                 }
                 MetricTransition::Succeed => {
@@ -231,7 +233,7 @@ impl MetricHandle {
                         count,
                         direction,
                         transition,
-                        &metric_id,
+                        metric_id,
                     )?;
                 }
                 MetricTransition::Fail => {
@@ -241,7 +243,7 @@ impl MetricHandle {
                         count,
                         direction,
                         transition,
-                        &metric_id,
+                        metric_id,
                     )?;
                 }
                 MetricTransition::Cancel => {
@@ -251,11 +253,11 @@ impl MetricHandle {
                         count,
                         direction,
                         transition,
-                        &metric_id,
+                        metric_id,
                     )?;
                 }
             }
-            next.validate(&metric_id, total)?;
+            next.validate(metric_id, total)?;
             *counts = next;
             Ok(())
         })
