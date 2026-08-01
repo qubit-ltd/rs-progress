@@ -124,6 +124,16 @@ fn test_validation_errors_format_every_variant() {
         },
         ValidationError::OperationIdExhausted,
         ValidationError::SequenceExhausted,
+        ValidationError::ActiveWorkAtFinish {
+            metric_id: "tasks".into(),
+            active: 1,
+        },
+        ValidationError::IncompleteMetricTotal {
+            metric_id: "tasks".into(),
+            completed: 1,
+            total: 2,
+        },
+        ValidationError::IntervalOverflow,
     ];
 
     for error in errors {

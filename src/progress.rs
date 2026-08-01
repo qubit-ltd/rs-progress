@@ -58,15 +58,20 @@ impl<'reporter> ProgressBuilder<'reporter> {
     /// Validates configuration, samples enablement and emits Started when
     /// enabled.
     ///
-    /// Returns [`ProgressError::Validation`] for invalid fixed metadata and
+    /// Returns [`ProgressError::Validation`] for invalid fixed metadata or an
+    /// interval outside the representable [`Instant`] range, and
     /// [`ProgressError::Report`] when the reporter rejects Started.
     pub fn start(self) -> Result<Progress<'reporter>, ProgressError> {
         validate_metrics(&self.metrics)?;
         if let Some(stage) = &self.stage {
             validate_stage(stage)?;
         }
-        let enabled = self.reporter.is_enabled();
         let started_at = Instant::now();
+        let next_running_at = next_deadline(started_at, self.interval);
+        if !self.interval.is_zero() && next_running_at.is_none() {
+            return Err(ValidationError::IntervalOverflow.into());
+        }
+        let enabled = self.reporter.is_enabled();
         let operation_open = Arc::new(AtomicBool::new(true));
         let mut progress = Progress {
             reporter: self.reporter,
@@ -80,7 +85,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
             stage: self.stage,
             interval: self.interval,
             started_at,
-            next_running_at: next_deadline(started_at, self.interval),
+            next_running_at,
             operation_id: enabled.then(allocate_operation_id).transpose()?,
             next_sequence: 0,
         };
@@ -188,7 +193,26 @@ impl<'reporter> Progress<'reporter> {
         self.stage = None;
     }
     /// Consumes this operation and emits a successful terminal event.
+    ///
+    /// `Succeeded` records that the operation ended. This method intentionally
+    /// does not require active work to be zero or known totals to be complete;
+    /// use [`Progress::finish_checked`] when those checks are required.
     pub fn finish(self) -> Result<Duration, TerminalError> {
+        self.terminal(Phase::Succeeded)
+    }
+    /// Consumes this operation and emits a successful terminal event only when
+    /// no metric has active work and every known total has been completed.
+    ///
+    /// Unlike [`Progress::finish`], this method validates the metric state
+    /// before sending `Succeeded`. The operation is closed even when
+    /// validation fails, so callers must choose the appropriate terminal
+    /// method before invoking it.
+    pub fn finish_checked(self) -> Result<Duration, TerminalError> {
+        let elapsed = self.elapsed();
+        self.close();
+        if let Err(error) = self.validate_checked_finish() {
+            return Err(TerminalError::new(elapsed, error));
+        }
         self.terminal(Phase::Succeeded)
     }
     /// Consumes this operation and emits a failed terminal event.
@@ -217,6 +241,30 @@ impl<'reporter> Progress<'reporter> {
     /// Copies each metric into one independently consistent event snapshot.
     fn metric_snapshots(&self) -> Vec<MetricSnapshot> {
         self.metrics.iter().map(MetricHandle::snapshot).collect()
+    }
+    /// Validates the metric invariants required for checked success.
+    fn validate_checked_finish(&self) -> Result<(), ProgressError> {
+        for metric in &self.metrics {
+            let snapshot = metric.snapshot();
+            if snapshot.active() != 0 {
+                return Err(ValidationError::ActiveWorkAtFinish {
+                    metric_id: snapshot.id().to_owned(),
+                    active: snapshot.active(),
+                }
+                .into());
+            }
+            if let Some(total) = snapshot.total()
+                && snapshot.completed() != total
+            {
+                return Err(ValidationError::IncompleteMetricTotal {
+                    metric_id: snapshot.id().to_owned(),
+                    completed: snapshot.completed(),
+                    total,
+                }
+                .into());
+            }
+        }
+        Ok(())
     }
     /// Delivers one complete event after reserving its delivery sequence.
     fn send(
