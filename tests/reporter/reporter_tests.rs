@@ -8,12 +8,23 @@
 //! Reporter output and event serialization tests.
 
 use std::{
-    io::{self, Write},
-    panic::{AssertUnwindSafe, catch_unwind},
+    io::{
+        self,
+        Write,
+    },
+    panic::{
+        AssertUnwindSafe,
+        catch_unwind,
+    },
     sync::Mutex,
 };
 
-use qubit_progress::{Metric, Progress, Reporter, TextReporter};
+use qubit_progress::{
+    Metric,
+    Progress,
+    Reporter,
+    TextReporter,
+};
 
 /// Verifies that the text sink emits one complete event record per delivery.
 #[test]
@@ -127,10 +138,11 @@ fn test_json_lines_reporter_propagates_writer_failure() {
     assert!(error.to_string().contains("writer unavailable"));
 }
 
-/// Writer that accepts an event record and rejects the trailing delimiter.
-struct NewlineFailingWriter {
-    /// Number of writes accepted before returning an error.
-    writes: usize,
+/// Writer that records each complete write request.
+#[derive(Default)]
+struct WriteCallRecorder {
+    /// Buffers supplied to `write` in call order.
+    writes: Vec<Vec<u8>>,
 }
 
 /// Writer that panics while a reporter holds its mutex.
@@ -181,11 +193,6 @@ fn test_line_reporters_report_every_writer_shape() {
         .expect("text Vec writer must accept an event");
     assert!(TextReporter::new(FailingWriter).report(&event).is_err());
     assert!(
-        TextReporter::new(NewlineFailingWriter { writes: 0 })
-            .report(&event)
-            .is_err()
-    );
-    assert!(
         catch_unwind(AssertUnwindSafe(|| {
             let _ = TextReporter::new(PanickingWriter).report(&event);
         }))
@@ -201,11 +208,6 @@ fn test_line_reporters_report_every_writer_shape() {
             .expect("JSON Lines Vec writer must accept an event");
         assert!(
             JsonLinesReporter::new(FailingWriter)
-                .report(&event)
-                .is_err()
-        );
-        assert!(
-            JsonLinesReporter::new(NewlineFailingWriter { writes: 0 })
                 .report(&event)
                 .is_err()
         );
@@ -249,15 +251,11 @@ fn test_json_lines_reporter_into_inner_exposes_poisoned_writer() {
     assert!(reporter.into_inner().is_err());
 }
 
-impl Write for NewlineFailingWriter {
-    /// Rejects the newline write after accepting the serialized event bytes.
+impl Write for WriteCallRecorder {
+    /// Records the complete buffer passed to one write call.
     fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        self.writes += 1;
-        if self.writes == 1 {
-            Ok(buffer.len())
-        } else {
-            Err(io::Error::other("newline unavailable"))
-        }
+        self.writes.push(buffer.to_vec());
+        Ok(buffer.len())
     }
 
     /// Treats flushing as successful because no data is buffered.
@@ -266,41 +264,45 @@ impl Write for NewlineFailingWriter {
     }
 }
 
-/// Verifies both line reporters surface a trailing-newline write failure.
+/// Verifies TextReporter writes one complete newline-delimited record at once.
 #[test]
-fn test_text_reporter_propagates_newline_failure() {
-    let reporter = TextReporter::new(NewlineFailingWriter { writes: 0 });
-    let result = Progress::builder(&reporter)
-        .metric(Metric::new("tasks", "Tasks"))
-        .start();
-    let error = match result {
-        Ok(_) => panic!("newline delivery must fail"),
-        Err(error) => error,
-    };
-    assert!(error.to_string().contains("newline unavailable"));
+fn test_text_reporter_writes_complete_line_in_one_write() {
+    let event = create_started_event();
+    let reporter = TextReporter::new(WriteCallRecorder::default());
+    reporter
+        .report(&event)
+        .expect("recording writer must accept the text event");
+    let writer = reporter
+        .into_inner()
+        .expect("text reporter mutex must not be poisoned");
+    assert_eq!(writer.writes.len(), 1);
+    assert!(writer.writes[0].ends_with(b"\n"));
 }
 
-/// Verifies JSON Lines also reports a trailing-newline write failure.
+/// Verifies JSON Lines writes one complete newline-delimited record at once.
 #[cfg(feature = "json-lines")]
 #[test]
-fn test_json_lines_reporter_propagates_newline_failure() {
+fn test_json_lines_reporter_writes_complete_line_in_one_write() {
     use qubit_progress::JsonLinesReporter;
 
-    let reporter = JsonLinesReporter::new(NewlineFailingWriter { writes: 0 });
-    let result = Progress::builder(&reporter)
-        .metric(Metric::new("tasks", "Tasks"))
-        .start();
-    let error = match result {
-        Ok(_) => panic!("newline delivery must fail"),
-        Err(error) => error,
-    };
-    assert!(error.to_string().contains("newline unavailable"));
+    let event = create_started_event();
+    let reporter = JsonLinesReporter::new(WriteCallRecorder::default());
+    reporter
+        .report(&event)
+        .expect("recording writer must accept the JSON event");
+    let writer = reporter
+        .into_inner()
+        .expect("JSON Lines reporter mutex must not be poisoned");
+    assert_eq!(writer.writes.len(), 1);
+    assert!(writer.writes[0].ends_with(b"\n"));
 }
 
 /// Verifies NoopReporter accepts direct reporter calls.
 #[test]
 fn test_noop_reporter_accepts_direct_delivery() {
-    let reporter = |event: &qubit_progress::Event| qubit_progress::NoopReporter.report(event);
+    let reporter = |event: &qubit_progress::Event| {
+        qubit_progress::NoopReporter.report(event)
+    };
     let _ = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks"))
         .start()

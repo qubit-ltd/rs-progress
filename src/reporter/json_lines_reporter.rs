@@ -9,10 +9,17 @@
 
 use std::{
     io::Write,
-    sync::{Mutex, PoisonError},
+    sync::{
+        Mutex,
+        PoisonError,
+    },
 };
 
-use crate::{Event, ReportError, Reporter};
+use crate::{
+    Event,
+    ReportError,
+    Reporter,
+};
 
 /// Writes one complete event as one JSON line.
 pub struct JsonLinesReporter<W> {
@@ -44,12 +51,12 @@ where
 {
     /// Serializes one complete event and writes one newline-delimited record.
     fn report(&self, event: &Event) -> Result<(), ReportError> {
-        let encoded = serde_json::to_vec(event).map_err(ReportError::new)?;
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|_| ReportError::message("JSON Lines reporter mutex is poisoned"))?;
-        writer.write_all(&encoded).map_err(ReportError::new)?;
-        writer.write_all(b"\n").map_err(ReportError::new)
+        let mut encoded =
+            serde_json::to_vec(event).map_err(ReportError::new)?;
+        encoded.push(b'\n');
+        let mut writer = self.writer.lock().map_err(|_| {
+            ReportError::message("JSON Lines reporter mutex is poisoned")
+        })?;
+        writer.write_all(&encoded).map_err(ReportError::new)
     }
 }
