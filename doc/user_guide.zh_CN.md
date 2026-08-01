@@ -69,6 +69,24 @@ let elapsed = progress.finish()?;
 保持稳定。不要用计数表达阶段信息：在启动时使用 `Stage`，用 `set_stage` 替换后续
 事件的阶段，或用 `clear_stage` 清除它。
 
+### 注意复合更新的观测边界
+
+每个 `MetricHandle` 方法只完成一次原子状态转换，多个方法调用并不构成事务。
+例如，一个已完成的 chunk 中包含不同结果的 item，可以按以下方式记录：
+
+```rust
+let completed = 10;
+let succeeded = 8;
+items.start(completed)?;
+items.succeed(succeeded)?;
+items.complete(completed - succeeded)?;
+```
+
+自动上报器可能在这些调用之间观察到有效的中间快照，例如十个 item 全部处于
+active，或只有八个 item 已完成。因此，Running 事件不能被解释为原子业务事务。
+如果消费者需要权威的聚合结果，应使用终态事件，或者在 `MetricHandle` 之外同步
+业务更新与上报边界。
+
 ## 结束每次操作
 
 类型系统能够阻止第二个终态事件，但无法在业务操作返回错误时替应用选择结果。
@@ -234,3 +252,8 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 
 每种类型、错误变体、上报器特性和序列化细节，请参阅
 [docs.rs](https://docs.rs/qubit-progress) 生成的 API 文档。
+
+## TODO
+
+- 增加可选的稳定 operation correlation metadata，使共享 Reporter 能够把并发操作
+  关联到应用层的 job 或 request。

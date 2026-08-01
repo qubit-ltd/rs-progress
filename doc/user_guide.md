@@ -60,6 +60,26 @@ let elapsed = progress.finish()?;
 
 The completed count includes unclassified completion, success, failure, and cancellation. The handle serializes and validates each transition before committing it, so every emitted metric snapshot is internally consistent. When an event contains multiple metrics, each metric snapshot is internally consistent, but the collection is not a globally atomic cross-metric view while the operation is running. Terminal events are stable after the operation closes. Do not hide phase or stage information in counters: use `Stage` at startup, `set_stage` to replace it for future events, and `clear_stage` to remove it.
 
+### Observe compound updates carefully
+
+Each `MetricHandle` method is one atomic state transition, not a transaction
+across several method calls. For example, a completed chunk whose items have
+different outcomes may be recorded as:
+
+```rust
+let completed = 10;
+let succeeded = 8;
+items.start(completed)?;
+items.succeed(succeeded)?;
+items.complete(completed - succeeded)?;
+```
+
+An automatic reporter can observe a valid intermediate snapshot between these
+calls, such as all ten items being active or only eight being completed. Do not
+interpret a running event as an atomic business transaction. If a consumer
+needs an authoritative aggregate, use a terminal event or synchronize the
+business update and report boundary outside `MetricHandle`.
+
 ## Close every operation
 
 The type system prevents a second terminal event, but it cannot choose the
@@ -222,3 +242,8 @@ When the `serde` feature is enabled, deserializing `Stage`, `MetricSnapshot`, or
 ## Further reference
 
 See the generated API documentation on [docs.rs](https://docs.rs/qubit-progress) for every type, error variant, reporter feature, and serialization detail.
+
+## TODO
+
+- Add optional stable operation correlation metadata so shared reporters can
+  associate concurrent operations with an application-level job or request.
