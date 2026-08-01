@@ -9,9 +9,10 @@
 
 use std::sync::Mutex;
 
-use qubit_progress::{
-    Event, Metric, MetricSnapshot, Phase, Progress, ReportError, Reporter,
-};
+use qubit_progress::{Event, Metric, Phase, Progress, ReportError, Reporter};
+
+#[cfg(feature = "serde")]
+use qubit_progress::MetricSnapshot;
 
 #[cfg(feature = "serde")]
 use serde_json::json;
