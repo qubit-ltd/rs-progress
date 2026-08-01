@@ -9,15 +9,7 @@
 
 use std::sync::Mutex;
 
-use qubit_progress::{
-    Event,
-    Metric,
-    MetricSnapshot,
-    Phase,
-    Progress,
-    ReportError,
-    Reporter,
-};
+use qubit_progress::{Event, Metric, Phase, Progress, ReportError, Reporter};
 
 #[cfg(feature = "serde")]
 use serde_json::json;
@@ -122,8 +114,7 @@ fn test_event_json_deserializes_canonical_durations() {
             }],
             "elapsed": elapsed,
         });
-        let event: Event =
-            serde_json::from_value(value).expect("event JSON must deserialize");
+        let event: Event = serde_json::from_value(value).expect("event JSON must deserialize");
         assert_eq!(event.phase().as_str(), phase);
         assert_eq!(event.sequence(), sequence);
         assert_eq!(event.stage().expect("stage must exist").total(), Some(1));

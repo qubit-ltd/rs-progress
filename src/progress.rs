@@ -10,36 +10,15 @@
 
 use std::{
     sync::Arc,
-    sync::atomic::{
-        AtomicBool,
-        AtomicU64,
-        Ordering,
-    },
-    time::{
-        Duration,
-        Instant,
-    },
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    time::{Duration, Instant},
 };
 
 use crate::{
-    Event,
-    Metric,
-    MetricHandle,
-    MetricSnapshot,
-    Phase,
-    ProgressError,
-    Reporter,
-    Stage,
-    TerminalError,
-    ValidationError,
-    auto_reporter::{
-        self,
-        AutoReporter,
-    },
-    validation::{
-        validate_metrics,
-        validate_stage,
-    },
+    Event, Metric, MetricHandle, MetricSnapshot, Phase, ProgressError, Reporter, Stage,
+    TerminalError, ValidationError,
+    auto_reporter::{self, AutoReporter},
+    validation::{validate_metrics, validate_stage},
 };
 
 /// Process-local source of nonzero operation identifiers.
@@ -95,9 +74,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
             metrics: self
                 .metrics
                 .into_iter()
-                .map(|metric| {
-                    MetricHandle::new(metric, Arc::clone(&operation_open))
-                })
+                .map(|metric| MetricHandle::new(metric, Arc::clone(&operation_open)))
                 .collect(),
             operation_open,
             stage: self.stage,
@@ -108,7 +85,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
             next_sequence: 0,
         };
         if enabled {
-            let metrics = progress.metric_snapshots()?;
+            let metrics = progress.metric_snapshots();
             progress.send(Phase::Started, metrics, Duration::ZERO)?;
         }
         Ok(progress)
@@ -146,9 +123,7 @@ pub struct Progress<'reporter> {
 impl<'reporter> Progress<'reporter> {
     /// Creates a builder bound to one reporter.
     #[must_use]
-    pub fn builder(
-        reporter: &'reporter dyn Reporter,
-    ) -> ProgressBuilder<'reporter> {
+    pub fn builder(reporter: &'reporter dyn Reporter) -> ProgressBuilder<'reporter> {
         ProgressBuilder {
             reporter,
             interval: Duration::ZERO,
@@ -183,7 +158,7 @@ impl<'reporter> Progress<'reporter> {
         if !self.enabled {
             return Ok(());
         }
-        let metrics = self.metric_snapshots()?;
+        let metrics = self.metric_snapshots();
         let elapsed = self.elapsed();
         let result = self.send(Phase::Running, metrics, elapsed);
         self.reset_deadline();
@@ -239,12 +214,8 @@ impl<'reporter> Progress<'reporter> {
         auto_reporter::spawn(self, scope)
     }
     /// Copies each metric into one independently consistent event snapshot.
-    fn metric_snapshots(&self) -> Result<Vec<MetricSnapshot>, ProgressError> {
-        self.metrics
-            .iter()
-            .map(MetricHandle::snapshot)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ProgressError::from)
+    fn metric_snapshots(&self) -> Vec<MetricSnapshot> {
+        self.metrics.iter().map(MetricHandle::snapshot).collect()
     }
     /// Delivers one complete event after reserving its delivery sequence.
     fn send(
@@ -298,8 +269,7 @@ impl<'reporter> Progress<'reporter> {
         if !self.enabled {
             return Ok(elapsed);
         }
-        self.metric_snapshots()
-            .and_then(|metrics| self.send(phase, metrics, elapsed))
+        self.send(phase, self.metric_snapshots(), elapsed)
             .map(|()| elapsed)
             .map_err(|error| TerminalError::new(elapsed, error))
     }
@@ -332,12 +302,7 @@ fn allocate_operation_id() -> Result<u64, ValidationError> {
         }
         let next = current.checked_add(1).unwrap_or(0);
         if NEXT_OPERATION_ID
-            .compare_exchange_weak(
-                current,
-                next,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            )
+            .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
         {
             return Ok(current);

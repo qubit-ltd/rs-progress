@@ -7,23 +7,10 @@
 // =============================================================================
 //! Criterion benchmarks for the redesigned progress reporting paths.
 
-use std::{
-    hint::black_box,
-    thread,
-    time::Duration,
-};
+use std::{hint::black_box, thread, time::Duration};
 
-use criterion::{
-    Criterion,
-    criterion_group,
-    criterion_main,
-};
-use qubit_progress::{
-    Metric,
-    NoopReporter,
-    Progress,
-    ReportError,
-};
+use criterion::{Criterion, criterion_group, criterion_main};
+use qubit_progress::{Metric, NoopReporter, Progress, ReportError};
 
 /// Benchmarks the disabled report fast path.
 fn bench_disabled_report(criterion: &mut Criterion) {
@@ -161,12 +148,9 @@ fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
     thread::scope(|scope| {
         let auto = progress.spawn_auto_reporter(scope);
         let notifier = auto.notifier();
-        criterion.bench_function(
-            "heartbeat_auto_reporter_notification",
-            |bencher| {
-                bencher.iter(|| notifier.notify());
-            },
-        );
+        criterion.bench_function("heartbeat_auto_reporter_notification", |bencher| {
+            bencher.iter(|| notifier.notify());
+        });
         auto.stop().expect("heartbeat reporter must stop cleanly");
     });
 }

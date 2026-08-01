@@ -9,23 +9,12 @@
 
 use std::sync::{
     Mutex,
-    atomic::{
-        AtomicUsize,
-        Ordering,
-    },
+    atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
 use qubit_progress::{
-    Event,
-    Metric,
-    MetricError,
-    Phase,
-    Progress,
-    ProgressError,
-    ReportError,
-    Reporter,
-    Stage,
+    Event, Metric, MetricError, Phase, Progress, ProgressError, ReportError, Reporter, Stage,
     ValidationError,
 };
 
@@ -139,13 +128,7 @@ fn test_disabled_progress_tracks_metrics_without_delivery() {
         .finish()
         .expect("disabled terminal report must be a no-op");
 
-    assert_eq!(
-        tasks
-            .snapshot()
-            .expect("closed metric snapshot must remain readable")
-            .succeeded(),
-        1,
-    );
+    assert_eq!(tasks.snapshot().succeeded(), 1,);
     assert_eq!(reporter.reports.load(Ordering::Relaxed), 0);
 }
 
@@ -180,9 +163,9 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
         .start(1)
         .expect_err("occupied work beyond a known total must fail");
     assert!(matches!(error, MetricError::TotalExceeded { .. }));
-    progress.cancel().expect(
-        "a valid terminal snapshot must be accepted after validation failure",
-    );
+    progress
+        .cancel()
+        .expect("a valid terminal snapshot must be accepted after validation failure");
     assert_eq!(
         reporter
             .events()

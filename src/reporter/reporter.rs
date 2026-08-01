@@ -7,10 +7,7 @@
 // =============================================================================
 //! Reporter trait for complete immutable events.
 
-use crate::{
-    Event,
-    ReportError,
-};
+use crate::{Event, ReportError};
 
 /// Consumes complete immutable progress events.
 pub trait Reporter: Send + Sync {

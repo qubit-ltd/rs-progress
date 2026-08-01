@@ -7,12 +7,7 @@
 // =============================================================================
 //! Text reporter behavior for lifecycle counters.
 
-use qubit_progress::{
-    Metric,
-    Progress,
-    Stage,
-    TextReporter,
-};
+use qubit_progress::{Metric, Progress, Stage, TextReporter};
 
 /// Verifies that text output includes the cancelled metric count.
 #[test]
@@ -57,8 +52,6 @@ fn test_text_reporter_escapes_metadata_and_includes_stage_progress() {
     )
     .expect("text output must be UTF-8");
     assert_eq!(output.lines().count(), 1);
-    assert!(output.contains(
-        "stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"
-    ));
+    assert!(output.contains("stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"));
     assert!(output.contains("metric=tasks\\nall(Tasks\\rAll)"));
 }

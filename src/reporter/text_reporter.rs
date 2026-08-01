@@ -10,17 +10,10 @@
 use std::{
     fmt::Write as _,
     io::Write,
-    sync::{
-        Mutex,
-        PoisonError,
-    },
+    sync::{Mutex, PoisonError},
 };
 
-use crate::{
-    Event,
-    ReportError,
-    Reporter,
-};
+use crate::{Event, ReportError, Reporter};
 
 /// Writes one complete human-readable record for each reported event.
 pub struct TextReporter<W> {
@@ -53,9 +46,10 @@ where
     /// Formats and writes one complete event line under the writer lock.
     fn report(&self, event: &Event) -> Result<(), ReportError> {
         let line = format_event(event);
-        let mut writer = self.writer.lock().map_err(|_| {
-            ReportError::message("text reporter mutex is poisoned")
-        })?;
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| ReportError::message("text reporter mutex is poisoned"))?;
         writer
             .write_all(line.as_bytes())
             .map_err(ReportError::new)?;

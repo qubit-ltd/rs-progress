@@ -10,34 +10,16 @@
 
 use std::{
     marker::PhantomData,
-    panic::{
-        AssertUnwindSafe,
-        catch_unwind,
-        resume_unwind,
-    },
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::{
-        Arc,
-        Weak,
-        atomic::{
-            AtomicBool,
-            Ordering,
-        },
-        mpsc::{
-            Receiver,
-            SyncSender,
-            sync_channel,
-        },
+        Arc, Weak,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, SyncSender, sync_channel},
     },
-    thread::{
-        self,
-        ScopedJoinHandle,
-    },
+    thread::{self, ScopedJoinHandle},
 };
 
-use crate::{
-    Progress,
-    ProgressError,
-};
+use crate::{Progress, ProgressError};
 
 /// Handle controlling one scoped automatic reporter.
 #[must_use]
@@ -57,9 +39,10 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     #[must_use]
     pub fn notifier(&self) -> Notifier {
         Notifier {
-            inner: self.inner.as_ref().and_then(|inner| {
-                inner.notification_driven.then(|| Arc::downgrade(inner))
-            }),
+            inner: self
+                .inner
+                .as_ref()
+                .and_then(|inner| inner.notification_driven.then(|| Arc::downgrade(inner))),
         }
     }
 
@@ -92,10 +75,7 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     /// Joins the scoped worker once and returns either its result or panic.
     fn join_worker(
         &mut self,
-    ) -> Result<
-        Result<(), ProgressError>,
-        Box<dyn std::any::Any + Send + 'static>,
-    > {
+    ) -> Result<Result<(), ProgressError>, Box<dyn std::any::Any + Send + 'static>> {
         let Some(join) = self.join.take() else {
             return Ok(Ok(()));
         };

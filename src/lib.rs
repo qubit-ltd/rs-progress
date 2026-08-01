@@ -40,39 +40,16 @@ pub mod reporter;
 mod stage;
 mod validation;
 
-pub use auto_reporter::{
-    AutoReporter,
-    Notifier,
-    Status,
-};
+pub use auto_reporter::{AutoReporter, Notifier, Status};
 pub use error::{
-    MetricError,
-    MetricTransition,
-    ProgressError,
-    ReportError,
-    TerminalError,
-    ValidationError,
+    MetricError, MetricTransition, ProgressError, ReportError, TerminalError, ValidationError,
 };
-pub use event::{
-    Event,
-    Phase,
-};
-pub use metric::{
-    Metric,
-    MetricHandle,
-    MetricSnapshot,
-};
-pub use progress::{
-    Progress,
-    ProgressBuilder,
-};
+pub use event::{Event, Phase};
+pub use metric::{Metric, MetricHandle, MetricSnapshot};
+pub use progress::{Progress, ProgressBuilder};
 #[cfg(feature = "json-lines")]
 pub use reporter::JsonLinesReporter;
 #[cfg(feature = "log")]
 pub use reporter::LogReporter;
-pub use reporter::{
-    NoopReporter,
-    Reporter,
-    TextReporter,
-};
+pub use reporter::{NoopReporter, Reporter, TextReporter};
 pub use stage::Stage;

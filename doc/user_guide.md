@@ -56,7 +56,7 @@ let elapsed = progress.finish()?;
 
 ## Metric lifecycle and validation
 
-`start(count)` moves an unsigned quantity from not-started to active. `complete`, `succeed`, `fail`, and `cancel` move unsigned quantities from active to their respective completed states. To undo one of these moves, call `rollback(transition, count)` with the matching `MetricTransition`; it returns terminal work to active, or active work to not-started for `MetricTransition::Start`. All counts remain non-negative. When a total is known, `active + completed` cannot exceed it; `set_total` cannot lower the total below those occupied quantities.
+`start(count)` moves an unsigned quantity from not-started to active. `complete`, `succeed`, `fail`, and `cancel` move unsigned quantities from active to their respective completed states. To undo one of these moves, call `rollback(transition, count)` with the matching `MetricTransition`; it returns terminal work to active, or active work to not-started for `MetricTransition::Start`. All counts remain non-negative. When a total is known, `active + completed` cannot exceed it.
 
 The completed count includes unclassified completion, success, failure, and cancellation. The handle locks and validates each transition before committing it, so every emitted metric snapshot is internally consistent. Do not hide phase or stage information in counters: use `Stage` at startup, `set_stage` to replace it for future events, and `clear_stage` to remove it.
 

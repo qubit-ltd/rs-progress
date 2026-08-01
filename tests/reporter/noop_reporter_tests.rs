@@ -7,11 +7,7 @@
 // =============================================================================
 //! No-op reporter behavior.
 
-use qubit_progress::{
-    Metric,
-    NoopReporter,
-    Progress,
-};
+use qubit_progress::{Metric, NoopReporter, Progress};
 
 /// Verifies that the no-op reporter disables delivery but keeps metric state.
 #[test]
@@ -27,11 +23,5 @@ fn test_noop_reporter_preserves_metric_state_without_events() {
     tasks.start(1).expect("work must start");
     tasks.succeed(1).expect("work must succeed");
     progress.finish().expect("disabled progress must finish");
-    assert_eq!(
-        tasks
-            .snapshot()
-            .expect("closed metric remains readable")
-            .completed(),
-        1,
-    );
+    assert_eq!(tasks.snapshot().completed(), 1,);
 }
