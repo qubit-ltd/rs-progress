@@ -87,6 +87,132 @@ fn test_progress_carries_configured_total_in_every_event() {
     }
 }
 
+/// Verifies that the permissive finish behavior remains available.
+#[test]
+fn test_progress_finish_allows_incomplete_metrics() {
+    let reporter = RecordingReporter::default();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks").total(2))
+        .start()
+        .expect("progress run must start");
+
+    progress
+        .finish()
+        .expect("permissive finish must allow incomplete metrics");
+    assert_eq!(
+        reporter.events().last().expect("terminal event").phase(),
+        Phase::Succeeded
+    );
+}
+
+/// Verifies that checked finish rejects work that remains active.
+#[test]
+fn test_progress_finish_checked_requires_active_work_to_be_zero() {
+    let reporter = RecordingReporter::default();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks").total(1))
+        .start()
+        .expect("progress run must start");
+    let tasks = progress
+        .metric("tasks")
+        .expect("configured metric must exist");
+    tasks.start(1).expect("work must start");
+
+    let error = progress
+        .finish_checked()
+        .expect_err("checked finish must reject active work");
+    assert!(matches!(
+        error.progress_error(),
+        ProgressError::Validation(ValidationError::ActiveWorkAtFinish {
+            metric_id,
+            active: 1,
+        }) if metric_id == "tasks"
+    ));
+    assert_eq!(reporter.events().len(), 1);
+    assert!(matches!(
+        tasks.start(1),
+        Err(MetricError::Closed { metric_id }) if metric_id == "tasks"
+    ));
+}
+
+/// Verifies that checked finish rejects an incompletely satisfied known total.
+#[test]
+fn test_progress_finish_checked_requires_known_total_to_be_completed() {
+    let reporter = RecordingReporter::default();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks").total(2))
+        .start()
+        .expect("progress run must start");
+    let tasks = progress
+        .metric("tasks")
+        .expect("configured metric must exist");
+    tasks.start(1).expect("work must start");
+    tasks.succeed(1).expect("work must succeed");
+
+    let error = progress
+        .finish_checked()
+        .expect_err("checked finish must reject an incomplete total");
+    assert!(matches!(
+        error.progress_error(),
+        ProgressError::Validation(ValidationError::IncompleteMetricTotal {
+            metric_id,
+            completed: 1,
+            total: 2,
+        }) if metric_id == "tasks"
+    ));
+    assert_eq!(reporter.events().len(), 1);
+}
+
+/// Verifies that checked finish accepts complete known and unknown totals.
+#[test]
+fn test_progress_finish_checked_accepts_complete_known_and_unknown_metrics() {
+    let reporter = RecordingReporter::default();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks").total(1))
+        .metric(Metric::new("bytes", "Bytes"))
+        .start()
+        .expect("progress run must start");
+    let tasks = progress
+        .metric("tasks")
+        .expect("configured task metric must exist");
+    tasks.start(1).expect("task must start");
+    tasks.succeed(1).expect("task must succeed");
+    let bytes = progress
+        .metric("bytes")
+        .expect("configured byte metric must exist");
+    bytes.start(4).expect("bytes must start");
+    bytes.complete(4).expect("bytes must complete");
+
+    progress
+        .finish_checked()
+        .expect("complete metrics must pass checked finish");
+    assert_eq!(
+        reporter.events().last().expect("terminal event").phase(),
+        Phase::Succeeded
+    );
+}
+
+/// Verifies that an interval outside the representable `Instant` range is
+/// rejected before the operation starts.
+#[test]
+fn test_progress_rejects_interval_that_instant_cannot_represent() {
+    let reporter = RecordingReporter::default();
+    let result = Progress::builder(&reporter)
+        .interval(Duration::MAX)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start();
+    let error = match result {
+        Ok(_) => panic!("unrepresentable report interval must be rejected"),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        ProgressError::Validation(ValidationError::IntervalOverflow)
+    ));
+    assert!(reporter.events().is_empty());
+}
+
 /// Reporter whose sampled enablement is disabled and whose calls are counted.
 struct DisabledReporter {
     /// Counts attempted deliveries.

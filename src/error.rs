@@ -68,6 +68,24 @@ pub enum ValidationError {
     OperationIdExhausted,
     /// The event sequence space for one operation has been exhausted.
     SequenceExhausted,
+    /// Active work remains when checked success is requested.
+    ActiveWorkAtFinish {
+        /// Metric with work that is still active.
+        metric_id: String,
+        /// Number of active work items.
+        active: u64,
+    },
+    /// A known metric total has not been fully completed at checked success.
+    IncompleteMetricTotal {
+        /// Metric whose configured total was not reached.
+        metric_id: String,
+        /// Number of completed work items.
+        completed: u64,
+        /// Configured total.
+        total: u64,
+    },
+    /// The report interval cannot be represented by [`std::time::Instant`].
+    IntervalOverflow,
 }
 
 impl fmt::Display for ValidationError {
@@ -118,6 +136,22 @@ impl fmt::Display for ValidationError {
             Self::SequenceExhausted => {
                 write!(formatter, "progress event sequence is exhausted")
             }
+            Self::ActiveWorkAtFinish { metric_id, active } => write!(
+                formatter,
+                "metric {metric_id:?} still has {active} active work items at checked finish"
+            ),
+            Self::IncompleteMetricTotal {
+                metric_id,
+                completed,
+                total,
+            } => write!(
+                formatter,
+                "metric {metric_id:?} completed {completed} work items but total is {total}"
+            ),
+            Self::IntervalOverflow => write!(
+                formatter,
+                "progress report interval cannot be represented by Instant"
+            ),
         }
     }
 }
@@ -255,7 +289,8 @@ impl Error for ReportError {
     }
 }
 
-/// Complete error returned from non-terminal progress operations.
+/// Complete error returned from progress operations other than terminal
+/// delivery, and from checked terminal validation.
 #[derive(Clone, Debug)]
 pub enum ProgressError {
     /// Caller supplied invalid state.
@@ -292,7 +327,7 @@ impl From<ReportError> for ProgressError {
     }
 }
 
-/// Terminal delivery failure paired with the elapsed operation time.
+/// Terminal operation failure paired with the elapsed operation time.
 #[derive(Debug)]
 pub struct TerminalError {
     elapsed: Duration,
