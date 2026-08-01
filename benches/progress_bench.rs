@@ -168,7 +168,7 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
             |bencher, &workers| {
                 bencher.iter(|| {
                     let reporter = NoopReporter;
-                    let mut progress = Progress::builder(&reporter)
+                    let progress = Progress::builder(&reporter)
                         .metric(Metric::new("entries", "Entries").total(total))
                         .start()
                         .expect("enabled progress must start");
