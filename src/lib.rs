@@ -58,8 +58,9 @@ mod validation;
 
 pub use auto_reporter::{AutoReporter, AutoReporterStatus, ProgressNotifier};
 pub use error::{
-    CompletionError, ConfigurationError, DeliveryError, EmissionError, FinishError, MetricError,
-    MetricTransition, ReporterError, StartError, TerminalError,
+    AutoReporterError, CompletionError, ConfigurationError, DeliveryError, EmissionError,
+    FinishError, MetricError, MetricTransition, ReporterError, StartError, TerminalError,
+    WorkerPanic,
 };
 pub use event::{Event, Phase};
 pub use internal::OperationLifecycle;

@@ -198,7 +198,7 @@ let mut progress = Progress::builder(&reporter)
     .start()?;
 let files = progress.metric("files").expect("configured metric must exist");
 
-thread::scope(|scope| -> Result<(), qubit_progress::EmissionError> {
+thread::scope(|scope| -> Result<(), qubit_progress::AutoReporterError> {
     let auto = progress.spawn_auto_reporter(scope);
     let status = auto.status();
     let notifier = auto.notifier();
@@ -231,7 +231,8 @@ runtime until a dedicated async driver is added.
 `AutoReporterStatus::is_failed()` becomes true when the background reporter exits with an
 error or panic. Workers can observe a cloned `AutoReporterStatus` to stop expensive work
 early, but `stop()` remains authoritative: it joins the thread, returns its
-validation or reporter error, and resumes a panic on the caller thread.
+validation or reporter error, or a structured worker panic. Dropping the handle
+still stops and joins the worker without propagating a panic.
 
 ## Disabled operations
 
@@ -272,7 +273,7 @@ the delivery attempt failed. `finish()` returns `FinishError`; recover
 `CompletionError` by repairing the returned operation, or inspect
 `TerminalError` when terminal delivery fails.
 
-Terminal methods return `Result<Duration, TerminalError>`. Inspect `TerminalError` when completion must be recorded reliably: it preserves elapsed time even when the final event cannot be delivered. For automatic reporting, `AutoReporter::stop()` returns `EmissionError` and resumes any worker panic on the caller thread.
+Terminal methods return `Result<Duration, TerminalError>`. Inspect `TerminalError` when completion must be recorded reliably: it preserves elapsed time even when the final event cannot be delivered. For automatic reporting, `AutoReporter::stop()` returns `AutoReporterError`, whose `Emission` variant carries a normal delivery failure and whose `Panicked` variant preserves the worker panic payload. `Drop` remains panic-free and is intended for best-effort cleanup.
 
 When the `serde` feature is enabled, deserializing `Stage`, `MetricSnapshot`, or `Event` validates the same metadata and count invariants used by live progress operations. Treat a deserialization error as invalid external progress data rather than a recoverable event state.
 

@@ -19,7 +19,7 @@ use std::{
     thread::{self, ScopedJoinHandle},
 };
 
-use crate::{EmissionError, Progress};
+use crate::{AutoReporterError, EmissionError, Progress, WorkerPanic};
 
 /// Handle controlling one scoped automatic reporter.
 #[must_use]
@@ -54,13 +54,18 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
 
     /// Stops, joins and returns the background report result.
     ///
-    /// A reporter or snapshot error is returned. A worker panic is resumed on
-    /// the calling thread after joining.
-    pub fn stop(mut self) -> Result<(), EmissionError> {
+    /// A reporter or snapshot error is returned as
+    /// [`AutoReporterError::Emission`]. A worker panic is captured as
+    /// [`AutoReporterError::Panicked`] after the worker has been joined.
+    ///
+    /// # Errors
+    ///
+    /// Returns a reporter emission failure or a structured worker panic.
+    pub fn stop(mut self) -> Result<(), AutoReporterError> {
         self.signal_stop();
         match self.join_worker() {
-            Ok(result) => result,
-            Err(payload) => resume_unwind(payload),
+            Ok(result) => result.map_err(AutoReporterError::Emission),
+            Err(panic) => Err(AutoReporterError::Panicked(panic)),
         }
     }
 
@@ -75,11 +80,11 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     /// Joins the scoped worker once and returns either its result or panic.
     fn join_worker(
         &mut self,
-    ) -> Result<Result<(), EmissionError>, Box<dyn std::any::Any + Send + 'static>> {
+    ) -> Result<Result<(), EmissionError>, WorkerPanic> {
         let Some(join) = self.join.take() else {
             return Ok(Ok(()));
         };
-        join.join()
+        join.join().map_err(WorkerPanic::new)
     }
 }
 
@@ -90,8 +95,7 @@ impl Drop for AutoReporter<'_, '_> {
         match self.join_worker() {
             Ok(Ok(())) => {}
             Ok(Err(_)) => self.status.mark_failed(),
-            Err(payload) if !thread::panicking() => resume_unwind(payload),
-            Err(_) => {}
+            Err(_) => self.status.mark_failed(),
         }
     }
 }
