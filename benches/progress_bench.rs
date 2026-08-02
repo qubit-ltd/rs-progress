@@ -9,28 +9,13 @@
 
 use std::{
     hint::black_box,
-    sync::{
-        Arc,
-        Mutex,
-    },
+    sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
 
-use criterion::{
-    BatchSize,
-    BenchmarkId,
-    Criterion,
-    Throughput,
-    criterion_group,
-    criterion_main,
-};
-use qubit_progress::{
-    Metric,
-    NoopReporter,
-    Progress,
-    ReportError,
-};
+use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use qubit_progress::{Metric, NoopReporter, Progress, ReporterError};
 
 /// Benchmarks the disabled report fast path.
 fn bench_disabled_report(criterion: &mut Criterion) {
@@ -55,7 +40,7 @@ fn bench_disabled_report(criterion: &mut Criterion) {
 fn bench_enabled_report(criterion: &mut Criterion) {
     let reporter = |event: &qubit_progress::Event| {
         black_box(event);
-        Ok::<(), ReportError>(())
+        Ok::<(), ReporterError>(())
     };
     let mut progress = Progress::builder(&reporter)
         .metric(Metric::new("entries", "Entries").total(1))
@@ -79,7 +64,7 @@ fn bench_enabled_report(criterion: &mut Criterion) {
 fn bench_not_due_report(criterion: &mut Criterion) {
     let reporter = |event: &qubit_progress::Event| {
         black_box(event);
-        Ok::<(), ReportError>(())
+        Ok::<(), ReporterError>(())
     };
     let mut progress = Progress::builder(&reporter)
         .interval(Duration::from_secs(60))
@@ -99,7 +84,7 @@ fn bench_not_due_report(criterion: &mut Criterion) {
 fn bench_multi_metric_terminal(criterion: &mut Criterion) {
     let reporter = |event: &qubit_progress::Event| {
         black_box(event);
-        Ok::<(), ReportError>(())
+        Ok::<(), ReporterError>(())
     };
     criterion.bench_function("multi_metric_terminal", |bencher| {
         bencher.iter(|| {
@@ -157,7 +142,7 @@ fn bench_disabled_auto_reporter_status(criterion: &mut Criterion) {
 fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
     let reporter = |event: &qubit_progress::Event| {
         black_box(event);
-        Ok::<(), ReportError>(())
+        Ok::<(), ReporterError>(())
     };
     let mut progress = Progress::builder(&reporter)
         .interval(Duration::from_secs(60))
@@ -168,14 +153,92 @@ fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
     thread::scope(|scope| {
         let auto = progress.spawn_auto_reporter(scope);
         let notifier = auto.notifier();
-        criterion.bench_function(
-            "heartbeat_auto_reporter_notification",
-            |bencher| {
-                bencher.iter(|| notifier.notify());
-            },
-        );
+        criterion.bench_function("heartbeat_auto_reporter_notification", |bencher| {
+            bencher.iter(|| notifier.notify());
+        });
         auto.stop().expect("heartbeat reporter must stop cleanly");
     });
+}
+
+/// Measures the lifecycle cost of one enabled automatic reporter thread.
+fn bench_enabled_auto_reporter_spawn_stop(criterion: &mut Criterion) {
+    let reporter = |event: &qubit_progress::Event| {
+        black_box(event);
+        Ok::<(), ReporterError>(())
+    };
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::from_secs(60))
+        .metric(Metric::new("entries", "Entries"))
+        .start()
+        .expect("enabled progress must start");
+
+    criterion.bench_function("enabled_auto_reporter_spawn_stop", |bencher| {
+        bencher.iter(|| {
+            thread::scope(|scope| {
+                let auto = progress.spawn_auto_reporter(scope);
+                auto.stop().expect("auto reporter must stop cleanly");
+            });
+        });
+    });
+    progress.cancel().expect("terminal event must report");
+}
+
+/// Measures worker fan-in through one automatic reporter and one shared metric.
+fn bench_auto_reporter_worker_fan_in(criterion: &mut Criterion) {
+    const UPDATES_PER_WORKER: u64 = 256;
+    let reporter = |event: &qubit_progress::Event| {
+        black_box(event);
+        Ok::<(), ReporterError>(())
+    };
+    let mut group = criterion.benchmark_group("auto_reporter_worker_fan_in");
+    for workers in [1usize, 2, 4, 8, 16, 32, 64] {
+        let total = UPDATES_PER_WORKER * workers as u64;
+        group.throughput(Throughput::Elements(total));
+        group.bench_with_input(
+            BenchmarkId::new("auto_reporter_worker_fan_in", workers),
+            &workers,
+            |bencher, &workers| {
+                bencher.iter_batched(
+                    || {
+                        let progress = Progress::builder(&reporter)
+                            .interval(Duration::ZERO)
+                            .metric(Metric::new("entries", "Entries").total(total))
+                            .start()
+                            .expect("enabled progress must start");
+                        let metric = progress
+                            .metric("entries")
+                            .expect("configured metric must exist");
+                        metric.start(total).expect("metric start must succeed");
+                        (progress, metric)
+                    },
+                    |(mut progress, metric)| {
+                        thread::scope(|scope| {
+                            let auto = progress.spawn_auto_reporter(scope);
+                            let notifier = auto.notifier();
+                            let mut handles = Vec::with_capacity(workers);
+                            for _ in 0..workers {
+                                let metric = metric.clone();
+                                let notifier = notifier.clone();
+                                handles.push(scope.spawn(move || {
+                                    metric
+                                        .complete(UPDATES_PER_WORKER)
+                                        .expect("metric update must succeed");
+                                    notifier.notify();
+                                }));
+                            }
+                            for handle in handles {
+                                handle.join().expect("worker must finish");
+                            }
+                            auto.stop().expect("auto reporter must stop cleanly");
+                        });
+                        black_box(metric.snapshot());
+                    },
+                    BatchSize::SmallInput,
+                );
+            },
+        );
+    }
+    group.finish();
 }
 
 /// Benchmarks concurrent metric updates after setup has been removed from
@@ -209,9 +272,7 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
                                 let metric = metric.clone();
                                 scope.spawn(move || {
                                     for _ in 0..UPDATES_PER_WORKER {
-                                        metric
-                                            .complete(1)
-                                            .expect("metric update must succeed");
+                                        metric.complete(1).expect("metric update must succeed");
                                     }
                                 });
                             }
@@ -268,9 +329,8 @@ fn bench_mutex_metric_contention(criterion: &mut Criterion) {
                                 let state = Arc::clone(&state);
                                 scope.spawn(move || {
                                     for _ in 0..UPDATES_PER_WORKER {
-                                        let mut state = state
-                                            .lock()
-                                            .expect("mutex must not poison");
+                                        let mut state =
+                                            state.lock().expect("mutex must not poison");
                                         state.active -= 1;
                                         state.completed_unclassified += 1;
                                     }
@@ -302,6 +362,8 @@ criterion_group!(
     bench_multi_metric_terminal,
     bench_disabled_auto_reporter_status,
     bench_heartbeat_auto_reporter_notification,
+    bench_enabled_auto_reporter_spawn_stop,
+    bench_auto_reporter_worker_fan_in,
     bench_metric_handle_contention,
     bench_mutex_metric_contention
 );

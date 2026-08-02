@@ -7,7 +7,9 @@
 // =============================================================================
 //! Behavioral coverage for stateful progress metrics.
 
-use qubit_progress::{Metric, MetricError, MetricTransition, NoopReporter, Progress};
+use qubit_progress::{
+    Metric, MetricError, MetricTransition, NoopReporter, OperationLifecycle, Progress,
+};
 
 /// Verifies that constrained state transitions expose one coherent snapshot.
 #[test]
@@ -60,7 +62,13 @@ fn test_metric_handle_rolls_back_matching_transitions_and_rejects_closed_updates
     assert_eq!(snapshot.completed(), 0);
 
     drop(progress);
-    assert!(matches!(tasks.start(1), Err(MetricError::Closed { .. })));
+    assert!(matches!(
+        tasks.start(1),
+        Err(MetricError::OperationNotOpen {
+            state: OperationLifecycle::Closed,
+            ..
+        })
+    ));
 }
 
 /// Verifies metric metadata and every public forward and rollback transition.

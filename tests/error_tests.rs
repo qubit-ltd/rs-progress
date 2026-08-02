@@ -14,16 +14,14 @@ use std::{
 };
 
 use qubit_progress::{
-    Event, Metric, MetricError, MetricTransition, Progress, ProgressError, ReportError, Reporter,
-    ValidationError,
+    CompletionError, ConfigurationError, EmissionError, Event, FinishError, Metric, MetricError,
+    MetricTransition, OperationLifecycle, Progress, Reporter, ReporterError, StartError,
 };
 
-/// Error type used to verify that clones preserve the original error object.
 #[derive(Debug)]
 struct OriginalReporterError;
 
 impl fmt::Display for OriginalReporterError {
-    /// Formats the stable test error message.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("original reporter error")
     }
@@ -31,14 +29,11 @@ impl fmt::Display for OriginalReporterError {
 
 impl Error for OriginalReporterError {}
 
-/// Reporter that accepts Started and rejects the terminal event.
 struct TerminalFailingReporter {
-    /// Number of delivery attempts observed by this reporter.
     attempts: AtomicUsize,
 }
 
 impl TerminalFailingReporter {
-    /// Creates a reporter that fails after accepting Started.
     const fn new() -> Self {
         Self {
             attempts: AtomicUsize::new(0),
@@ -47,117 +42,87 @@ impl TerminalFailingReporter {
 }
 
 impl Reporter for TerminalFailingReporter {
-    /// Rejects every event after the first Started delivery.
-    fn report(&self, _event: &Event) -> Result<(), ReportError> {
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         if self.attempts.fetch_add(1, Ordering::Relaxed) == 0 {
             Ok(())
         } else {
-            Err(ReportError::message("terminal delivery failed"))
+            Err(ReporterError::message("terminal delivery failed"))
         }
     }
 }
 
-/// Verifies that cloning a reporter error retains its concrete source type.
 #[test]
-fn test_report_error_clone_preserves_original_source() {
-    let original = ReportError::new(OriginalReporterError);
+fn test_reporter_error_clone_preserves_original_source() {
+    let original = ReporterError::new(OriginalReporterError);
     let cloned = original.clone();
-
     assert!(
         cloned
             .source_error()
             .downcast_ref::<OriginalReporterError>()
-            .is_some(),
-        "cloned reporter error must retain the original error source",
+            .is_some()
     );
 }
 
-/// Verifies that terminal errors return elapsed time and the original cause.
 #[test]
-fn test_terminal_error_into_parts_returns_elapsed_and_progress_error() {
+fn test_terminal_error_retains_elapsed_and_emission_source() {
     let reporter = TerminalFailingReporter::new();
-    let progress = Progress::builder(&reporter)
+    let error = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks"))
         .start()
-        .expect("Started event must succeed");
-
-    let error = progress
+        .expect("Started event must succeed")
         .finish()
         .expect_err("terminal reporter failure must be retained");
-    let expected_elapsed = error.elapsed();
-    let (elapsed, progress_error) = error.into_parts();
-
-    assert_eq!(elapsed, expected_elapsed);
-    assert!(matches!(progress_error, ProgressError::Report(_)));
+    let FinishError::Terminal(terminal) = error else {
+        panic!("terminal delivery must produce FinishError::Terminal");
+    };
+    let (elapsed, emission) = terminal.into_parts();
+    assert!(elapsed < std::time::Duration::from_secs(1));
+    assert!(matches!(emission, EmissionError::Delivery(_)));
 }
 
-/// Verifies that every public validation error has a stable explanation.
 #[test]
-fn test_validation_errors_format_every_variant() {
-    let errors = [
-        ValidationError::NoMetrics,
-        ValidationError::EmptyMetricId { index: 3 },
-        ValidationError::EmptyMetricName {
+fn test_public_error_variants_format() {
+    let configuration = [
+        ConfigurationError::NoMetrics,
+        ConfigurationError::EmptyMetricId { index: 3 },
+        ConfigurationError::EmptyMetricName {
             metric_id: "tasks".into(),
         },
-        ValidationError::DuplicateMetricId {
+        ConfigurationError::DuplicateMetricId {
             metric_id: "tasks".into(),
         },
-        ValidationError::CountOverflow {
-            metric_id: "tasks".into(),
-        },
-        ValidationError::ClassifiedExceedsCompleted {
-            metric_id: "tasks".into(),
-        },
-        ValidationError::CountsExceedTotal {
-            metric_id: "tasks".into(),
-        },
-        ValidationError::NonZeroCountsForZeroTotal {
-            metric_id: "tasks".into(),
-        },
-        ValidationError::EmptyStageId,
-        ValidationError::EmptyStageName,
-        ValidationError::IncompleteStagePosition,
-        ValidationError::InvalidStagePosition {
+        ConfigurationError::EmptyStageId,
+        ConfigurationError::EmptyStageName,
+        ConfigurationError::IncompleteStagePosition,
+        ConfigurationError::InvalidStagePosition {
             position: 3,
             total: 2,
         },
-        ValidationError::OperationIdExhausted,
-        ValidationError::SequenceExhausted,
-        ValidationError::ActiveWorkAtFinish {
+    ];
+    for error in configuration {
+        assert!(!error.to_string().is_empty());
+        assert!(Error::source(&error).is_none());
+    }
+
+    let completion = [
+        CompletionError::ActiveWork {
             metric_id: "tasks".into(),
             active: 1,
         },
-        ValidationError::IncompleteMetricTotal {
+        CompletionError::IncompleteTotal {
             metric_id: "tasks".into(),
             completed: 1,
             total: 2,
         },
-        ValidationError::IntervalOverflow,
     ];
-
-    for error in errors {
+    for error in completion {
         assert!(!error.to_string().is_empty());
-        assert!(Error::source(&error).is_none());
-    }
-}
-
-/// Verifies that every metric error and transition preserves its context.
-#[test]
-fn test_metric_errors_and_transitions_format_every_variant() {
-    for (transition, name) in [
-        (MetricTransition::Start, "start"),
-        (MetricTransition::Complete, "complete"),
-        (MetricTransition::Succeed, "succeed"),
-        (MetricTransition::Fail, "fail"),
-        (MetricTransition::Cancel, "cancel"),
-    ] {
-        assert_eq!(transition.to_string(), name);
     }
 
-    let errors = [
-        MetricError::Closed {
+    let metric = [
+        MetricError::OperationNotOpen {
             metric_id: "tasks".into(),
+            state: OperationLifecycle::Closed,
         },
         MetricError::InsufficientCount {
             metric_id: "tasks".into(),
@@ -174,52 +139,37 @@ fn test_metric_errors_and_transitions_format_every_variant() {
             metric_id: "tasks".into(),
         },
     ];
-    for error in errors {
+    for error in metric {
         assert!(!error.to_string().is_empty());
         assert!(Error::source(&error).is_none());
     }
 }
 
-/// Verifies error conversion, source chains, and terminal accessors.
 #[test]
-fn test_progress_and_terminal_errors_preserve_sources() {
-    let validation = ProgressError::from(ValidationError::NoMetrics);
-    let report = ProgressError::from(ReportError::message("sink unavailable"));
-    for error in [&validation, &report] {
-        assert!(!error.to_string().is_empty());
-        assert!(Error::source(error).is_some());
+fn test_start_error_preserves_delivery_source() {
+    struct RejectingReporter;
+    impl Reporter for RejectingReporter {
+        fn report(&self, _event: &Event) -> Result<(), ReporterError> {
+            Err(ReporterError::message("sink unavailable"))
+        }
     }
 
-    let reporter = TerminalFailingReporter::new();
-    let terminal = Progress::builder(&reporter)
+    let result = Progress::builder(&RejectingReporter)
         .metric(Metric::new("tasks", "Tasks"))
-        .start()
-        .expect("Started event must succeed")
-        .finish()
-        .expect_err("terminal event must fail");
-    assert!(terminal.elapsed() < std::time::Duration::from_secs(1));
-    assert!(matches!(
-        terminal.progress_error(),
-        ProgressError::Report(_)
-    ));
-    assert!(
-        terminal
-            .to_string()
-            .contains("terminal progress report failed")
-    );
-    assert!(Error::source(&terminal).is_some());
-    assert!(matches!(
-        terminal.into_progress_error(),
-        ProgressError::Report(_)
-    ));
+        .start();
+    let error = match result {
+        Ok(_) => panic!("Started delivery must fail"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, StartError::Delivery(_)));
+    assert!(Error::source(&error).is_some());
+    assert!(error.to_string().contains("sink unavailable"));
 }
 
-/// Verifies message-backed errors expose the original text and error source.
 #[test]
-fn test_report_error_message_exposes_source() {
-    let first = ReportError::message("sink unavailable");
-    let second = ReportError::message("sink unavailable");
-    assert_eq!(first.to_string(), second.to_string(),);
-    assert_eq!(first.to_string(), "sink unavailable");
+fn test_reporter_error_message_exposes_source() {
+    let first = ReporterError::message("sink unavailable");
+    let second = ReporterError::message("sink unavailable");
+    assert_eq!(first.to_string(), second.to_string());
     assert!(Error::source(&first).is_some());
 }

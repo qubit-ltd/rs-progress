@@ -7,7 +7,7 @@
 // =============================================================================
 //! Validation behavior for fixed progress configuration.
 
-use qubit_progress::{Metric, NoopReporter, Progress, ProgressError, Stage, ValidationError};
+use qubit_progress::{ConfigurationError, Metric, NoopReporter, Progress, Stage, StartError};
 
 /// Verifies that operations require at least one configured metric.
 #[test]
@@ -18,7 +18,7 @@ fn test_progress_rejects_missing_metrics() {
     };
     assert!(matches!(
         error,
-        ProgressError::Validation(ValidationError::NoMetrics)
+        StartError::InvalidConfiguration(ConfigurationError::NoMetrics)
     ));
 }
 
@@ -34,7 +34,7 @@ fn test_progress_rejects_blank_metric_metadata() {
     };
     assert!(matches!(
         error,
-        ProgressError::Validation(ValidationError::EmptyMetricId { .. })
+        StartError::InvalidConfiguration(ConfigurationError::EmptyMetricId { .. })
     ));
 }
 
