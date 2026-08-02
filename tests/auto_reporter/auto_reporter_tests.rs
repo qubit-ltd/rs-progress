@@ -15,7 +15,16 @@ use std::{
     time::Duration,
 };
 
-use qubit_progress::{Event, Metric, Phase, Progress, Reporter, ReporterError};
+use qubit_progress::{
+    AutoReporterError,
+    EmissionError,
+    Event,
+    Metric,
+    Phase,
+    Progress,
+    Reporter,
+    ReporterError,
+};
 
 /// Reporter that exposes emitted phases to the waiting integration test.
 struct SignalingReporter {
@@ -222,7 +231,11 @@ fn test_auto_reporter_exposes_background_delivery_failure() {
         }
         assert!(auto.status().is_failed());
         notifier.notify();
-        assert!(auto.stop().is_err());
+        let error = auto.stop().expect_err("background delivery failure must be returned");
+        assert!(matches!(
+            error,
+            AutoReporterError::Emission(EmissionError::Delivery(_))
+        ));
     });
 }
 
@@ -249,9 +262,30 @@ fn test_auto_reporter_drop_joins_a_failed_worker() {
     });
 }
 
-/// Verifies that stopping an automatic reporter resumes a worker panic.
+/// Verifies that stopping an automatic reporter returns a structured worker panic.
 #[test]
-fn test_auto_reporter_stop_resumes_worker_panic() {
+fn test_auto_reporter_stop_returns_worker_panic() {
+    let reporter = RunningPanickingReporter::new();
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::ZERO)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("Started event must succeed");
+
+    thread::scope(|scope| {
+        let auto = progress.spawn_auto_reporter(scope);
+        auto.notifier().notify();
+        let error = auto.stop().expect_err("worker panic must be returned");
+        let AutoReporterError::Panicked(panic) = error else {
+            panic!("expected a structured worker panic");
+        };
+        assert_eq!(panic.message(), Some("running reporter panicked"));
+    });
+}
+
+/// Verifies that dropping an automatic reporter never propagates a worker panic.
+#[test]
+fn test_auto_reporter_drop_swallows_worker_panic_after_joining() {
     let reporter = RunningPanickingReporter::new();
     let mut progress = Progress::builder(&reporter)
         .interval(Duration::ZERO)
@@ -262,11 +296,17 @@ fn test_auto_reporter_stop_resumes_worker_panic() {
     let result = catch_unwind(AssertUnwindSafe(|| {
         thread::scope(|scope| {
             let auto = progress.spawn_auto_reporter(scope);
+            let status = auto.status();
             auto.notifier().notify();
-            auto.stop()
-                .expect("worker panic must resume before this point");
+            for _ in 0..100 {
+                if status.is_failed() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(1));
+            }
+            assert!(status.is_failed(), "worker panic must be observed before Drop");
         });
     }));
 
-    assert!(result.is_err());
+    assert!(result.is_ok(), "Drop must not propagate worker panic");
 }

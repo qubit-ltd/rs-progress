@@ -77,7 +77,7 @@ let mut progress = Progress::builder(&reporter)
     .start()?;
 let files_metric = progress.metric("files").expect("configured metric must exist");
 
-thread::scope(|scope| -> Result<(), qubit_progress::EmissionError> {
+thread::scope(|scope| -> Result<(), qubit_progress::AutoReporterError> {
     let auto = progress.spawn_auto_reporter(scope);
 
     let notifier = auto.notifier();

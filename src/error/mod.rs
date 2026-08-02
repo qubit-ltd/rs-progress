@@ -7,6 +7,7 @@
 // =============================================================================
 //! Structured errors for progress configuration, state and delivery.
 
+mod auto_reporter_error;
 mod completion_error;
 mod configuration_error;
 mod delivery_error;
@@ -18,6 +19,7 @@ mod reporter_error;
 mod start_error;
 mod terminal_error;
 
+pub use auto_reporter_error::{AutoReporterError, WorkerPanic};
 pub use completion_error::CompletionError;
 pub use configuration_error::ConfigurationError;
 pub use delivery_error::DeliveryError;

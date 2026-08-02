@@ -195,7 +195,7 @@ let mut progress = Progress::builder(&reporter)
     .start()?;
 let files = progress.metric("files").expect("configured metric must exist");
 
-thread::scope(|scope| -> Result<(), qubit_progress::EmissionError> {
+thread::scope(|scope| -> Result<(), qubit_progress::AutoReporterError> {
     let auto = progress.spawn_auto_reporter(scope);
     let status = auto.status();
     let notifier = auto.notifier();
@@ -226,7 +226,8 @@ progress.finish()?;
 
 后台上报器因错误或 panic 退出后，`AutoReporterStatus::is_failed()` 会变为 `true`。
 工作线程可以观察克隆的 `AutoReporterStatus`，以便提前停止高成本工作；但 `stop()` 才是最终依据：
-它会 join 后台线程、返回校验或上报器错误，并在调用线程恢复 panic。
+它会 join 后台线程，返回校验或上报器错误，或返回结构化的后台 panic 信息。
+直接丢弃句柄仍会停止并回收后台线程，但不会传播 panic。
 
 ## 禁用操作
 
@@ -268,8 +269,8 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 
 终态方法返回 `Result<Duration, TerminalError>`。如果必须可靠记录完成结果，
 应检查 `TerminalError`：即使最终事件无法投递，它仍会保留操作耗时。自动上报
-场景下，`AutoReporter::stop()` 会返回 `EmissionError`，并在调用线程恢复
-后台上报线程的 panic。
+场景下，`AutoReporter::stop()` 会返回 `AutoReporterError`：`Emission` 变体携带普通
+投递失败，`Panicked` 变体保留后台 panic 载荷。`Drop` 不传播 panic，只适合尽力清理。
 
 启用 `serde` 特性后，反序列化 `Stage`、`MetricSnapshot` 或 `Event` 时会校验与在线进度操作相同的元数据和计数不变量。反序列化错误表示外部进度数据无效，而不是可恢复的事件状态。
 
