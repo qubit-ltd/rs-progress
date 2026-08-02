@@ -290,6 +290,8 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
 /// Counts completed work for the mutex contention baseline.
 #[derive(Debug)]
 struct MutexMetricCounts {
+    /// Configured total used by the same conservation check as `MetricCounts`.
+    total: u64,
     /// Work that remains active.
     active: u64,
     /// Terminal work without an explicit classification.
@@ -300,6 +302,73 @@ struct MutexMetricCounts {
     failed: u64,
     /// Terminal work classified as cancelled.
     cancelled: u64,
+}
+
+impl MutexMetricCounts {
+    /// Creates zeroed counts and applies the initial `start(total)` transition.
+    fn new(total: u64) -> Self {
+        let mut counts = Self {
+            total,
+            active: 0,
+            completed_unclassified: 0,
+            succeeded: 0,
+            failed: 0,
+            cancelled: 0,
+        };
+        counts.start(total);
+        counts
+    }
+
+    /// Applies the same active-work increment used by `MetricHandle::start`.
+    fn start(&mut self, count: u64) {
+        self.active = self
+            .active
+            .checked_add(count)
+            .expect("mutex metric active count must not overflow");
+        self.validate();
+    }
+
+    /// Applies the same active-to-completed transition used by
+    /// `MetricHandle::complete`.
+    fn complete(&mut self, count: u64) {
+        self.active = self
+            .active
+            .checked_sub(count)
+            .expect("mutex metric active count must not underflow");
+        self.completed_unclassified = self
+            .completed_unclassified
+            .checked_add(count)
+            .expect("mutex metric completed count must not overflow");
+        self.validate();
+    }
+
+    /// Checks conservation and the configured total after each transition.
+    fn validate(&self) {
+        let completed = self
+            .completed_unclassified
+            .checked_add(self.succeeded)
+            .and_then(|value| value.checked_add(self.failed))
+            .and_then(|value| value.checked_add(self.cancelled))
+            .expect("mutex metric completed count must not overflow");
+        let occupied = completed
+            .checked_add(self.active)
+            .expect("mutex metric occupied count must not overflow");
+        assert!(
+            occupied <= self.total,
+            "mutex metric total must not be exceeded"
+        );
+    }
+
+    /// Returns all counters in the same shape as a metric snapshot.
+    fn snapshot(&self) -> (u64, u64, u64, u64, u64) {
+        (
+            self.active,
+            self.completed_unclassified,
+            self.succeeded,
+            self.failed,
+            self.cancelled,
+        )
+    }
 }
 
 /// Benchmarks a mutex-protected update path with setup removed from timing.
@@ -314,15 +383,7 @@ fn bench_mutex_metric_contention(criterion: &mut Criterion) {
             &workers,
             |bencher, &workers| {
                 bencher.iter_batched(
-                    || {
-                        Arc::new(Mutex::new(MutexMetricCounts {
-                            active: total,
-                            completed_unclassified: 0,
-                            succeeded: 0,
-                            failed: 0,
-                            cancelled: 0,
-                        }))
-                    },
+                    || Arc::new(Mutex::new(MutexMetricCounts::new(total))),
                     |state| {
                         thread::scope(|scope| {
                             for _ in 0..workers {
@@ -331,20 +392,13 @@ fn bench_mutex_metric_contention(criterion: &mut Criterion) {
                                     for _ in 0..UPDATES_PER_WORKER {
                                         let mut state =
                                             state.lock().expect("mutex must not poison");
-                                        state.active -= 1;
-                                        state.completed_unclassified += 1;
+                                        state.complete(1);
                                     }
                                 });
                             }
                         });
                         let state = state.lock().expect("mutex must not poison");
-                        black_box((
-                            state.active,
-                            state.completed_unclassified,
-                            state.succeeded,
-                            state.failed,
-                            state.cancelled,
-                        ));
+                        black_box(state.snapshot());
                     },
                     BatchSize::SmallInput,
                 );
