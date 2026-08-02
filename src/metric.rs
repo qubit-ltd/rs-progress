@@ -12,11 +12,7 @@ use std::{
     hint::spin_loop,
     sync::{
         Arc,
-        atomic::{
-            AtomicBool,
-            AtomicU64,
-            Ordering,
-        },
+        atomic::{AtomicU64, Ordering},
     },
     thread,
 };
@@ -24,20 +20,11 @@ use std::{
 use qubit_fast_cas::CasCell;
 
 #[cfg(feature = "serde")]
-use serde::{
-    Deserialize,
-    Deserializer,
-};
+use serde::{Deserialize, Deserializer};
 
 #[cfg(feature = "serde")]
-use crate::validation::{
-    validate_metrics,
-    validate_snapshot_counts,
-};
-use crate::{
-    MetricError,
-    MetricTransition,
-};
+use crate::validation::{validate_metrics, validate_snapshot_counts};
+use crate::{MetricError, MetricTransition, internal::OperationState};
 
 /// Stable metadata for one metric in a progress operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -103,15 +90,15 @@ pub struct MetricHandle {
     /// Shared metadata and mutable count state.
     inner: Arc<MetricInner>,
     /// Shared lifecycle gate owned by the enclosing progress operation.
-    operation_open: Arc<AtomicBool>,
+    operation_state: Arc<OperationState>,
 }
 
 impl MetricHandle {
     /// Creates one live handle from validated metric metadata.
-    pub(crate) fn new(metric: Metric, operation_open: Arc<AtomicBool>) -> Self {
+    pub(crate) fn new(metric: Metric, operation_state: Arc<OperationState>) -> Self {
         Self {
             inner: Arc::new(MetricInner::new(metric)),
-            operation_open,
+            operation_state,
         }
     }
 
@@ -186,11 +173,7 @@ impl MetricHandle {
     ///
     /// Returns a metric error when the selected source state does not contain
     /// `count` work or when the owning operation is closed.
-    pub fn rollback(
-        &self,
-        transition: MetricTransition,
-        count: u64,
-    ) -> Result<(), MetricError> {
+    pub fn rollback(&self, transition: MetricTransition, count: u64) -> Result<(), MetricError> {
         self.transition(transition, count, Direction::Rollback)
     }
 
@@ -210,16 +193,11 @@ impl MetricHandle {
         count: u64,
         direction: Direction,
     ) -> Result<(), MetricError> {
-        self.ensure_open()?;
         let metric_id = self.id();
         let total = self.inner.metric.configured_total();
+        let _update_guard = self.operation_state.enter_update(metric_id)?;
 
         self.inner.with_update(|counts| {
-            if !self.operation_open.load(Ordering::Acquire) {
-                return Err(MetricError::Closed {
-                    metric_id: metric_id.into(),
-                });
-            }
             let mut next = *counts;
             match transition {
                 MetricTransition::Start => {
@@ -277,17 +255,6 @@ impl MetricHandle {
             *counts = next;
             Ok(())
         })
-    }
-
-    /// Rejects writes after the owning progress operation has closed.
-    fn ensure_open(&self) -> Result<(), MetricError> {
-        if self.operation_open.load(Ordering::Acquire) {
-            Ok(())
-        } else {
-            Err(MetricError::Closed {
-                metric_id: self.id().into(),
-            })
-        }
     }
 }
 
@@ -348,10 +315,7 @@ impl MetricInner {
 
             match self.gate.compare_set(version, version.wrapping_add(1)) {
                 Ok(()) => {
-                    let _guard = MetricGateGuard::new(
-                        &self.gate,
-                        version.wrapping_add(2),
-                    );
+                    let _guard = MetricGateGuard::new(&self.gate, version.wrapping_add(2));
                     let mut counts = self.read_counts();
                     let result = update(&mut counts);
                     if result.is_ok() {
@@ -371,9 +335,7 @@ impl MetricInner {
     fn read_counts(&self) -> MetricCounts {
         MetricCounts {
             active: self.active.load(Ordering::Acquire),
-            completed_unclassified: self
-                .completed_unclassified
-                .load(Ordering::Acquire),
+            completed_unclassified: self.completed_unclassified.load(Ordering::Acquire),
             succeeded: self.succeeded.load(Ordering::Acquire),
             failed: self.failed.load(Ordering::Acquire),
             cancelled: self.cancelled.load(Ordering::Acquire),
@@ -444,11 +406,7 @@ impl MetricCounts {
     }
 
     /// Validates the aggregate conservation invariants for one pending state.
-    fn validate(
-        self,
-        metric_id: &str,
-        total: Option<u64>,
-    ) -> Result<(), MetricError> {
+    fn validate(self, metric_id: &str, total: Option<u64>) -> Result<(), MetricError> {
         let occupied = self.occupied().ok_or_else(|| MetricError::CountOverflow {
             metric_id: metric_id.into(),
         })?;
@@ -477,46 +435,47 @@ fn move_count(
     if matches!(direction, Direction::Rollback) {
         if let Some(terminal) = terminal {
             let available = *terminal;
-            *terminal = terminal.checked_sub(amount).ok_or_else(|| {
-                MetricError::InsufficientCount {
-                    metric_id: metric_id.into(),
-                    transition,
-                    requested: amount,
-                    available,
-                }
-            })?;
+            *terminal =
+                terminal
+                    .checked_sub(amount)
+                    .ok_or_else(|| MetricError::InsufficientCount {
+                        metric_id: metric_id.into(),
+                        transition,
+                        requested: amount,
+                        available,
+                    })?;
             *active += amount;
         } else {
             let available = *active;
-            *active = active.checked_sub(amount).ok_or_else(|| {
-                MetricError::InsufficientCount {
+            *active = active
+                .checked_sub(amount)
+                .ok_or_else(|| MetricError::InsufficientCount {
                     metric_id: metric_id.into(),
                     transition,
                     requested: amount,
                     available,
-                }
-            })?;
+                })?;
         }
         return Ok(());
     }
 
     if let Some(terminal) = terminal {
         let available = *active;
-        *active = active.checked_sub(amount).ok_or_else(|| {
-            MetricError::InsufficientCount {
+        *active = active
+            .checked_sub(amount)
+            .ok_or_else(|| MetricError::InsufficientCount {
                 metric_id: metric_id.into(),
                 transition,
                 requested: amount,
                 available,
-            }
-        })?;
+            })?;
         *terminal += amount;
     } else {
-        *active = active.checked_add(amount).ok_or_else(|| {
-            MetricError::CountOverflow {
+        *active = active
+            .checked_add(amount)
+            .ok_or_else(|| MetricError::CountOverflow {
                 metric_id: metric_id.into(),
-            }
-        })?;
+            })?;
     }
     Ok(())
 }
@@ -671,10 +630,8 @@ impl<'de> Deserialize<'de> for MetricSnapshot {
             name: Arc::clone(&snapshot.name),
             total: snapshot.total,
         };
-        validate_metrics(std::slice::from_ref(&metric))
-            .map_err(serde::de::Error::custom)?;
-        validate_snapshot_counts(&snapshot)
-            .map_err(serde::de::Error::custom)?;
+        validate_metrics(std::slice::from_ref(&metric)).map_err(serde::de::Error::custom)?;
+        validate_snapshot_counts(&snapshot).map_err(serde::de::Error::custom)?;
         Ok(snapshot)
     }
 }

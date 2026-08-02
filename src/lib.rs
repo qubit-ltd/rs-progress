@@ -39,7 +39,7 @@
 //! let tasks = progress.metric("tasks").expect("configured metric must exist");
 //! tasks.start(1)?;
 //! tasks.succeed(1)?;
-//! progress.finish()?;
+//! progress.finish().expect("complete operation must finish");
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -49,17 +49,20 @@
 mod auto_reporter;
 mod error;
 mod event;
+mod internal;
 mod metric;
 mod progress;
 pub mod reporter;
 mod stage;
 mod validation;
 
-pub use auto_reporter::{AutoReporter, Notifier, Status};
+pub use auto_reporter::{AutoReporter, AutoReporterStatus, ProgressNotifier};
 pub use error::{
-    MetricError, MetricTransition, ProgressError, ReportError, TerminalError, ValidationError,
+    CompletionError, ConfigurationError, DeliveryError, EmissionError, FinishError, MetricError,
+    MetricTransition, ReporterError, StartError, TerminalError,
 };
 pub use event::{Event, Phase};
+pub use internal::OperationLifecycle;
 pub use metric::{Metric, MetricHandle, MetricSnapshot};
 pub use progress::{Progress, ProgressBuilder};
 #[cfg(feature = "json-lines")]

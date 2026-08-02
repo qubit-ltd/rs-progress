@@ -10,14 +10,18 @@
 
 use std::{
     sync::Arc,
-    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
 };
 
 use crate::{
-    Event, Metric, MetricHandle, MetricSnapshot, Phase, ProgressError, Reporter, Stage,
-    TerminalError, ValidationError,
+    Event, Metric, MetricHandle, MetricSnapshot, Phase, Reporter, Stage,
     auto_reporter::{self, AutoReporter},
+    error::{
+        CompletionError, ConfigurationError, DeliveryError, EmissionError, FinishError, StartError,
+        TerminalError,
+    },
+    internal::OperationState,
     validation::{validate_metrics, validate_stage},
 };
 
@@ -28,7 +32,7 @@ static NEXT_OPERATION_ID: AtomicU64 = AtomicU64::new(1);
 pub struct ProgressBuilder<'reporter> {
     /// Reporter receiving complete events.
     reporter: &'reporter dyn Reporter,
-    /// Minimum interval between due reports.
+    /// Minimum interval between due-based running reports.
     interval: Duration,
     /// Stable operation metrics.
     metrics: Vec<Metric>,
@@ -57,41 +61,39 @@ impl<'reporter> ProgressBuilder<'reporter> {
     }
     /// Validates configuration, samples enablement and emits Started when
     /// enabled.
-    ///
-    /// Returns [`ProgressError::Validation`] for invalid fixed metadata or an
-    /// interval outside the representable [`Instant`] range, and
-    /// [`ProgressError::Report`] when the reporter rejects Started.
-    pub fn start(self) -> Result<Progress<'reporter>, ProgressError> {
+    pub fn start(self) -> Result<Progress<'reporter>, StartError> {
         validate_metrics(&self.metrics)?;
         if let Some(stage) = &self.stage {
             validate_stage(stage)?;
         }
-        let started_at = Instant::now();
-        let next_running_at = next_deadline(started_at, self.interval);
-        if !self.interval.is_zero() && next_running_at.is_none() {
-            return Err(ValidationError::IntervalOverflow.into());
-        }
+
         let enabled = self.reporter.is_enabled();
-        let operation_open = Arc::new(AtomicBool::new(true));
+        let operation_state = OperationState::new();
+        let operation_id = enabled.then(allocate_operation_id).transpose()?;
         let mut progress = Progress {
             reporter: self.reporter,
             enabled,
             metrics: self
                 .metrics
                 .into_iter()
-                .map(|metric| MetricHandle::new(metric, Arc::clone(&operation_open)))
+                .map(|metric| MetricHandle::new(metric, Arc::clone(&operation_state)))
                 .collect(),
-            operation_open,
+            operation_state,
             stage: self.stage,
             interval: self.interval,
-            started_at,
-            next_running_at,
-            operation_id: enabled.then(allocate_operation_id).transpose()?,
+            started_at: Instant::now(),
+            next_due_elapsed: None,
+            operation_id,
             next_sequence: 0,
         };
+
         if enabled {
             let metrics = progress.metric_snapshots();
-            progress.send(Phase::Started, metrics, Duration::ZERO)?;
+            progress
+                .emit(Phase::Started, metrics, Duration::ZERO)
+                .map_err(StartError::from)?;
+            progress.next_due_elapsed = Some(progress.interval);
+            progress.started_at = Instant::now();
         }
         Ok(progress)
     }
@@ -109,16 +111,16 @@ pub struct Progress<'reporter> {
     enabled: bool,
     /// Live metrics carried by each event.
     metrics: Vec<MetricHandle>,
-    /// Shared gate that prevents handle updates after operation closure.
-    operation_open: Arc<AtomicBool>,
+    /// Shared lifecycle and in-flight update gate.
+    operation_state: Arc<OperationState>,
     /// Optional current stage.
     stage: Option<Stage>,
     /// Minimum due-report spacing.
     interval: Duration,
     /// Monotonic operation start time.
     started_at: Instant,
-    /// Next due running deadline for a positive interval.
-    next_running_at: Option<Instant>,
+    /// Next due elapsed deadline for a positive interval.
+    next_due_elapsed: Option<Duration>,
     /// Nonzero identifier for enabled operations.
     operation_id: Option<u64>,
     /// Sequence reserved for the next event attempt.
@@ -154,36 +156,25 @@ impl<'reporter> Progress<'reporter> {
             .cloned()
     }
     /// Immediately emits a Running event from current metric state.
-    ///
-    /// # Errors
-    ///
-    /// Returns a sequence-validation or reporter delivery error. Metric-handle
-    /// transition failures are reported directly by [`MetricHandle`]. Disabled
-    /// operations return success without sending an event.
-    pub fn report(&mut self) -> Result<(), ProgressError> {
+    pub fn report(&mut self) -> Result<(), EmissionError> {
         if !self.enabled {
             return Ok(());
         }
         let metrics = self.metric_snapshots();
         let elapsed = self.elapsed();
-        let result = self.send(Phase::Running, metrics, elapsed);
+        let result = self.emit(Phase::Running, metrics, elapsed);
         self.reset_deadline();
         result
     }
     /// Emits a Running event only when the configured interval is due.
-    ///
-    /// A zero interval is always due. Disabled and not-yet-due operations
-    /// return success without taking a metric snapshot.
-    pub fn report_if_due(&mut self) -> Result<(), ProgressError> {
+    pub fn report_if_due(&mut self) -> Result<(), EmissionError> {
         if !self.enabled || !self.is_due() {
             return Ok(());
         }
         self.report()
     }
     /// Replaces stage metadata attached to subsequent events.
-    ///
-    /// Returns [`ProgressError::Validation`] for malformed stage metadata.
-    pub fn set_stage(&mut self, stage: Stage) -> Result<(), ProgressError> {
+    pub fn set_stage(&mut self, stage: Stage) -> Result<(), ConfigurationError> {
         validate_stage(&stage)?;
         self.stage = Some(stage);
         Ok(())
@@ -194,33 +185,29 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Consumes this operation and emits a successful terminal event without
     /// checking whether metric work is complete.
-    ///
-    /// Use [`Progress::finish`] when successful termination must require zero
-    /// active work and satisfied known totals.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TerminalError`] when the reporter rejects the terminal event.
     pub fn finish_unchecked(self) -> Result<Duration, TerminalError> {
         self.terminal(Phase::Succeeded)
     }
     /// Consumes this operation and emits a successful terminal event only when
     /// no metric has active work and every known total has been completed.
-    ///
-    /// The operation is closed even when validation fails, so callers must
-    /// choose the appropriate terminal method before invoking it.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TerminalError`] when metric validation or terminal delivery
-    /// fails. Validation errors are returned without sending `Succeeded`.
-    pub fn finish(self) -> Result<Duration, TerminalError> {
+    #[allow(clippy::result_large_err)]
+    pub fn finish(mut self) -> Result<Duration, FinishError<'reporter>> {
         let elapsed = self.elapsed();
-        self.close();
-        if let Err(error) = self.validate_finish() {
-            return Err(TerminalError::new(elapsed, error));
+        let finish_guard = self.operation_state.begin_finish();
+        if let Err(source) = self.validate_finish() {
+            finish_guard.reopen();
+            return Err(FinishError::Incomplete {
+                progress: self,
+                source,
+            });
         }
-        self.terminal(Phase::Succeeded)
+        finish_guard.close();
+        if !self.enabled {
+            return Ok(elapsed);
+        }
+        self.emit(Phase::Succeeded, self.metric_snapshots(), elapsed)
+            .map(|()| elapsed)
+            .map_err(|source| FinishError::Terminal(TerminalError::new(elapsed, source)))
     }
     /// Consumes this operation and emits a failed terminal event.
     pub fn fail(self) -> Result<Duration, TerminalError> {
@@ -232,10 +219,6 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Spawns a scoped automatic Running reporter that exclusively borrows this
     /// operation.
-    ///
-    /// While the returned [`AutoReporter`] exists, Rust prevents manual
-    /// reports, configuration changes and terminal delivery. Call
-    /// [`AutoReporter::stop`] before sending a terminal event.
     pub fn spawn_auto_reporter<'scope, 'env>(
         &'scope mut self,
         scope: &'scope std::thread::Scope<'scope, 'env>,
@@ -250,43 +233,39 @@ impl<'reporter> Progress<'reporter> {
         self.metrics.iter().map(MetricHandle::snapshot).collect()
     }
     /// Validates the metric invariants required for successful finish.
-    fn validate_finish(&self) -> Result<(), ProgressError> {
+    fn validate_finish(&self) -> Result<(), CompletionError> {
         for metric in &self.metrics {
             let snapshot = metric.snapshot();
             if snapshot.active() != 0 {
-                return Err(ValidationError::ActiveWorkAtFinish {
+                return Err(CompletionError::ActiveWork {
                     metric_id: snapshot.id().to_owned(),
                     active: snapshot.active(),
-                }
-                .into());
+                });
             }
             if let Some(total) = snapshot.total()
                 && snapshot.completed() != total
             {
-                return Err(ValidationError::IncompleteMetricTotal {
+                return Err(CompletionError::IncompleteTotal {
                     metric_id: snapshot.id().to_owned(),
                     completed: snapshot.completed(),
                     total,
-                }
-                .into());
+                });
             }
         }
         Ok(())
     }
     /// Delivers one complete event after reserving its delivery sequence.
-    fn send(
+    fn emit(
         &mut self,
         phase: Phase,
         metrics: Vec<MetricSnapshot>,
         elapsed: Duration,
-    ) -> Result<(), ProgressError> {
-        let operation_id = self
-            .operation_id
-            .ok_or(ValidationError::OperationIdExhausted)?;
+    ) -> Result<(), EmissionError> {
+        let operation_id = self.operation_id.ok_or(EmissionError::SequenceExhausted)?;
         let sequence = self.next_sequence;
         self.next_sequence = sequence
             .checked_add(1)
-            .ok_or(ValidationError::SequenceExhausted)?;
+            .ok_or(EmissionError::SequenceExhausted)?;
         let event = Event::new(
             operation_id,
             sequence,
@@ -295,14 +274,17 @@ impl<'reporter> Progress<'reporter> {
             metrics,
             elapsed,
         );
-        self.reporter.report(&event).map_err(ProgressError::from)
+        match self.reporter.report(&event) {
+            Ok(()) => Ok(()),
+            Err(source) => Err(EmissionError::Delivery(DeliveryError::new(event, source))),
+        }
     }
     /// Tests whether a due-based running report can run now.
     fn is_due(&self) -> bool {
         self.interval.is_zero()
             || self
-                .next_running_at
-                .is_some_and(|deadline| Instant::now() >= deadline)
+                .next_due_elapsed
+                .is_some_and(|deadline| self.elapsed() >= deadline)
     }
     /// Returns the configured interval to the crate-private background loop.
     pub(crate) const fn report_interval(&self) -> Duration {
@@ -310,51 +292,41 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Returns how long the background loop should wait for the next deadline.
     pub(crate) fn time_until_due(&self) -> Duration {
-        self.next_running_at
-            .map(|deadline| deadline.saturating_duration_since(Instant::now()))
+        self.next_due_elapsed
+            .map(|deadline| deadline.saturating_sub(self.elapsed()))
             .unwrap_or(Duration::MAX)
     }
     /// Pushes the next positive-interval deadline after a running attempt.
     fn reset_deadline(&mut self) {
-        self.next_running_at = next_deadline(Instant::now(), self.interval);
+        self.next_due_elapsed = self.elapsed().checked_add(self.interval);
     }
     /// Emits one terminal phase while retaining elapsed time on failure.
     fn terminal(mut self, phase: Phase) -> Result<Duration, TerminalError> {
         let elapsed = self.elapsed();
-        self.close();
+        let finish_guard = self.operation_state.begin_finish();
+        finish_guard.close();
         if !self.enabled {
             return Ok(elapsed);
         }
-        self.send(phase, self.metric_snapshots(), elapsed)
+        self.emit(phase, self.metric_snapshots(), elapsed)
             .map(|()| elapsed)
-            .map_err(|error| TerminalError::new(elapsed, error))
-    }
-
-    /// Closes all live metric handles owned by this operation.
-    fn close(&self) {
-        self.operation_open.store(false, Ordering::Release);
+            .map_err(|source| TerminalError::new(elapsed, source))
     }
 }
 
 impl Drop for Progress<'_> {
     /// Closes live handles when a caller abandons an unfinished operation.
     fn drop(&mut self) {
-        self.close();
+        self.operation_state.close();
     }
 }
 
-/// Computes the first deadline after a reference instant.
-fn next_deadline(reference: Instant, interval: Duration) -> Option<Instant> {
-    (!interval.is_zero())
-        .then(|| reference.checked_add(interval))
-        .flatten()
-}
 /// Allocates a nonzero operation ID without wrapping or reuse.
-fn allocate_operation_id() -> Result<u64, ValidationError> {
+fn allocate_operation_id() -> Result<u64, StartError> {
     loop {
         let current = NEXT_OPERATION_ID.load(Ordering::Relaxed);
         if current == 0 {
-            return Err(ValidationError::OperationIdExhausted);
+            return Err(StartError::OperationIdExhausted);
         }
         let next = current.checked_add(1).unwrap_or(0);
         if NEXT_OPERATION_ID

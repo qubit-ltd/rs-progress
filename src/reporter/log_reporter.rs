@@ -7,7 +7,7 @@
 // =============================================================================
 //! `log` facade reporter for complete events.
 
-use crate::{Event, ReportError, Reporter};
+use crate::{Event, Reporter, ReporterError};
 
 /// Reports each complete event through the `log` facade at info level.
 #[derive(Clone, Copy, Debug, Default)]
@@ -20,7 +20,7 @@ impl Reporter for LogReporter {
     }
 
     /// Writes the event's debug representation through `log::info!`.
-    fn report(&self, event: &Event) -> Result<(), ReportError> {
+    fn report(&self, event: &Event) -> Result<(), ReporterError> {
         log::info!("{event:?}");
         Ok(())
     }
