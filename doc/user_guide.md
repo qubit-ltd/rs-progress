@@ -22,7 +22,7 @@ An operation has stable configuration and changing state:
 - `Progress` owns the changing state for every configured metric. Obtain a cloneable `MetricHandle` with `Progress::metric` and use it to move quantities through the metric lifecycle.
 - `Event` is an immutable, complete observation. A reporter does not need earlier events to reconstruct its state. Enabled operations receive a process-local `operation_id`; `sequence` is zero for `Started` and then counts delivery attempts, including failed attempts.
 
-The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `finish_unchecked`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. `finish()` requires zero active work and every known total to be satisfied. Use `finish_unchecked()` only when an intentionally incomplete successful outcome is meaningful; it records that the operation ended without checking metric completion. A validation failure closes the operation without sending `Succeeded`. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
+The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `finish_unchecked`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. `finish()` requires zero active work and every known total to be satisfied. If that validation fails, it returns the still-reusable `Progress` together with a `CompletionError`; callers can repair the metrics and retry. Use `finish_unchecked()` only when an intentionally incomplete successful outcome is meaningful. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
 
 ## Start an operation and update its metrics
 
@@ -52,7 +52,7 @@ let elapsed = progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`start()` validates all fixed metadata and, for an enabled operation, emits `Started`. `report()` emits the current metric snapshots as `Running`. A terminal call returns the elapsed `Duration`; if terminal delivery fails, `TerminalError` retains both that duration and the underlying `ProgressError`.
+`start()` returns `StartError` for invalid configuration, operation-ID exhaustion, or a rejected `Started` event. `report()` emits the current metric snapshots as `Running` and returns `EmissionError`. A terminal delivery failure is wrapped in `TerminalError`, which retains both elapsed time and the failed event's delivery error.
 
 Event delivery is at-most-once. The crate does not automatically retry a
 reporter failure; it returns the error to the caller. If an application retries
@@ -69,10 +69,10 @@ files.succeed(10)?;
 progress.finish()?;
 ```
 
-`finish()` rejects any metric with active work, and rejects a metric
-with a known total unless `completed == total`. It consumes and closes the
-operation even when validation fails, so choose `finish_unchecked()` or a different
-terminal phase before making the call.
+`finish()` rejects any metric with active work, and rejects a metric with a
+known total unless `completed == total`. A rejected finish is recoverable:
+`FinishError::Incomplete` returns the operation and a `CompletionError`, while
+`FinishError::Terminal` means terminal delivery was attempted and is permanent.
 
 ## Metric lifecycle and validation
 
@@ -171,15 +171,21 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-An interval of zero means every `report_if_due()` call is due. A nonzero
-interval that cannot be represented by `Instant` is rejected by `start()`.
+An interval of zero means every `report_if_due()` call is due. Relative
+deadlines avoid `Instant` overflow: even `Duration::MAX` is accepted, simply
+without a future automatic due deadline. Manual reports and terminal events
+remain available.
 A reporter failure consumes one delivery sequence number and resets the next
 deadline; sequence gaps therefore identify failed delivery attempts rather than
 missing state transitions.
 
 ## Automatically report state changed by worker threads
 
-`spawn_auto_reporter` reports metric state changed by worker threads. It starts a scoped background thread that owns the mutable progress borrow. The returned `AutoReporter` offers a cloneable `Notifier` and `Status`.
+`spawn_auto_reporter` reports metric state changed by worker threads. It starts
+exactly one scoped background thread for the whole `Progress` operation; any
+number of worker threads share the same metric handles and notifier. The
+returned `AutoReporter` offers a cloneable `ProgressNotifier` and
+`AutoReporterStatus`.
 
 ```rust
 use std::{thread, time::Duration};
@@ -192,7 +198,7 @@ let mut progress = Progress::builder(&reporter)
     .start()?;
 let files = progress.metric("files").expect("configured metric must exist");
 
-thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
+thread::scope(|scope| -> Result<(), qubit_progress::EmissionError> {
     let auto = progress.spawn_auto_reporter(scope);
     let status = auto.status();
     let notifier = auto.notifier();
@@ -217,12 +223,13 @@ progress.finish()?;
 For a zero interval, `notify()` coalesces repeated calls into at most one pending report. For a positive interval, the worker emits heartbeats at the minimum interval and `notify()` is a no-op, avoiding synchronization work for worker threads. `notify()` is harmless after `stop()`. Always call `stop()` and handle its result before calling a terminal method. While the `AutoReporter` exists, the exclusive borrow prevents manual reporting, stage changes, and termination.
 
 The current automatic driver uses one scoped `std::thread` per enabled
-operation. It is intended for thread-based workers and does not integrate with
+operation, independent of the number of workers. It is intended for
+thread-based workers and does not integrate with
 an async runtime; async callers should drive `report_if_due()` from their own
 runtime until a dedicated async driver is added.
 
-`Status::is_failed()` becomes true when the background reporter exits with an
-error or panic. Workers can observe a cloned `Status` to stop expensive work
+`AutoReporterStatus::is_failed()` becomes true when the background reporter exits with an
+error or panic. Workers can observe a cloned `AutoReporterStatus` to stop expensive work
 early, but `stop()` remains authoritative: it joins the thread, returns its
 validation or reporter error, and resumes a panic on the caller thread.
 
@@ -242,7 +249,7 @@ Implement `Reporter` to consume `&Event`; implementations must be `Send + Sync`.
 - `LogReporter` is available with `log` and writes the event's `Debug` representation at info level.
 
 A thread-safe closure with the signature
-`Fn(&Event) -> Result<(), ReportError> + Send + Sync` also implements
+`Fn(&Event) -> Result<(), ReporterError> + Send + Sync` also implements
 `Reporter`, which is often the shortest custom integration.
 
 JSON Lines is suitable for log collectors and post-processing because every
@@ -258,13 +265,14 @@ event invariants as runtime construction.
 
 ## Errors and shutdown
 
-Most non-terminal operations return `Result<(), ProgressError>`.
-`ProgressError` distinguishes validation failures from failures returned by
-the reporter; metric-handle transitions return `MetricError` directly. Do not
-ignore these errors: invalid state means no event was delivered, while a sink
-error means the delivery attempt failed.
+`start()` returns `StartError`, running reports return `EmissionError`, and
+metric-handle transitions return `MetricError` directly. Do not ignore these
+errors: invalid state means no event was delivered, while a sink error means
+the delivery attempt failed. `finish()` returns `FinishError`; recover
+`CompletionError` by repairing the returned operation, or inspect
+`TerminalError` when terminal delivery fails.
 
-Terminal methods return `Result<Duration, TerminalError>`. Inspect `TerminalError` when completion must be recorded reliably: it preserves elapsed time even when the final event cannot be delivered. For automatic reporting, `AutoReporter::stop()` returns background validation or reporter errors and resumes any worker panic on the caller thread.
+Terminal methods return `Result<Duration, TerminalError>`. Inspect `TerminalError` when completion must be recorded reliably: it preserves elapsed time even when the final event cannot be delivered. For automatic reporting, `AutoReporter::stop()` returns `EmissionError` and resumes any worker panic on the caller thread.
 
 When the `serde` feature is enabled, deserializing `Stage`, `MetricSnapshot`, or `Event` validates the same metadata and count invariants used by live progress operations. Treat a deserialization error as invalid external progress data rather than a recoverable event state.
 
