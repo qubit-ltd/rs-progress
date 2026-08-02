@@ -44,6 +44,7 @@ serde_json = { version = "1.0", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false }
+loom = "0.7"
 serde_json = "1.0"
 
 [[bench]]

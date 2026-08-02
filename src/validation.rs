@@ -9,28 +9,28 @@
 
 use std::collections::HashSet;
 
-use crate::{Metric, Stage, ValidationError};
+use crate::{ConfigurationError, Metric, Stage};
 
 #[cfg(feature = "serde")]
 use crate::MetricSnapshot;
 
 /// Validates the fixed metric configuration for one operation.
-pub(crate) fn validate_metrics(metrics: &[Metric]) -> Result<(), ValidationError> {
+pub(crate) fn validate_metrics(metrics: &[Metric]) -> Result<(), ConfigurationError> {
     if metrics.is_empty() {
-        return Err(ValidationError::NoMetrics);
+        return Err(ConfigurationError::NoMetrics);
     }
     let mut ids = HashSet::with_capacity(metrics.len());
     for (index, metric) in metrics.iter().enumerate() {
         if metric.id.trim().is_empty() {
-            return Err(ValidationError::EmptyMetricId { index });
+            return Err(ConfigurationError::EmptyMetricId { index });
         }
         if metric.name.trim().is_empty() {
-            return Err(ValidationError::EmptyMetricName {
+            return Err(ConfigurationError::EmptyMetricName {
                 metric_id: metric.id.to_string(),
             });
         }
         if !ids.insert(&metric.id) {
-            return Err(ValidationError::DuplicateMetricId {
+            return Err(ConfigurationError::DuplicateMetricId {
                 metric_id: metric.id.to_string(),
             });
         }
@@ -39,35 +39,37 @@ pub(crate) fn validate_metrics(metrics: &[Metric]) -> Result<(), ValidationError
 }
 
 /// Validates optional stage metadata.
-pub(crate) fn validate_stage(stage: &Stage) -> Result<(), ValidationError> {
+pub(crate) fn validate_stage(stage: &Stage) -> Result<(), ConfigurationError> {
     if stage.id.trim().is_empty() {
-        return Err(ValidationError::EmptyStageId);
+        return Err(ConfigurationError::EmptyStageId);
     }
     if stage.name.trim().is_empty() {
-        return Err(ValidationError::EmptyStageName);
+        return Err(ConfigurationError::EmptyStageName);
     }
     match (stage.position, stage.total) {
         (None, None) => Ok(()),
         (Some(position), Some(total)) if position > 0 && position <= total => Ok(()),
         (Some(position), Some(total)) => {
-            Err(ValidationError::InvalidStagePosition { position, total })
+            Err(ConfigurationError::InvalidStagePosition { position, total })
         }
-        _ => Err(ValidationError::IncompleteStagePosition),
+        _ => Err(ConfigurationError::IncompleteStagePosition),
     }
 }
 
 /// Validates one metric's dynamic counts against its configured total.
 #[cfg(feature = "serde")]
-pub(crate) fn validate_snapshot_counts(snapshot: &MetricSnapshot) -> Result<(), ValidationError> {
+pub(crate) fn validate_snapshot_counts(
+    snapshot: &MetricSnapshot,
+) -> Result<(), SnapshotValidationError> {
     let classified = snapshot
         .succeeded()
         .checked_add(snapshot.failed())
         .and_then(|value| value.checked_add(snapshot.cancelled()))
-        .ok_or_else(|| ValidationError::CountOverflow {
+        .ok_or_else(|| SnapshotValidationError::CountOverflow {
             metric_id: snapshot.id().into(),
         })?;
     if classified > snapshot.completed() {
-        return Err(ValidationError::ClassifiedExceedsCompleted {
+        return Err(SnapshotValidationError::ClassifiedExceedsCompleted {
             metric_id: snapshot.id().into(),
         });
     }
@@ -79,21 +81,62 @@ pub(crate) fn validate_snapshot_counts(snapshot: &MetricSnapshot) -> Result<(), 
                 || snapshot.failed() != 0
                 || snapshot.cancelled() != 0)
         {
-            return Err(ValidationError::NonZeroCountsForZeroTotal {
+            return Err(SnapshotValidationError::NonZeroCountsForZeroTotal {
                 metric_id: snapshot.id().into(),
             });
         }
         let occupied = snapshot
             .completed()
             .checked_add(snapshot.active())
-            .ok_or_else(|| ValidationError::CountOverflow {
+            .ok_or_else(|| SnapshotValidationError::CountOverflow {
                 metric_id: snapshot.id().into(),
             })?;
         if occupied > total {
-            return Err(ValidationError::CountsExceedTotal {
+            return Err(SnapshotValidationError::CountsExceedTotal {
                 metric_id: snapshot.id().into(),
             });
         }
     }
     Ok(())
 }
+
+/// Validation failure for serialized dynamic metric counts.
+#[cfg(feature = "serde")]
+#[derive(Debug)]
+pub(crate) enum SnapshotValidationError {
+    /// Derived classified counts overflowed.
+    CountOverflow { metric_id: String },
+    /// Classified counts exceed completed work.
+    ClassifiedExceedsCompleted { metric_id: String },
+    /// Occupied work exceeds a known total.
+    CountsExceedTotal { metric_id: String },
+    /// A zero total contains dynamic counts.
+    NonZeroCountsForZeroTotal { metric_id: String },
+}
+
+#[cfg(feature = "serde")]
+impl std::fmt::Display for SnapshotValidationError {
+    /// Formats the snapshot validation failure.
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CountOverflow { metric_id } => {
+                write!(formatter, "counts for metric {metric_id:?} overflowed")
+            }
+            Self::ClassifiedExceedsCompleted { metric_id } => write!(
+                formatter,
+                "classified counts exceed completed work for metric {metric_id:?}"
+            ),
+            Self::CountsExceedTotal { metric_id } => write!(
+                formatter,
+                "completed plus active work exceeds total for metric {metric_id:?}"
+            ),
+            Self::NonZeroCountsForZeroTotal { metric_id } => write!(
+                formatter,
+                "zero-total metric {metric_id:?} has nonzero counts"
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl std::error::Error for SnapshotValidationError {}

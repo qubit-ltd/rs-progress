@@ -7,7 +7,7 @@
 // =============================================================================
 //! Reporter trait for complete immutable events.
 
-use crate::{Event, ReportError};
+use crate::{Event, ReporterError};
 
 /// Consumes complete immutable progress events.
 pub trait Reporter: Send + Sync {
@@ -20,16 +20,16 @@ pub trait Reporter: Send + Sync {
 
     /// Delivers one complete event.
     ///
-    /// Returns [`ReportError`] without discarding the sink's error source.
-    fn report(&self, event: &Event) -> Result<(), ReportError>;
+    /// Returns [`ReporterError`] without discarding the sink's error source.
+    fn report(&self, event: &Event) -> Result<(), ReporterError>;
 }
 
 impl<F> Reporter for F
 where
-    F: Fn(&Event) -> Result<(), ReportError> + Send + Sync,
+    F: Fn(&Event) -> Result<(), ReporterError> + Send + Sync,
 {
     /// Invokes this closure for one complete event.
-    fn report(&self, event: &Event) -> Result<(), ReportError> {
+    fn report(&self, event: &Event) -> Result<(), ReporterError> {
         self(event)
     }
 }

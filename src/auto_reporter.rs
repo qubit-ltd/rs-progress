@@ -10,44 +10,26 @@
 
 use std::{
     marker::PhantomData,
-    panic::{
-        AssertUnwindSafe,
-        catch_unwind,
-        resume_unwind,
-    },
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::{
-        Arc,
-        Weak,
-        atomic::{
-            AtomicBool,
-            Ordering,
-        },
-        mpsc::{
-            Receiver,
-            SyncSender,
-            sync_channel,
-        },
+        Arc, Weak,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, SyncSender, sync_channel},
     },
-    thread::{
-        self,
-        ScopedJoinHandle,
-    },
+    thread::{self, ScopedJoinHandle},
 };
 
-use crate::{
-    Progress,
-    ProgressError,
-};
+use crate::{EmissionError, Progress};
 
 /// Handle controlling one scoped automatic reporter.
 #[must_use]
 pub struct AutoReporter<'scope, 'reporter> {
     /// Scoped worker result, present only for enabled operations.
-    join: Option<ScopedJoinHandle<'scope, Result<(), ProgressError>>>,
+    join: Option<ScopedJoinHandle<'scope, Result<(), EmissionError>>>,
     /// Shared wake and stop controls.
     inner: Option<Arc<AutoReporterInner>>,
     /// State observable by workers.
-    status: Status,
+    status: AutoReporterStatus,
     /// Ties the original mutable Progress borrow to this handle's lifetime.
     progress_borrow: PhantomData<&'scope mut Progress<'reporter>>,
 }
@@ -55,17 +37,18 @@ pub struct AutoReporter<'scope, 'reporter> {
 impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     /// Returns a cloneable worker notification handle.
     #[must_use]
-    pub fn notifier(&self) -> Notifier {
-        Notifier {
-            inner: self.inner.as_ref().and_then(|inner| {
-                inner.notification_driven.then(|| Arc::downgrade(inner))
-            }),
+    pub fn notifier(&self) -> ProgressNotifier {
+        ProgressNotifier {
+            inner: self
+                .inner
+                .as_ref()
+                .and_then(|inner| inner.notification_driven.then(|| Arc::downgrade(inner))),
         }
     }
 
     /// Returns a cloneable status view for workers.
     #[must_use]
-    pub fn status(&self) -> Status {
+    pub fn status(&self) -> AutoReporterStatus {
         self.status.clone()
     }
 
@@ -73,7 +56,7 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     ///
     /// A reporter or snapshot error is returned. A worker panic is resumed on
     /// the calling thread after joining.
-    pub fn stop(mut self) -> Result<(), ProgressError> {
+    pub fn stop(mut self) -> Result<(), EmissionError> {
         self.signal_stop();
         match self.join_worker() {
             Ok(result) => result,
@@ -92,10 +75,7 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     /// Joins the scoped worker once and returns either its result or panic.
     fn join_worker(
         &mut self,
-    ) -> Result<
-        Result<(), ProgressError>,
-        Box<dyn std::any::Any + Send + 'static>,
-    > {
+    ) -> Result<Result<(), EmissionError>, Box<dyn std::any::Any + Send + 'static>> {
         let Some(join) = self.join.take() else {
             return Ok(Ok(()));
         };
@@ -118,12 +98,12 @@ impl Drop for AutoReporter<'_, '_> {
 
 /// Notification handle that coalesces state changes without claiming delivery.
 #[derive(Clone)]
-pub struct Notifier {
+pub struct ProgressNotifier {
     /// Non-owning link present only for notification-driven reporters.
     inner: Option<Weak<AutoReporterInner>>,
 }
 
-impl Notifier {
+impl ProgressNotifier {
     /// Records that shared work state changed and wakes a zero-interval loop.
     ///
     /// The method is a no-op for disabled and heartbeat-driven reporters, after
@@ -143,12 +123,12 @@ impl Notifier {
 
 /// Cloneable status exposed while an automatic reporter is active.
 #[derive(Clone)]
-pub struct Status {
+pub struct AutoReporterStatus {
     /// Shared failure flag.
     failed: Arc<AtomicBool>,
 }
 
-impl Status {
+impl AutoReporterStatus {
     /// Creates a status flag initially representing a healthy reporter.
     fn healthy() -> Self {
         Self {
@@ -189,7 +169,7 @@ pub(crate) fn spawn<'scope, 'env, 'reporter>(
 where
     'reporter: 'scope,
 {
-    let status = Status::healthy();
+    let status = AutoReporterStatus::healthy();
     if !progress.is_enabled() {
         return AutoReporter {
             join: None,
@@ -238,7 +218,7 @@ fn run(
     progress: &mut Progress<'_>,
     inner: Arc<AutoReporterInner>,
     receiver: Receiver<()>,
-) -> Result<(), ProgressError> {
+) -> Result<(), EmissionError> {
     if progress.report_interval().is_zero() {
         run_notified(progress, &inner, receiver)
     } else {
@@ -251,7 +231,7 @@ fn run_notified(
     progress: &mut Progress<'_>,
     inner: &AutoReporterInner,
     receiver: Receiver<()>,
-) -> Result<(), ProgressError> {
+) -> Result<(), EmissionError> {
     loop {
         receiver
             .recv()
@@ -270,7 +250,7 @@ fn run_heartbeat(
     progress: &mut Progress<'_>,
     inner: &AutoReporterInner,
     receiver: Receiver<()>,
-) -> Result<(), ProgressError> {
+) -> Result<(), EmissionError> {
     loop {
         if inner.stopped.load(Ordering::Acquire) {
             return Ok(());

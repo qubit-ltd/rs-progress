@@ -10,16 +10,10 @@
 
 use std::time::Duration;
 
-use crate::{
-    MetricSnapshot,
-    Stage,
-};
+use crate::{MetricSnapshot, Stage};
 
 #[cfg(feature = "serde")]
-use crate::{
-    Metric,
-    validation::validate_metrics,
-};
+use crate::{Metric, validation::validate_metrics};
 
 /// Lifecycle phase of one immutable progress event.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -148,12 +142,9 @@ impl<'de> serde::Deserialize<'de> for Event {
     where
         D: serde::Deserializer<'de>,
     {
-        let wire =
-            <EventWire as serde::Deserialize>::deserialize(deserializer)?;
-        let elapsed =
-            parse_duration(&wire.elapsed).map_err(serde::de::Error::custom)?;
-        validate_wire_event(&wire, elapsed)
-            .map_err(serde::de::Error::custom)?;
+        let wire = <EventWire as serde::Deserialize>::deserialize(deserializer)?;
+        let elapsed = parse_duration(&wire.elapsed).map_err(serde::de::Error::custom)?;
+        validate_wire_event(&wire, elapsed).map_err(serde::de::Error::custom)?;
         Ok(Self::new(
             wire.operation_id,
             wire.sequence,
@@ -229,9 +220,7 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
     let (amount, unit) = ["ms", "us", "ns", "h", "m", "s"]
         .into_iter()
         .find_map(|unit| text.strip_suffix(unit).map(|amount| (amount, unit)))
-        .ok_or_else(|| {
-            "elapsed must end in h, m, s, ms, us, or ns".to_owned()
-        })?;
+        .ok_or_else(|| "elapsed must end in h, m, s, ms, us, or ns".to_owned())?;
     if amount.is_empty() || !amount.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err("elapsed amount must be an unsigned integer".into());
     }
@@ -246,9 +235,7 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
     };
     let nanoseconds = amount
         .parse::<u128>()
-        .map_err(|_| {
-            "elapsed amount is outside the supported range".to_owned()
-        })?
+        .map_err(|_| "elapsed amount is outside the supported range".to_owned())?
         .checked_mul(multiplier)
         .ok_or_else(|| "elapsed duration overflows".to_owned())?;
     let seconds = nanoseconds / 1_000_000_000;
@@ -263,10 +250,7 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
 
 /// Validates fields that are only available after Event JSON deserialization.
 #[cfg(feature = "serde")]
-fn validate_wire_event(
-    wire: &EventWire,
-    elapsed: Duration,
-) -> Result<(), String> {
+fn validate_wire_event(wire: &EventWire, elapsed: Duration) -> Result<(), String> {
     if wire.operation_id == 0 {
         return Err("operation_id must be nonzero".into());
     }
@@ -287,20 +271,12 @@ fn validate_wire_event(
                 );
             }
         }
-        Phase::Running
-        | Phase::Succeeded
-        | Phase::Failed
-        | Phase::Cancelled
+        Phase::Running | Phase::Succeeded | Phase::Failed | Phase::Cancelled
             if wire.sequence == 0 =>
         {
-            return Err(
-                "non-started event must have a positive sequence".into()
-            );
+            return Err("non-started event must have a positive sequence".into());
         }
-        Phase::Running
-        | Phase::Succeeded
-        | Phase::Failed
-        | Phase::Cancelled => {}
+        Phase::Running | Phase::Succeeded | Phase::Failed | Phase::Cancelled => {}
     }
     Ok(())
 }

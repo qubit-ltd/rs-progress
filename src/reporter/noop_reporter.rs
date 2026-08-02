@@ -7,7 +7,7 @@
 // =============================================================================
 //! Explicit disabled reporter.
 
-use crate::{Event, ReportError, Reporter};
+use crate::{Event, Reporter, ReporterError};
 
 /// Reporter that disables an entire operation at start.
 #[derive(Clone, Copy, Debug, Default)]
@@ -18,7 +18,7 @@ impl Reporter for NoopReporter {
         false
     }
     /// Accepts events defensively when called outside [`crate::Progress`].
-    fn report(&self, _event: &Event) -> Result<(), ReportError> {
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         Ok(())
     }
 }
