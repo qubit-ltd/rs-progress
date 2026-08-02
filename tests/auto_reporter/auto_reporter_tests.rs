@@ -15,7 +15,7 @@ use std::{
     time::Duration,
 };
 
-use qubit_progress::{Event, Metric, Phase, Progress, ReportError, Reporter};
+use qubit_progress::{Event, Metric, Phase, Progress, Reporter, ReporterError};
 
 /// Reporter that exposes emitted phases to the waiting integration test.
 struct SignalingReporter {
@@ -33,10 +33,10 @@ impl SignalingReporter {
 
 impl Reporter for SignalingReporter {
     /// Records one phase through the bounded test channel.
-    fn report(&self, event: &Event) -> Result<(), ReportError> {
+    fn report(&self, event: &Event) -> Result<(), ReporterError> {
         self.sender
             .send(event.phase())
-            .map_err(|error| ReportError::message(&error.to_string()))
+            .map_err(|error| ReporterError::message(&error.to_string()))
     }
 }
 
@@ -134,11 +134,11 @@ impl RunningFailingReporter {
 
 impl Reporter for RunningFailingReporter {
     /// Rejects every report after the first lifecycle event.
-    fn report(&self, _event: &Event) -> Result<(), ReportError> {
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         if self.reports.fetch_add(1, Ordering::Relaxed) == 0 {
             Ok(())
         } else {
-            Err(ReportError::message("running delivery failed"))
+            Err(ReporterError::message("running delivery failed"))
         }
     }
 }
@@ -160,7 +160,7 @@ impl RunningPanickingReporter {
 
 impl Reporter for RunningPanickingReporter {
     /// Panics after the initial lifecycle event to exercise worker propagation.
-    fn report(&self, _event: &Event) -> Result<(), ReportError> {
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         if self.reports.fetch_add(1, Ordering::Relaxed) == 0 {
             Ok(())
         } else {
@@ -179,7 +179,7 @@ impl Reporter for DisabledReporter {
     }
 
     /// Is never called because the operation remains disabled.
-    fn report(&self, _event: &Event) -> Result<(), ReportError> {
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         panic!("disabled progress must not deliver events")
     }
 }

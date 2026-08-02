@@ -9,14 +9,7 @@
 
 use std::sync::Mutex;
 
-use qubit_progress::{
-    Event,
-    Metric,
-    Phase,
-    Progress,
-    ReportError,
-    Reporter,
-};
+use qubit_progress::{Event, Metric, Phase, Progress, Reporter, ReporterError};
 
 #[cfg(feature = "serde")]
 use qubit_progress::MetricSnapshot;
@@ -33,7 +26,7 @@ struct RecordingReporter {
 
 impl Reporter for RecordingReporter {
     /// Stores each complete immutable event.
-    fn report(&self, event: &Event) -> Result<(), ReportError> {
+    fn report(&self, event: &Event) -> Result<(), ReporterError> {
         self.events
             .lock()
             .expect("recording reporter mutex must not be poisoned")
@@ -124,8 +117,7 @@ fn test_event_json_deserializes_canonical_durations() {
             }],
             "elapsed": elapsed,
         });
-        let event: Event =
-            serde_json::from_value(value).expect("event JSON must deserialize");
+        let event: Event = serde_json::from_value(value).expect("event JSON must deserialize");
         assert_eq!(event.phase().as_str(), phase);
         assert_eq!(event.sequence(), sequence);
         assert_eq!(event.stage().expect("stage must exist").total(), Some(1));

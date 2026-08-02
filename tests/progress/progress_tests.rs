@@ -9,24 +9,13 @@
 
 use std::sync::{
     Mutex,
-    atomic::{
-        AtomicUsize,
-        Ordering,
-    },
+    atomic::{AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
 use qubit_progress::{
-    Event,
-    Metric,
-    MetricError,
-    Phase,
-    Progress,
-    ProgressError,
-    ReportError,
-    Reporter,
-    Stage,
-    ValidationError,
+    CompletionError, ConfigurationError, EmissionError, Event, Metric, MetricError, Phase,
+    Progress, Reporter, ReporterError, Stage, StartError,
 };
 
 /// Records complete events emitted by the progress run under test.
@@ -48,7 +37,7 @@ impl RecordingReporter {
 
 impl Reporter for RecordingReporter {
     /// Records one complete event.
-    fn report(&self, event: &Event) -> Result<(), ReportError> {
+    fn report(&self, event: &Event) -> Result<(), ReporterError> {
         self.events
             .lock()
             .expect("recording reporter mutex must not be poisoned")
@@ -121,18 +110,24 @@ fn test_progress_finish_requires_active_work_to_be_zero() {
     let error = progress
         .finish()
         .expect_err("finish must reject active work");
+    let (returned, completion) = error
+        .into_parts()
+        .expect("incomplete finish is recoverable");
     assert!(matches!(
-        error.progress_error(),
-        ProgressError::Validation(ValidationError::ActiveWorkAtFinish {
+        completion,
+        CompletionError::ActiveWork {
             metric_id,
             active: 1,
-        }) if metric_id == "tasks"
+        } if metric_id == "tasks"
     ));
     assert_eq!(reporter.events().len(), 1);
     assert!(matches!(
         tasks.start(1),
-        Err(MetricError::Closed { metric_id }) if metric_id == "tasks"
+        Err(MetricError::TotalExceeded { metric_id, .. }) if metric_id == "tasks"
     ));
+    returned
+        .cancel()
+        .expect("reopened progress must remain terminally usable");
 }
 
 /// Verifies that finish rejects an incompletely satisfied known total.
@@ -152,15 +147,21 @@ fn test_progress_finish_requires_known_total_to_be_completed() {
     let error = progress
         .finish()
         .expect_err("finish must reject an incomplete total");
+    let (returned, completion) = error
+        .into_parts()
+        .expect("incomplete finish is recoverable");
     assert!(matches!(
-        error.progress_error(),
-        ProgressError::Validation(ValidationError::IncompleteMetricTotal {
+        completion,
+        CompletionError::IncompleteTotal {
             metric_id,
             completed: 1,
             total: 2,
-        }) if metric_id == "tasks"
+        } if metric_id == "tasks"
     ));
     assert_eq!(reporter.events().len(), 1);
+    returned
+        .cancel()
+        .expect("reopened progress must remain terminally usable");
 }
 
 /// Verifies that finish accepts complete known and unknown totals.
@@ -192,25 +193,23 @@ fn test_progress_finish_accepts_complete_known_and_unknown_metrics() {
     );
 }
 
-/// Verifies that an interval outside the representable `Instant` range is
-/// rejected before the operation starts.
+/// Verifies that a maximum interval remains valid without creating an
+/// unrepresentable absolute deadline.
 #[test]
-fn test_progress_rejects_interval_that_instant_cannot_represent() {
+fn test_progress_accepts_maximum_interval_without_absolute_deadline() {
     let reporter = RecordingReporter::default();
     let result = Progress::builder(&reporter)
         .interval(Duration::MAX)
         .metric(Metric::new("tasks", "Tasks"))
         .start();
-    let error = match result {
-        Ok(_) => panic!("unrepresentable report interval must be rejected"),
-        Err(error) => error,
-    };
-
-    assert!(matches!(
-        error,
-        ProgressError::Validation(ValidationError::IntervalOverflow)
-    ));
-    assert!(reporter.events().is_empty());
+    let mut progress = result.expect("maximum interval must be valid");
+    progress
+        .report_if_due()
+        .expect("maximum interval is not due immediately");
+    assert_eq!(reporter.events().len(), 1);
+    progress
+        .cancel()
+        .expect("terminal event must remain available");
 }
 
 /// Reporter whose sampled enablement is disabled and whose calls are counted.
@@ -235,7 +234,7 @@ impl Reporter for DisabledReporter {
     }
 
     /// Counts a delivery that must never occur for a disabled operation.
-    fn report(&self, _event: &Event) -> Result<(), ReportError> {
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         self.reports.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
@@ -284,7 +283,7 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
     };
     assert!(matches!(
         error,
-        ProgressError::Validation(ValidationError::DuplicateMetricId { .. })
+        StartError::InvalidConfiguration(ConfigurationError::DuplicateMetricId { .. })
     ));
 
     let progress = Progress::builder(&reporter)
@@ -300,9 +299,9 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
         .start(1)
         .expect_err("occupied work beyond a known total must fail");
     assert!(matches!(error, MetricError::TotalExceeded { .. }));
-    progress.cancel().expect(
-        "a valid terminal snapshot must be accepted after validation failure",
-    );
+    progress
+        .cancel()
+        .expect("a valid terminal snapshot must be accepted after validation failure");
     assert_eq!(
         reporter
             .events()
@@ -365,8 +364,8 @@ struct RejectingReporter;
 
 impl Reporter for RejectingReporter {
     /// Rejects the supplied event with a stable test error.
-    fn report(&self, _event: &Event) -> Result<(), ReportError> {
-        Err(ReportError::message("delivery rejected"))
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
+        Err(ReporterError::message("delivery rejected"))
     }
 }
 
@@ -380,7 +379,7 @@ fn test_progress_propagates_reporter_failures() {
         Ok(_) => panic!("Started delivery must fail"),
         Err(error) => error,
     };
-    assert!(matches!(error, ProgressError::Report(_)));
+    assert!(matches!(error, StartError::Delivery(_)));
 }
 
 /// Reporter that accepts Started and rejects the first Running event.
@@ -404,14 +403,14 @@ impl RunningRejectingReporter {
 impl Reporter for RunningRejectingReporter {
     /// Accepts Started, rejects the first Running event, then accepts later
     /// events.
-    fn report(&self, event: &Event) -> Result<(), ReportError> {
+    fn report(&self, event: &Event) -> Result<(), ReporterError> {
         let report_index = self.reports.fetch_add(1, Ordering::Relaxed);
         self.sequences
             .lock()
             .expect("sequence collection mutex must not be poisoned")
             .push(event.sequence());
         if report_index == 1 {
-            Err(ReportError::message("running delivery rejected"))
+            Err(ReporterError::message("running delivery rejected"))
         } else {
             Ok(())
         }
@@ -431,14 +430,14 @@ fn test_progress_propagates_running_report_failure_and_preserves_sequence() {
     let error = progress
         .report()
         .expect_err("the first Running delivery must fail");
-    assert!(matches!(error, ProgressError::Report(_)));
+    assert!(matches!(error, EmissionError::Delivery(_)));
 
     progress
         .report()
         .expect("a later Running delivery must remain possible");
-    progress.finish().expect(
-        "terminal delivery must remain possible after a Running failure",
-    );
+    progress
+        .finish()
+        .expect("terminal delivery must remain possible after a Running failure");
     assert_eq!(reporter.reports.load(Ordering::Relaxed), 4);
     assert_eq!(
         reporter

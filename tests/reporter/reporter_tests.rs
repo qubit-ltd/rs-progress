@@ -8,23 +8,12 @@
 //! Reporter output and event serialization tests.
 
 use std::{
-    io::{
-        self,
-        Write,
-    },
-    panic::{
-        AssertUnwindSafe,
-        catch_unwind,
-    },
+    io::{self, Write},
+    panic::{AssertUnwindSafe, catch_unwind},
     sync::Mutex,
 };
 
-use qubit_progress::{
-    Metric,
-    Progress,
-    Reporter,
-    TextReporter,
-};
+use qubit_progress::{Metric, Progress, Reporter, TextReporter};
 
 /// Verifies that the text sink emits one complete event record per delivery.
 #[test]
@@ -300,9 +289,7 @@ fn test_json_lines_reporter_writes_complete_line_in_one_write() {
 /// Verifies NoopReporter accepts direct reporter calls.
 #[test]
 fn test_noop_reporter_accepts_direct_delivery() {
-    let reporter = |event: &qubit_progress::Event| {
-        qubit_progress::NoopReporter.report(event)
-    };
+    let reporter = |event: &qubit_progress::Event| qubit_progress::NoopReporter.report(event);
     let _ = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks"))
         .start()
