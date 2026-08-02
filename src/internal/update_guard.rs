@@ -7,8 +7,6 @@
 // =============================================================================
 //! RAII guard for one registered metric update.
 
-use std::sync::atomic::Ordering;
-
 use crate::internal::OperationState;
 
 /// Keeps one metric update counted until its critical section exits.
@@ -26,6 +24,6 @@ impl<'state> UpdateGuard<'state> {
 impl Drop for UpdateGuard<'_> {
     /// Releases the registered update on every return and panic path.
     fn drop(&mut self) {
-        self.state.active_updates.fetch_sub(1, Ordering::Release);
+        self.state.leave_update();
     }
 }
