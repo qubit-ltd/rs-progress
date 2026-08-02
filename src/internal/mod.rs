@@ -7,6 +7,7 @@
 // =============================================================================
 //! Internal lifecycle state shared by progress and metric handles.
 
+mod operation_gate;
 mod operation_lifecycle;
 mod operation_state;
 mod update_guard;
