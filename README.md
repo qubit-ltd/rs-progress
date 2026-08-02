@@ -67,7 +67,7 @@ matching terminal event before returning; see
 
 ## Worker-thread use: automatically report shared copy state
 
-For parallel or worker-driven work, let `Progress` own a scoped background reporter. Workers update a cloneable metric handle, then call the cloneable `Notifier`. With `Duration::ZERO`, notifications are coalesced and trigger reports without polling. Call `stop()` before the terminal event: the scoped exclusive borrow prevents manual reporting or termination while the background reporter is active.
+For parallel or worker-driven work, let `Progress` own one scoped background reporter thread for the whole operation. Every worker updates a cloneable metric handle and shares the cloneable `ProgressNotifier`; the reporter thread coalesces notifications and delivers events. Call `stop()` before the terminal event: the scoped exclusive borrow prevents manual reporting or termination while the background reporter is active.
 
 ```rust
 use std::{thread, time::Duration};
@@ -80,7 +80,7 @@ let mut progress = Progress::builder(&reporter)
     .start()?;
 let files_metric = progress.metric("files").expect("configured metric must exist");
 
-thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
+thread::scope(|scope| -> Result<(), qubit_progress::EmissionError> {
     let auto = progress.spawn_auto_reporter(scope);
 
     let notifier = auto.notifier();
@@ -99,7 +99,7 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Use a positive interval when a periodic heartbeat is more useful than immediate notifications. In this mode, `notify()` is a no-op so workers avoid synchronization work; the background reporter wakes only for its timer or `stop()`. A nonzero interval that cannot be represented by `Instant` is rejected by `start()`.
+Use a positive interval when a periodic heartbeat is more useful than immediate notifications. In this mode, `notify()` is a no-op so workers avoid synchronization work; the background reporter wakes only for its timer or `stop()`. Relative deadlines accept even `Duration::MAX`; that value simply has no future automatic due deadline.
 
 ## Next steps
 

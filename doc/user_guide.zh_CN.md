@@ -54,10 +54,9 @@ let elapsed = progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`start()` 会校验全部固定元数据；如果操作已启用，随后发送 `Started`。
-`report()` 将当前指标快照作为 `Running` 发送。终态方法返回耗时
-`Duration`；终态投递失败时，`TerminalError` 同时保留耗时和底层
-`ProgressError`。
+`start()` 返回 `StartError`，用于表示配置无效、操作 ID 耗尽或 `Started` 投递被拒绝。
+`report()` 将当前指标快照作为 `Running` 发送并返回 `EmissionError`。终态投递失败时，
+`TerminalError` 同时保留耗时和失败事件的投递错误。
 
 事件投递采用“最多一次”语义。库不会自动重试上报器错误，而是将错误返回给
 调用方。如果业务层选择重试，上报器可能已经接受事件但随后返回错误，因此重试
@@ -73,9 +72,10 @@ files.succeed(10)?;
 progress.finish()?;
 ```
 
-`finish()` 会拒绝仍有 active 工作的指标，也会拒绝
-`completed != total` 的已知总量指标。即使校验失败，它仍会消费并关闭操作，
-因此应在调用前选择好使用 `finish_unchecked()` 还是其他终态方法。
+`finish()` 会拒绝仍有 active 工作的指标，也会拒绝 `completed != total` 的已知总量指标。
+校验失败时返回 `FinishError::Incomplete`，其中带回仍可使用的 `Progress` 和
+`CompletionError`；修复指标后可以重试。只有 `FinishError::Terminal` 表示已经尝试
+终态投递且操作不可恢复。
 
 ## 指标生命周期与校验
 
@@ -173,15 +173,16 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-间隔为零时，每次 `report_if_due()` 都到期。无法由 `Instant` 表示的非零间隔会在
-`start()` 时被拒绝。上报器失败会消耗一个投递序号并重置下次截止时间；因此序号
-空洞表示投递尝试失败，而不是缺少状态转换。
+间隔为零时，每次 `report_if_due()` 都到期。调度使用相对耗时，因此包括
+`Duration::MAX` 在内的间隔都能启动；该值只是不再产生未来的自动到期点。上报器失败
+会消耗一个投递序号并重置下次截止时间；因此序号空洞表示投递尝试失败，而不是缺少
+状态转换。
 
 ## 自动上报工作线程的状态
 
-`spawn_auto_reporter` 会上报由工作线程更新的指标状态。它启动一个有作用域的
-后台线程并独占可变的 `Progress` 借用；返回的 `AutoReporter` 提供可克隆的
-`Notifier` 和 `Status`。
+`spawn_auto_reporter` 会上报由工作线程更新的指标状态。它在整个 `Progress` 操作期间
+只启动一个有作用域的后台线程并独占可变借用；任意数量的工作线程共享指标句柄和
+通知器。返回的 `AutoReporter` 提供可克隆的 `ProgressNotifier` 和 `AutoReporterStatus`。
 
 ```rust
 use std::{thread, time::Duration};
@@ -194,7 +195,7 @@ let mut progress = Progress::builder(&reporter)
     .start()?;
 let files = progress.metric("files").expect("configured metric must exist");
 
-thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
+thread::scope(|scope| -> Result<(), qubit_progress::EmissionError> {
     let auto = progress.spawn_auto_reporter(scope);
     let status = auto.status();
     let notifier = auto.notifier();
@@ -223,8 +224,8 @@ progress.finish()?;
 `std::thread`。它面向基于线程的工作，不直接集成异步运行时；异步调用方应在
 自己的运行时中驱动 `report_if_due()`，等待未来提供专用的异步驱动器。
 
-后台上报器因错误或 panic 退出后，`Status::is_failed()` 会变为 `true`。工作线程
-可以观察克隆的 `Status`，以便提前停止高成本工作；但 `stop()` 才是最终依据：
+后台上报器因错误或 panic 退出后，`AutoReporterStatus::is_failed()` 会变为 `true`。
+工作线程可以观察克隆的 `AutoReporterStatus`，以便提前停止高成本工作；但 `stop()` 才是最终依据：
 它会 join 后台线程、返回校验或上报器错误，并在调用线程恢复 panic。
 
 ## 禁用操作
@@ -246,7 +247,7 @@ progress.finish()?;
 - `JsonLinesReporter<W>`：开启 `json-lines` 后可用，每行写入一个完整 JSON 事件。
 - `LogReporter`：开启 `log` 后可用，在 info 级别写入事件的 `Debug` 表示。
 
-满足 `Fn(&Event) -> Result<(), ReportError> + Send + Sync` 的闭包也会自动实现
+满足 `Fn(&Event) -> Result<(), ReporterError> + Send + Sync` 的闭包也会自动实现
 `Reporter`，通常是最简短的自定义集成方式。
 
 JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件：
@@ -260,13 +261,14 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 
 ## 错误与关闭
 
-大多数非终态操作返回 `Result<(), ProgressError>`。`ProgressError` 会区分校验
-失败和上报器返回错误；指标句柄的状态转换会直接返回 `MetricError`。不要忽略
-这些错误：状态无效表示事件没有发送，而输出目标错误表示本次投递失败。
+`start()` 返回 `StartError`，运行中上报返回 `EmissionError`，指标句柄的状态转换
+直接返回 `MetricError`。不要忽略这些错误：状态无效表示事件没有发送，而输出目标
+错误表示本次投递失败。`finish()` 返回 `FinishError`；可以修复带回的操作和
+`CompletionError`，或检查终态投递失败的 `TerminalError`。
 
 终态方法返回 `Result<Duration, TerminalError>`。如果必须可靠记录完成结果，
 应检查 `TerminalError`：即使最终事件无法投递，它仍会保留操作耗时。自动上报
-场景下，`AutoReporter::stop()` 会返回后台校验或上报器错误，并在调用线程恢复
+场景下，`AutoReporter::stop()` 会返回 `EmissionError`，并在调用线程恢复
 后台上报线程的 panic。
 
 启用 `serde` 特性后，反序列化 `Stage`、`MetricSnapshot` 或 `Event` 时会校验与在线进度操作相同的元数据和计数不变量。反序列化错误表示外部进度数据无效，而不是可恢复的事件状态。

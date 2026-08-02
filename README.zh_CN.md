@@ -64,7 +64,7 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
 
 ## 工作线程场景：自动上报共享的复制状态
 
-对于并行或由工作线程驱动的任务，可让 `Progress` 拥有一个有作用域的后台上报器。工作线程更新可克隆的指标句柄后调用可克隆的 `Notifier`。使用 `Duration::ZERO` 时，通知会被合并并触发上报，无需轮询。发送终态事件前必须调用 `stop()`：有作用域的独占借用会阻止后台上报器存活期间手工上报或结束操作。
+对于并行或由工作线程驱动的任务，可让 `Progress` 在整个操作期间只拥有一个有作用域的后台上报线程。所有工作线程共享可克隆的指标句柄和 `ProgressNotifier`，由这个线程合并通知并发送事件。发送终态事件前必须调用 `stop()`：有作用域的独占借用会阻止后台上报器存活期间手工上报或结束操作。
 
 ```rust
 use std::{thread, time::Duration};
@@ -77,7 +77,7 @@ let mut progress = Progress::builder(&reporter)
     .start()?;
 let files_metric = progress.metric("files").expect("configured metric must exist");
 
-thread::scope(|scope| -> Result<(), qubit_progress::ProgressError> {
+thread::scope(|scope| -> Result<(), qubit_progress::EmissionError> {
     let auto = progress.spawn_auto_reporter(scope);
 
     let notifier = auto.notifier();
@@ -96,7 +96,7 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-若更需要周期性心跳而不是即时通知，可设置正的上报间隔。此时 `notify()` 是无操作，工作线程无需为通知付出同步成本；后台上报器只会因定时器或 `stop()` 被唤醒。无法由 `Instant` 表示的非零间隔会在 `start()` 时被拒绝。
+若更需要周期性心跳而不是即时通知，可设置正的上报间隔。此时 `notify()` 是无操作，工作线程无需为通知付出同步成本；后台上报器只会因定时器或 `stop()` 被唤醒。相对时间调度接受包括 `Duration::MAX` 在内的所有间隔；该值只是不再产生未来的自动到期点。
 
 ## 下一步
 
