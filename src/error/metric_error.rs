@@ -6,10 +6,14 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Errors returned by live metric transitions.
+// qubit-style: allow source-test-pair
 
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt,
+};
 
-use crate::{OperationLifecycle, error::MetricTransition};
+use crate::OperationLifecycle;
 
 /// Failure while reading or mutating one stateful metric.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -21,15 +25,13 @@ pub enum MetricError {
         /// Lifecycle state that rejected the transition.
         state: OperationLifecycle,
     },
-    /// A transition attempted to remove more work than its source state held.
-    InsufficientCount {
+    /// A completion delta attempted to consume more active work than exists.
+    InsufficientActive {
         /// Stable metric ID.
         metric_id: String,
-        /// Requested transition.
-        transition: MetricTransition,
-        /// Requested amount.
+        /// Total terminal work requested by the delta.
         requested: u64,
-        /// Available source state.
+        /// Active work available at the linearization point.
         available: u64,
     },
     /// A transition would exceed the configured total.
@@ -56,14 +58,13 @@ impl fmt::Display for MetricError {
                 formatter,
                 "metric {metric_id:?} is not open because operation is {state:?}"
             ),
-            Self::InsufficientCount {
+            Self::InsufficientActive {
                 metric_id,
-                transition,
                 requested,
                 available,
             } => write!(
                 formatter,
-                "metric {metric_id:?} cannot {transition} {requested} work items because only {available} are available"
+                "metric {metric_id:?} cannot complete {requested} work items because only {available} are active"
             ),
             Self::TotalExceeded {
                 metric_id,

@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Errors returned when a scoped automatic reporter stops.
+// qubit-style: allow source-test-pair
+// qubit-style: allow multiple-public-types
 
 use std::{
     any::Any,

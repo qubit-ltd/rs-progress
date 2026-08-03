@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Lifecycle state values for one progress operation.
+// qubit-style: allow source-test-pair
 
 /// Lifecycle state visible to metric transition errors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

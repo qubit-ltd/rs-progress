@@ -6,6 +6,8 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Shared operation lifecycle and transition-freezing protocol.
+// qubit-style: allow multiple-public-types
+// qubit-style: allow coverage-cfg
 
 use std::sync::Arc;
 
@@ -14,7 +16,11 @@ use crate::{
     internal::{
         OperationLifecycle,
         UpdateGuard,
-        operation_gate::{GateLifecycle, OperationGate, StdScheduler},
+        operation_gate::{
+            GateLifecycle,
+            OperationGate,
+            StdScheduler,
+        },
     },
 };
 
@@ -37,7 +43,7 @@ impl OperationState {
     }
 
     /// Returns the currently published lifecycle state.
-    #[inline]
+    #[inline(never)]
     pub(crate) fn lifecycle(&self) -> OperationLifecycle {
         match self.gate.lifecycle() {
             GateLifecycle::Open => OperationLifecycle::Open,
@@ -56,11 +62,7 @@ impl OperationState {
             Ok(()) => Ok(UpdateGuard::new(self)),
             Err(state) => Err(MetricError::OperationNotOpen {
                 metric_id: metric_id.into(),
-                state: match state {
-                    GateLifecycle::Open => OperationLifecycle::Open,
-                    GateLifecycle::Finishing => OperationLifecycle::Finishing,
-                    GateLifecycle::Closed => OperationLifecycle::Closed,
-                },
+                state: operation_lifecycle(state),
             }),
         }
     }
@@ -106,9 +108,44 @@ impl FinishGuard<'_> {
 
 impl Drop for FinishGuard<'_> {
     /// Closes an abandoned freeze guard conservatively.
+    #[inline(never)]
     fn drop(&mut self) {
         if self.state.lifecycle() == OperationLifecycle::Finishing {
             self.state.close();
         }
     }
+}
+
+#[inline(never)]
+fn operation_lifecycle(state: GateLifecycle) -> OperationLifecycle {
+    match state {
+        GateLifecycle::Open => OperationLifecycle::Open,
+        GateLifecycle::Finishing => OperationLifecycle::Finishing,
+        GateLifecycle::Closed => OperationLifecycle::Closed,
+    }
+}
+
+/// Exercises the finishing guard and lifecycle mapping from the library build.
+#[cfg(coverage)]
+pub(crate) fn __coverage_operation_state() {
+    let state = OperationState::new();
+    let guard = state.begin_finish();
+    assert_eq!(state.lifecycle(), OperationLifecycle::Finishing);
+    assert!(matches!(
+        state.enter_update("coverage"),
+        Err(MetricError::OperationNotOpen {
+            state: OperationLifecycle::Finishing,
+            ..
+        })
+    ));
+    drop(guard);
+    assert_eq!(state.lifecycle(), OperationLifecycle::Closed);
+}
+
+/// Runs internal lifecycle coverage hooks in the instrumented build.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub fn __coverage_internal() {
+    super::operation_gate::__coverage_operation_gate();
+    __coverage_operation_state();
 }

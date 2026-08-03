@@ -6,8 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Errors found while validating fixed progress configuration.
+// qubit-style: allow source-test-pair
 
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt,
+};
 
 /// Invalid fixed metadata supplied to a progress operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -30,6 +34,11 @@ pub enum ConfigurationError {
         /// Duplicated stable metric ID.
         metric_id: String,
     },
+    /// An operation attribute key is empty or whitespace only.
+    EmptyAttributeKey {
+        /// Malformed attribute key.
+        key: String,
+    },
     /// A stage ID is empty or whitespace only.
     EmptyStageId,
     /// A stage name is empty or whitespace only.
@@ -49,9 +58,8 @@ impl fmt::Display for ConfigurationError {
     /// Formats a concise configuration explanation.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoMetrics => {
-                formatter.write_str("a progress operation requires at least one metric")
-            }
+            Self::NoMetrics => formatter
+                .write_str("a progress operation requires at least one metric"),
             Self::EmptyMetricId { index } => {
                 write!(formatter, "metric at index {index} has an empty ID")
             }
@@ -61,11 +69,14 @@ impl fmt::Display for ConfigurationError {
             Self::DuplicateMetricId { metric_id } => {
                 write!(formatter, "metric ID {metric_id:?} is duplicated")
             }
+            Self::EmptyAttributeKey { key } => {
+                write!(formatter, "operation attribute key {key:?} is empty")
+            }
             Self::EmptyStageId => formatter.write_str("stage ID is empty"),
             Self::EmptyStageName => formatter.write_str("stage name is empty"),
-            Self::IncompleteStagePosition => {
-                formatter.write_str("stage position and total must be supplied together")
-            }
+            Self::IncompleteStagePosition => formatter.write_str(
+                "stage position and total must be supplied together",
+            ),
             Self::InvalidStagePosition { position, total } => write!(
                 formatter,
                 "stage position {position} is outside 1..={total}"

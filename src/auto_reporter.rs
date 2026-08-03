@@ -10,16 +10,36 @@
 
 use std::{
     marker::PhantomData,
-    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
-    sync::{
-        Arc, Weak,
-        atomic::{AtomicBool, Ordering},
-        mpsc::{Receiver, SyncSender, sync_channel},
+    panic::{
+        AssertUnwindSafe,
+        catch_unwind,
+        resume_unwind,
     },
-    thread::{self, ScopedJoinHandle},
+    sync::{
+        Arc,
+        Weak,
+        atomic::{
+            AtomicBool,
+            Ordering,
+        },
+        mpsc::{
+            Receiver,
+            SyncSender,
+            sync_channel,
+        },
+    },
+    thread::{
+        self,
+        ScopedJoinHandle,
+    },
 };
 
-use crate::{AutoReporterError, EmissionError, Progress, WorkerPanic};
+use crate::{
+    AutoReporterError,
+    EmissionError,
+    Progress,
+    WorkerPanic,
+};
 
 /// Handle controlling one scoped automatic reporter.
 #[must_use]
@@ -39,10 +59,9 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     #[must_use]
     pub fn notifier(&self) -> ProgressNotifier {
         ProgressNotifier {
-            inner: self
-                .inner
-                .as_ref()
-                .and_then(|inner| inner.notification_driven.then(|| Arc::downgrade(inner))),
+            inner: self.inner.as_ref().and_then(|inner| {
+                inner.notification_driven.then(|| Arc::downgrade(inner))
+            }),
         }
     }
 

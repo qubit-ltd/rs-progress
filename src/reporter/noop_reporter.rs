@@ -7,7 +7,11 @@
 // =============================================================================
 //! Explicit disabled reporter.
 
-use crate::{Event, Reporter, ReporterError};
+use crate::{
+    Event,
+    Reporter,
+    ReporterError,
+};
 
 /// Reporter that disables an entire operation at start.
 #[derive(Clone, Copy, Debug, Default)]

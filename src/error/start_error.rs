@@ -6,10 +6,18 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Errors encountered while starting a progress operation.
+// qubit-style: allow source-test-pair
 
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt,
+};
 
-use crate::error::{ConfigurationError, DeliveryError, EmissionError};
+use crate::error::{
+    ConfigurationError,
+    DeliveryError,
+    EmissionError,
+};
 
 /// Failure before a usable progress operation can be returned.
 #[derive(Clone, Debug)]

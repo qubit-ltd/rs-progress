@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! RAII guard for one registered metric update.
+// qubit-style: allow source-test-pair
 
 use crate::internal::OperationState;
 

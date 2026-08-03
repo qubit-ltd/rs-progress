@@ -12,7 +12,10 @@ use std::{
     hint::spin_loop,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{
+            AtomicU64,
+            Ordering,
+        },
     },
     thread,
 };
@@ -20,11 +23,20 @@ use std::{
 use qubit_fast_cas::CasCell;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer};
+use serde::{
+    Deserialize,
+    Deserializer,
+};
 
 #[cfg(feature = "serde")]
-use crate::validation::{validate_metrics, validate_snapshot_counts};
-use crate::{MetricError, MetricTransition, internal::OperationState};
+use crate::validation::{
+    validate_metrics,
+    validate_snapshot_counts,
+};
+use crate::{
+    MetricError,
+    internal::OperationState,
+};
 
 /// Stable metadata for one metric in a progress operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -80,6 +92,70 @@ impl Metric {
     }
 }
 
+/// One atomic batch of additive metric lifecycle changes.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MetricDelta {
+    /// Work moving from not-started to active.
+    started: u64,
+    /// Active work becoming completed without an outcome classification.
+    unclassified: u64,
+    /// Active work becoming successful.
+    succeeded: u64,
+    /// Active work becoming failed.
+    failed: u64,
+    /// Active work becoming cancelled.
+    cancelled: u64,
+}
+
+impl MetricDelta {
+    /// Creates a zero delta.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            started: 0,
+            unclassified: 0,
+            succeeded: 0,
+            failed: 0,
+            cancelled: 0,
+        }
+    }
+
+    /// Sets the number of work items entering the active state.
+    #[must_use]
+    pub const fn started(mut self, count: u64) -> Self {
+        self.started = count;
+        self
+    }
+
+    /// Sets the number of work items completing without classification.
+    #[must_use]
+    pub const fn unclassified(mut self, count: u64) -> Self {
+        self.unclassified = count;
+        self
+    }
+
+    /// Sets the number of work items completing successfully.
+    #[must_use]
+    pub const fn succeeded(mut self, count: u64) -> Self {
+        self.succeeded = count;
+        self
+    }
+
+    /// Sets the number of work items completing with failure.
+    #[must_use]
+    pub const fn failed(mut self, count: u64) -> Self {
+        self.failed = count;
+        self
+    }
+
+    /// Sets the number of work items completing by cancellation.
+    #[must_use]
+    pub const fn cancelled(mut self, count: u64) -> Self {
+        self.cancelled = count;
+        self
+    }
+}
+
 /// Cloneable capability for one live metric owned by a progress operation.
 ///
 /// All mutation methods are serialized by one CAS gate critical section.
@@ -95,7 +171,10 @@ pub struct MetricHandle {
 
 impl MetricHandle {
     /// Creates one live handle from validated metric metadata.
-    pub(crate) fn new(metric: Metric, operation_state: Arc<OperationState>) -> Self {
+    pub(crate) fn new(
+        metric: Metric,
+        operation_state: Arc<OperationState>,
+    ) -> Self {
         Self {
             inner: Arc::new(MetricInner::new(metric)),
             operation_state,
@@ -121,7 +200,7 @@ impl MetricHandle {
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
     pub fn start(&self, count: u64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Start, count, Direction::Forward)
+        self.apply_delta(MetricDelta::new().started(count))
     }
 
     /// Moves work from the active state to unclassified completion.
@@ -131,7 +210,7 @@ impl MetricHandle {
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
     pub fn complete(&self, count: u64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Complete, count, Direction::Forward)
+        self.apply_delta(MetricDelta::new().unclassified(count))
     }
 
     /// Moves work from the active state to the succeeded state.
@@ -141,7 +220,7 @@ impl MetricHandle {
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
     pub fn succeed(&self, count: u64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Succeed, count, Direction::Forward)
+        self.apply_delta(MetricDelta::new().succeeded(count))
     }
 
     /// Moves work from the active state to the failed state.
@@ -151,7 +230,7 @@ impl MetricHandle {
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
     pub fn fail(&self, count: u64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Fail, count, Direction::Forward)
+        self.apply_delta(MetricDelta::new().failed(count))
     }
 
     /// Moves work from the active state to the cancelled state.
@@ -161,20 +240,28 @@ impl MetricHandle {
     /// Returns a metric error when the transition violates aggregate state
     /// invariants or when the owning operation is closed.
     pub fn cancel(&self, count: u64) -> Result<(), MetricError> {
-        self.transition(MetricTransition::Cancel, count, Direction::Forward)
+        self.apply_delta(MetricDelta::new().cancelled(count))
     }
 
-    /// Rolls work back along one named transition.
-    ///
-    /// `Start` returns active work to the not-started state. Every other
-    /// transition returns work from its terminal state to the active state.
+    /// Applies one atomic additive batch of lifecycle changes.
     ///
     /// # Errors
     ///
-    /// Returns a metric error when the selected source state does not contain
-    /// `count` work or when the owning operation is closed.
-    pub fn rollback(&self, transition: MetricTransition, count: u64) -> Result<(), MetricError> {
-        self.transition(transition, count, Direction::Rollback)
+    /// Returns a metric error when the delta exceeds active work, violates a
+    /// configured total, overflows, or the owning operation is closed. The
+    /// metric is unchanged whenever an error is returned.
+    pub fn apply_delta(&self, delta: MetricDelta) -> Result<(), MetricError> {
+        let metric_id = self.id();
+        let total = self.inner.metric.configured_total();
+        let _update_guard = self.operation_state.enter_update(metric_id)?;
+
+        self.inner.with_update(|counts| {
+            let mut next = *counts;
+            apply_delta_to_counts(&mut next, delta, metric_id)?;
+            next.validate(metric_id, total)?;
+            *counts = next;
+            Ok(())
+        })
     }
 
     /// Returns one internally consistent immutable metric snapshot.
@@ -185,86 +272,6 @@ impl MetricHandle {
         let counts = self.inner.snapshot_counts();
         MetricSnapshot::from_counts(&self.inner.metric, counts)
     }
-
-    /// Updates state through one validated directional transition.
-    fn transition(
-        &self,
-        transition: MetricTransition,
-        count: u64,
-        direction: Direction,
-    ) -> Result<(), MetricError> {
-        let metric_id = self.id();
-        let total = self.inner.metric.configured_total();
-        let _update_guard = self.operation_state.enter_update(metric_id)?;
-
-        self.inner.with_update(|counts| {
-            let mut next = *counts;
-            match transition {
-                MetricTransition::Start => {
-                    move_count(
-                        &mut next.active,
-                        None,
-                        count,
-                        direction,
-                        transition,
-                        metric_id,
-                    )?;
-                }
-                MetricTransition::Complete => {
-                    move_count(
-                        &mut next.active,
-                        Some(&mut next.completed_unclassified),
-                        count,
-                        direction,
-                        transition,
-                        metric_id,
-                    )?;
-                }
-                MetricTransition::Succeed => {
-                    move_count(
-                        &mut next.active,
-                        Some(&mut next.succeeded),
-                        count,
-                        direction,
-                        transition,
-                        metric_id,
-                    )?;
-                }
-                MetricTransition::Fail => {
-                    move_count(
-                        &mut next.active,
-                        Some(&mut next.failed),
-                        count,
-                        direction,
-                        transition,
-                        metric_id,
-                    )?;
-                }
-                MetricTransition::Cancel => {
-                    move_count(
-                        &mut next.active,
-                        Some(&mut next.cancelled),
-                        count,
-                        direction,
-                        transition,
-                        metric_id,
-                    )?;
-                }
-            }
-            next.validate(metric_id, total)?;
-            *counts = next;
-            Ok(())
-        })
-    }
-}
-
-/// Direction in which a metric state transition moves work.
-#[derive(Clone, Copy)]
-enum Direction {
-    /// Moves work from the transition source to its target.
-    Forward,
-    /// Moves work from the transition target back to its source.
-    Rollback,
 }
 
 /// Immutable metadata and atomic dynamic state for one handle.
@@ -315,7 +322,10 @@ impl MetricInner {
 
             match self.gate.compare_set(version, version.wrapping_add(1)) {
                 Ok(()) => {
-                    let _guard = MetricGateGuard::new(&self.gate, version.wrapping_add(2));
+                    let _guard = MetricGateGuard::new(
+                        &self.gate,
+                        version.wrapping_add(2),
+                    );
                     let mut counts = self.read_counts();
                     let result = update(&mut counts);
                     if result.is_ok() {
@@ -335,7 +345,9 @@ impl MetricInner {
     fn read_counts(&self) -> MetricCounts {
         MetricCounts {
             active: self.active.load(Ordering::Acquire),
-            completed_unclassified: self.completed_unclassified.load(Ordering::Acquire),
+            completed_unclassified: self
+                .completed_unclassified
+                .load(Ordering::Acquire),
             succeeded: self.succeeded.load(Ordering::Acquire),
             failed: self.failed.load(Ordering::Acquire),
             cancelled: self.cancelled.load(Ordering::Acquire),
@@ -406,10 +418,15 @@ impl MetricCounts {
     }
 
     /// Validates the aggregate conservation invariants for one pending state.
-    fn validate(self, metric_id: &str, total: Option<u64>) -> Result<(), MetricError> {
-        let occupied = self.occupied().ok_or_else(|| MetricError::CountOverflow {
-            metric_id: metric_id.into(),
-        })?;
+    fn validate(
+        self,
+        metric_id: &str,
+        total: Option<u64>,
+    ) -> Result<(), MetricError> {
+        let occupied =
+            self.occupied().ok_or_else(|| MetricError::CountOverflow {
+                metric_id: metric_id.into(),
+            })?;
         if let Some(total) = total
             && occupied > total
         {
@@ -423,60 +440,59 @@ impl MetricCounts {
     }
 }
 
-/// Moves an amount between active work and an optional terminal state.
-fn move_count(
-    active: &mut u64,
-    terminal: Option<&mut u64>,
-    amount: u64,
-    direction: Direction,
-    transition: MetricTransition,
+/// Applies one validated additive delta to dynamic metric counts.
+fn apply_delta_to_counts(
+    counts: &mut MetricCounts,
+    delta: MetricDelta,
     metric_id: &str,
 ) -> Result<(), MetricError> {
-    if matches!(direction, Direction::Rollback) {
-        if let Some(terminal) = terminal {
-            let available = *terminal;
-            *terminal =
-                terminal
-                    .checked_sub(amount)
-                    .ok_or_else(|| MetricError::InsufficientCount {
-                        metric_id: metric_id.into(),
-                        transition,
-                        requested: amount,
-                        available,
-                    })?;
-            *active += amount;
-        } else {
-            let available = *active;
-            *active = active
-                .checked_sub(amount)
-                .ok_or_else(|| MetricError::InsufficientCount {
-                    metric_id: metric_id.into(),
-                    transition,
-                    requested: amount,
-                    available,
-                })?;
-        }
-        return Ok(());
+    let terminal_delta = delta
+        .unclassified
+        .checked_add(delta.succeeded)
+        .and_then(|value| value.checked_add(delta.failed))
+        .and_then(|value| value.checked_add(delta.cancelled))
+        .ok_or_else(|| MetricError::CountOverflow {
+            metric_id: metric_id.into(),
+        })?;
+    let available_active = counts
+        .active
+        .checked_add(delta.started)
+        .ok_or_else(|| MetricError::CountOverflow {
+            metric_id: metric_id.into(),
+        })?;
+    if terminal_delta > available_active {
+        return Err(MetricError::InsufficientActive {
+            metric_id: metric_id.into(),
+            requested: terminal_delta,
+            available: available_active,
+        });
     }
 
-    if let Some(terminal) = terminal {
-        let available = *active;
-        *active = active
-            .checked_sub(amount)
-            .ok_or_else(|| MetricError::InsufficientCount {
+    counts.active = available_active - terminal_delta;
+    counts.completed_unclassified = counts
+        .completed_unclassified
+        .checked_add(delta.unclassified)
+        .ok_or_else(|| MetricError::CountOverflow {
+            metric_id: metric_id.into(),
+        })?;
+    counts.succeeded = counts
+        .succeeded
+        .checked_add(delta.succeeded)
+        .ok_or_else(|| MetricError::CountOverflow {
+            metric_id: metric_id.into(),
+        })?;
+    counts.failed =
+        counts.failed.checked_add(delta.failed).ok_or_else(|| {
+            MetricError::CountOverflow {
                 metric_id: metric_id.into(),
-                transition,
-                requested: amount,
-                available,
-            })?;
-        *terminal += amount;
-    } else {
-        *active = active
-            .checked_add(amount)
-            .ok_or_else(|| MetricError::CountOverflow {
-                metric_id: metric_id.into(),
-            })?;
-    }
+            }
+        })?;
+    counts.cancelled = counts
+        .cancelled
+        .checked_add(delta.cancelled)
+        .ok_or_else(|| MetricError::CountOverflow {
+            metric_id: metric_id.into(),
+        })?;
     Ok(())
 }
 
@@ -556,6 +572,15 @@ impl MetricSnapshot {
     pub const fn completed(&self) -> u64 {
         self.completed
     }
+    /// Returns completed work without an explicit outcome classification.
+    #[must_use]
+    pub const fn unclassified(&self) -> u64 {
+        let classified = self
+            .succeeded
+            .saturating_add(self.failed)
+            .saturating_add(self.cancelled);
+        self.completed.saturating_sub(classified)
+    }
     /// Returns the number of active work items.
     #[must_use]
     pub const fn active(&self) -> u64 {
@@ -630,8 +655,10 @@ impl<'de> Deserialize<'de> for MetricSnapshot {
             name: Arc::clone(&snapshot.name),
             total: snapshot.total,
         };
-        validate_metrics(std::slice::from_ref(&metric)).map_err(serde::de::Error::custom)?;
-        validate_snapshot_counts(&snapshot).map_err(serde::de::Error::custom)?;
+        validate_metrics(std::slice::from_ref(&metric))
+            .map_err(serde::de::Error::custom)?;
+        validate_snapshot_counts(&snapshot)
+            .map_err(serde::de::Error::custom)?;
         Ok(snapshot)
     }
 }

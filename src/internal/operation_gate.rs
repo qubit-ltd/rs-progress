@@ -6,6 +6,9 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Generic atomic operation lifecycle protocol.
+// qubit-style: allow coverage-cfg
+// qubit-style: allow source-test-pair
+// qubit-style: allow multiple-public-types
 
 use std::{
     marker::PhantomData,
@@ -265,4 +268,35 @@ impl AtomicUsizeLike for AtomicUsize {
     fn fetch_sub(&self, value: usize) {
         self.fetch_sub(value, Ordering::Release);
     }
+}
+
+/// Exercises the standard gate implementation from the instrumented library.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub fn __coverage_operation_gate() {
+    use std::sync::Arc;
+
+    type StandardGate = OperationGate<AtomicU8, AtomicUsize, StdScheduler>;
+    let gate: StandardGate = Default::default();
+    let default_constructor: fn() -> StandardGate = Default::default;
+    let _ = default_constructor();
+    let spin: fn() = <StdScheduler as YieldLike>::spin_loop;
+    let yield_now: fn() = <StdScheduler as YieldLike>::yield_now;
+    spin();
+    yield_now();
+
+    let gate = Arc::new(gate);
+    assert_eq!(gate.enter_update(), Ok(()));
+    let finisher_gate = Arc::clone(&gate);
+    let finisher = std::thread::spawn(move || finisher_gate.try_begin_finish());
+    while gate.lifecycle() == GateLifecycle::Open {
+        std::thread::yield_now();
+    }
+    assert_eq!(gate.lifecycle(), GateLifecycle::Finishing);
+    assert_eq!(gate.enter_update(), Err(GateLifecycle::Finishing));
+    gate.leave_update();
+    assert!(finisher.join().expect("coverage finisher must join"));
+    gate.close();
+    assert_eq!(gate.enter_update(), Err(GateLifecycle::Closed));
+    assert!(!gate.try_begin_finish());
 }

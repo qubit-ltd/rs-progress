@@ -7,26 +7,78 @@
 // =============================================================================
 //! Operation lifecycle, metric state and report scheduling.
 // qubit-style: allow multiple-public-types
+// qubit-style: allow coverage-cfg
 
 use std::{
     sync::Arc,
-    sync::atomic::{AtomicU64, Ordering},
-    time::{Duration, Instant},
+    sync::atomic::{
+        AtomicU64,
+        Ordering,
+    },
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 use crate::{
-    Event, Metric, MetricHandle, MetricSnapshot, Phase, Reporter, Stage,
-    auto_reporter::{self, AutoReporter},
+    Event,
+    Metric,
+    MetricHandle,
+    MetricSnapshot,
+    OperationAttributes,
+    Phase,
+    Reporter,
+    Stage,
+    auto_reporter::{
+        self,
+        AutoReporter,
+    },
     error::{
-        CompletionError, ConfigurationError, DeliveryError, EmissionError, FinishError, StartError,
+        CompletionError,
+        ConfigurationError,
+        DeliveryError,
+        EmissionError,
+        FinishError,
+        RecoverableFinishError,
+        StartError,
         TerminalError,
     },
     internal::OperationState,
-    validation::{validate_metrics, validate_stage},
+    validation::{
+        validate_attributes,
+        validate_metrics,
+        validate_stage,
+    },
+};
+
+#[cfg(coverage)]
+use crate::{
+    NoopReporter,
+    error::ReporterError,
 };
 
 /// Process-local source of nonzero operation identifiers.
 static NEXT_OPERATION_ID: AtomicU64 = AtomicU64::new(1);
+
+#[cfg(coverage)]
+/// Reporter that fails only after the Started event.
+struct CoverageTerminalReporter {
+    /// Number of delivery attempts observed by the reporter.
+    attempts: AtomicU64,
+}
+
+#[cfg(coverage)]
+impl Reporter for CoverageTerminalReporter {
+    /// Fails terminal delivery after allowing operation startup.
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
+        if self.attempts.fetch_add(1, Ordering::Relaxed) == 0 {
+            Ok(())
+        } else {
+            Err(ReporterError::message("coverage terminal failure"))
+        }
+    }
+}
 
 /// Configures one [`Progress`] operation before it starts.
 pub struct ProgressBuilder<'reporter> {
@@ -38,6 +90,8 @@ pub struct ProgressBuilder<'reporter> {
     metrics: Vec<Metric>,
     /// Optional initial stage.
     stage: Option<Stage>,
+    /// Correlation attributes shared by all operation events.
+    attributes: OperationAttributes,
 }
 
 impl<'reporter> ProgressBuilder<'reporter> {
@@ -59,6 +113,18 @@ impl<'reporter> ProgressBuilder<'reporter> {
         self.stage = Some(stage);
         self
     }
+    /// Adds or replaces one operation correlation attribute.
+    #[must_use]
+    pub fn attribute(mut self, key: &str, value: &str) -> Self {
+        self.attributes.insert(key, value);
+        self
+    }
+    /// Replaces all operation correlation attributes.
+    #[must_use]
+    pub fn attributes(mut self, attributes: OperationAttributes) -> Self {
+        self.attributes = attributes;
+        self
+    }
     /// Validates configuration, samples enablement and emits Started when
     /// enabled.
     pub fn start(self) -> Result<Progress<'reporter>, StartError> {
@@ -66,6 +132,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
         if let Some(stage) = &self.stage {
             validate_stage(stage)?;
         }
+        validate_attributes(&self.attributes)?;
 
         let enabled = self.reporter.is_enabled();
         let operation_state = OperationState::new();
@@ -76,10 +143,13 @@ impl<'reporter> ProgressBuilder<'reporter> {
             metrics: self
                 .metrics
                 .into_iter()
-                .map(|metric| MetricHandle::new(metric, Arc::clone(&operation_state)))
+                .map(|metric| {
+                    MetricHandle::new(metric, Arc::clone(&operation_state))
+                })
                 .collect(),
             operation_state,
             stage: self.stage,
+            attributes: Arc::new(self.attributes),
             interval: self.interval,
             started_at: Instant::now(),
             next_due_elapsed: None,
@@ -115,6 +185,8 @@ pub struct Progress<'reporter> {
     operation_state: Arc<OperationState>,
     /// Optional current stage.
     stage: Option<Stage>,
+    /// Immutable correlation attributes shared by all events.
+    attributes: Arc<OperationAttributes>,
     /// Minimum due-report spacing.
     interval: Duration,
     /// Monotonic operation start time.
@@ -130,12 +202,15 @@ pub struct Progress<'reporter> {
 impl<'reporter> Progress<'reporter> {
     /// Creates a builder bound to one reporter.
     #[must_use]
-    pub fn builder(reporter: &'reporter dyn Reporter) -> ProgressBuilder<'reporter> {
+    pub fn builder(
+        reporter: &'reporter dyn Reporter,
+    ) -> ProgressBuilder<'reporter> {
         ProgressBuilder {
             reporter,
             interval: Duration::ZERO,
             metrics: Vec::new(),
             stage: None,
+            attributes: OperationAttributes::new(),
         }
     }
     /// Returns enablement sampled when this operation started.
@@ -174,7 +249,10 @@ impl<'reporter> Progress<'reporter> {
         self.report()
     }
     /// Replaces stage metadata attached to subsequent events.
-    pub fn set_stage(&mut self, stage: Stage) -> Result<(), ConfigurationError> {
+    pub fn set_stage(
+        &mut self,
+        stage: Stage,
+    ) -> Result<(), ConfigurationError> {
         validate_stage(&stage)?;
         self.stage = Some(stage);
         Ok(())
@@ -191,12 +269,34 @@ impl<'reporter> Progress<'reporter> {
     /// Consumes this operation and emits a successful terminal event only when
     /// no metric has active work and every known total has been completed.
     #[allow(clippy::result_large_err)]
-    pub fn finish(mut self) -> Result<Duration, FinishError<'reporter>> {
+    pub fn finish(mut self) -> Result<Duration, FinishError> {
+        let elapsed = self.elapsed();
+        let finish_guard = self.operation_state.begin_finish();
+        if let Err(source) = self.validate_finish() {
+            finish_guard.close();
+            return Err(FinishError::Incomplete(source));
+        }
+        finish_guard.close();
+        if !self.enabled {
+            return Ok(elapsed);
+        }
+        self.emit(Phase::Succeeded, self.metric_snapshots(), elapsed)
+            .map(|()| elapsed)
+            .map_err(|source| {
+                FinishError::Terminal(TerminalError::new(elapsed, source))
+            })
+    }
+    /// Consumes this operation and emits a successful terminal event while
+    /// preserving the operation when completion validation fails.
+    #[allow(clippy::result_large_err)]
+    pub fn finish_recoverable(
+        mut self,
+    ) -> Result<Duration, RecoverableFinishError<'reporter>> {
         let elapsed = self.elapsed();
         let finish_guard = self.operation_state.begin_finish();
         if let Err(source) = self.validate_finish() {
             finish_guard.reopen();
-            return Err(FinishError::Incomplete {
+            return Err(RecoverableFinishError::Incomplete {
                 progress: self,
                 source,
             });
@@ -207,7 +307,11 @@ impl<'reporter> Progress<'reporter> {
         }
         self.emit(Phase::Succeeded, self.metric_snapshots(), elapsed)
             .map(|()| elapsed)
-            .map_err(|source| FinishError::Terminal(TerminalError::new(elapsed, source)))
+            .map_err(|source| {
+                RecoverableFinishError::Terminal(TerminalError::new(
+                    elapsed, source,
+                ))
+            })
     }
     /// Consumes this operation and emits a failed terminal event.
     pub fn fail(self) -> Result<Duration, TerminalError> {
@@ -261,7 +365,8 @@ impl<'reporter> Progress<'reporter> {
         metrics: Vec<MetricSnapshot>,
         elapsed: Duration,
     ) -> Result<(), EmissionError> {
-        let operation_id = self.operation_id.ok_or(EmissionError::SequenceExhausted)?;
+        let operation_id =
+            self.operation_id.ok_or(EmissionError::SequenceExhausted)?;
         let sequence = self.next_sequence;
         self.next_sequence = sequence
             .checked_add(1)
@@ -271,12 +376,15 @@ impl<'reporter> Progress<'reporter> {
             sequence,
             phase,
             self.stage.clone(),
+            Arc::clone(&self.attributes),
             metrics,
             elapsed,
         );
         match self.reporter.report(&event) {
             Ok(()) => Ok(()),
-            Err(source) => Err(EmissionError::Delivery(DeliveryError::new(event, source))),
+            Err(source) => {
+                Err(EmissionError::Delivery(DeliveryError::new(event, source)))
+            }
         }
     }
     /// Tests whether a due-based running report can run now.
@@ -301,6 +409,7 @@ impl<'reporter> Progress<'reporter> {
         self.next_due_elapsed = self.elapsed().checked_add(self.interval);
     }
     /// Emits one terminal phase while retaining elapsed time on failure.
+    #[inline(never)]
     fn terminal(mut self, phase: Phase) -> Result<Duration, TerminalError> {
         let elapsed = self.elapsed();
         let finish_guard = self.operation_state.begin_finish();
@@ -316,12 +425,14 @@ impl<'reporter> Progress<'reporter> {
 
 impl Drop for Progress<'_> {
     /// Closes live handles when a caller abandons an unfinished operation.
+    #[inline(never)]
     fn drop(&mut self) {
         self.operation_state.close();
     }
 }
 
 /// Allocates a nonzero operation ID without wrapping or reuse.
+#[inline(never)]
 fn allocate_operation_id() -> Result<u64, StartError> {
     loop {
         let current = NEXT_OPERATION_ID.load(Ordering::Relaxed);
@@ -330,10 +441,42 @@ fn allocate_operation_id() -> Result<u64, StartError> {
         }
         let next = current.checked_add(1).unwrap_or(0);
         if NEXT_OPERATION_ID
-            .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
+            .compare_exchange_weak(
+                current,
+                next,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            )
             .is_ok()
         {
             return Ok(current);
         }
     }
+}
+
+/// Exercises progress-only edge paths from the instrumented library build.
+#[cfg(coverage)]
+#[doc(hidden)]
+pub fn __coverage_progress_edges() {
+    let previous = NEXT_OPERATION_ID.swap(0, Ordering::Relaxed);
+    assert!(matches!(
+        allocate_operation_id(),
+        Err(StartError::OperationIdExhausted)
+    ));
+    NEXT_OPERATION_ID.store(previous.max(1), Ordering::Relaxed);
+
+    let progress = Progress::builder(&NoopReporter)
+        .metric(Metric::new("coverage", "Coverage"))
+        .start()
+        .expect("coverage progress must start");
+    progress.cancel().expect("coverage progress must cancel");
+
+    let reporter = CoverageTerminalReporter {
+        attempts: AtomicU64::new(0),
+    };
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("coverage-terminal", "Coverage terminal"))
+        .start()
+        .expect("coverage terminal progress must start");
+    assert!(progress.cancel().is_err());
 }

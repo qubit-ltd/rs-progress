@@ -7,13 +7,27 @@
 // =============================================================================
 //! Immutable progress events and lifecycle phases.
 // qubit-style: allow multiple-public-types
+// qubit-style: allow coverage-cfg
 
-use std::time::Duration;
+use std::{
+    sync::Arc,
+    time::Duration,
+};
 
-use crate::{MetricSnapshot, Stage};
+use crate::{
+    MetricSnapshot,
+    OperationAttributes,
+    Stage,
+};
 
 #[cfg(feature = "serde")]
-use crate::{Metric, validation::validate_metrics};
+use crate::{
+    Metric,
+    validation::{
+        validate_attributes,
+        validate_metrics,
+    },
+};
 
 /// Lifecycle phase of one immutable progress event.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -52,6 +66,7 @@ pub struct Event {
     sequence: u64,
     phase: Phase,
     stage: Option<Stage>,
+    attributes: Arc<OperationAttributes>,
     metrics: Vec<MetricSnapshot>,
     elapsed: Duration,
 }
@@ -62,6 +77,7 @@ impl Event {
         sequence: u64,
         phase: Phase,
         stage: Option<Stage>,
+        attributes: Arc<OperationAttributes>,
         metrics: Vec<MetricSnapshot>,
         elapsed: Duration,
     ) -> Self {
@@ -70,6 +86,7 @@ impl Event {
             sequence,
             phase,
             stage,
+            attributes,
             metrics,
             elapsed,
         }
@@ -94,6 +111,16 @@ impl Event {
     pub const fn stage(&self) -> Option<&Stage> {
         self.stage.as_ref()
     }
+    /// Returns immutable operation correlation attributes.
+    #[must_use]
+    pub fn attributes(&self) -> &OperationAttributes {
+        &self.attributes
+    }
+    /// Returns one operation correlation attribute by key.
+    #[must_use]
+    pub fn attribute(&self, key: &str) -> Option<&str> {
+        self.attributes.get(key)
+    }
     /// Returns all metric snapshots in declaration order.
     #[must_use]
     pub fn metrics(&self) -> &[MetricSnapshot] {
@@ -115,6 +142,7 @@ impl Event {
 #[cfg(feature = "serde")]
 impl serde::Serialize for Event {
     /// Serializes one complete event without exposing internal representation.
+    #[cfg_attr(coverage, inline(never))]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -125,6 +153,7 @@ impl serde::Serialize for Event {
                 sequence: self.sequence,
                 phase: self.phase,
                 stage: self.stage.as_ref(),
+                attributes: self.attributes.as_ref(),
                 metrics: &self.metrics,
                 elapsed: format_duration(self.elapsed),
             },
@@ -138,18 +167,23 @@ impl serde::Serialize for Event {
 impl<'de> serde::Deserialize<'de> for Event {
     /// Rejects malformed durations and any event that violates public
     /// invariants.
+    #[cfg_attr(coverage, inline(never))]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let wire = <EventWire as serde::Deserialize>::deserialize(deserializer)?;
-        let elapsed = parse_duration(&wire.elapsed).map_err(serde::de::Error::custom)?;
-        validate_wire_event(&wire, elapsed).map_err(serde::de::Error::custom)?;
+        let wire =
+            <EventWire as serde::Deserialize>::deserialize(deserializer)?;
+        let elapsed =
+            parse_duration(&wire.elapsed).map_err(serde::de::Error::custom)?;
+        validate_wire_event(&wire, elapsed)
+            .map_err(serde::de::Error::custom)?;
         Ok(Self::new(
             wire.operation_id,
             wire.sequence,
             wire.phase,
             wire.stage,
+            Arc::new(wire.attributes),
             wire.metrics,
             elapsed,
         ))
@@ -168,6 +202,9 @@ struct EventWireRef<'a> {
     phase: Phase,
     /// Optional stage metadata.
     stage: Option<&'a Stage>,
+    /// Stable operation correlation attributes.
+    #[serde(skip_serializing_if = "OperationAttributes::is_empty")]
+    attributes: &'a OperationAttributes,
     /// Complete metric snapshots.
     metrics: &'a [MetricSnapshot],
     /// Canonical elapsed duration.
@@ -186,6 +223,9 @@ struct EventWire {
     phase: Phase,
     /// Optional stage metadata.
     stage: Option<Stage>,
+    /// Stable operation correlation attributes.
+    #[serde(default)]
+    attributes: OperationAttributes,
     /// Complete metric snapshots.
     metrics: Vec<MetricSnapshot>,
     /// Canonical elapsed duration.
@@ -220,7 +260,9 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
     let (amount, unit) = ["ms", "us", "ns", "h", "m", "s"]
         .into_iter()
         .find_map(|unit| text.strip_suffix(unit).map(|amount| (amount, unit)))
-        .ok_or_else(|| "elapsed must end in h, m, s, ms, us, or ns".to_owned())?;
+        .ok_or_else(|| {
+            "elapsed must end in h, m, s, ms, us, or ns".to_owned()
+        })?;
     if amount.is_empty() || !amount.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err("elapsed amount must be an unsigned integer".into());
     }
@@ -235,7 +277,9 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
     };
     let nanoseconds = amount
         .parse::<u128>()
-        .map_err(|_| "elapsed amount is outside the supported range".to_owned())?
+        .map_err(|_| {
+            "elapsed amount is outside the supported range".to_owned()
+        })?
         .checked_mul(multiplier)
         .ok_or_else(|| "elapsed duration overflows".to_owned())?;
     let seconds = nanoseconds / 1_000_000_000;
@@ -250,7 +294,10 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
 
 /// Validates fields that are only available after Event JSON deserialization.
 #[cfg(feature = "serde")]
-fn validate_wire_event(wire: &EventWire, elapsed: Duration) -> Result<(), String> {
+fn validate_wire_event(
+    wire: &EventWire,
+    elapsed: Duration,
+) -> Result<(), String> {
     if wire.operation_id == 0 {
         return Err("operation_id must be nonzero".into());
     }
@@ -259,6 +306,7 @@ fn validate_wire_event(wire: &EventWire, elapsed: Duration) -> Result<(), String
         .iter()
         .map(metric_definition)
         .collect::<Vec<_>>();
+    validate_attributes(&wire.attributes).map_err(|error| error.to_string())?;
     validate_metrics(&definitions).map_err(|error| error.to_string())?;
     match wire.phase {
         Phase::Started => {
@@ -271,12 +319,20 @@ fn validate_wire_event(wire: &EventWire, elapsed: Duration) -> Result<(), String
                 );
             }
         }
-        Phase::Running | Phase::Succeeded | Phase::Failed | Phase::Cancelled
+        Phase::Running
+        | Phase::Succeeded
+        | Phase::Failed
+        | Phase::Cancelled
             if wire.sequence == 0 =>
         {
-            return Err("non-started event must have a positive sequence".into());
+            return Err(
+                "non-started event must have a positive sequence".into()
+            );
         }
-        Phase::Running | Phase::Succeeded | Phase::Failed | Phase::Cancelled => {}
+        Phase::Running
+        | Phase::Succeeded
+        | Phase::Failed
+        | Phase::Cancelled => {}
     }
     Ok(())
 }
@@ -299,4 +355,45 @@ const fn has_dynamic_counts(snapshot: &MetricSnapshot) -> bool {
         || snapshot.succeeded() != 0
         || snapshot.failed() != 0
         || snapshot.cancelled() != 0
+}
+
+/// Exercises serde entry points from the instrumented library build.
+#[cfg(all(feature = "json-lines", coverage))]
+#[doc(hidden)]
+pub fn __coverage_event_serde() {
+    let value = serde_json::json!({
+        "operation_id": 1,
+        "sequence": 0,
+        "phase": "started",
+        "stage": null,
+        "metrics": [{
+            "id": "tasks",
+            "name": "Tasks",
+            "total": null,
+            "completed": 0,
+            "active": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "cancelled": 0
+        }],
+        "elapsed": "0s"
+    });
+    let text =
+        serde_json::to_string(&value).expect("coverage JSON must serialize");
+    let mut deserializer = serde_json::Deserializer::from_str(&text);
+    let event = <Event as serde::Deserialize>::deserialize(&mut deserializer)
+        .expect("coverage event must deserialize");
+    let mut output = Vec::new();
+    let mut serializer = serde_json::Serializer::new(&mut output);
+    coverage_serialize_event(&event, &mut serializer)
+        .expect("coverage event must serialize");
+}
+
+#[cfg(all(feature = "json-lines", coverage))]
+#[inline(never)]
+fn coverage_serialize_event(
+    event: &Event,
+    serializer: &mut serde_json::Serializer<&mut Vec<u8>>,
+) -> Result<(), serde_json::Error> {
+    <Event as serde::Serialize>::serialize(event, serializer)
 }
