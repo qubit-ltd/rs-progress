@@ -1,0 +1,1 @@
+{"operation_id":5,"sequence":4,"phase":"cancelled","stage":null,"metrics":[{"id":"items","name":"Items","total":5,"completed":2,"active":0,"succeeded":0,"failed":0,"cancelled":2}],"elapsed":"3h"}

@@ -1,0 +1,1 @@
+{"operation_id":10,"sequence":1,"phase":"running","stage":{"id":"copy","name":"Copy","position":3,"total":2},"metrics":[{"id":"items","name":"Items","total":null,"completed":0,"active":0,"succeeded":0,"failed":0,"cancelled":0}],"elapsed":"1ns"}
