@@ -72,7 +72,9 @@ progress.finish()?;
 
 `finish()` rejects any metric with active work, and rejects a metric with a
 known total unless `completed == total`. `FinishError::Incomplete` contains the
-completion error after the operation has been consumed. Use
+completion error and the elapsed time sampled before validation after the
+operation has been consumed. `FinishError::elapsed()` returns that same value
+for either incomplete validation or terminal delivery failure. Use
 `finish_recoverable()` when a caller needs repair-and-retry behavior; its
 `RecoverableFinishError::Incomplete` contains the reusable operation.
 `FinishError::Terminal` means terminal delivery was attempted and is permanent.
@@ -304,9 +306,9 @@ event invariants as runtime construction.
 metric-handle transitions return `MetricError` directly. Do not ignore these
 errors: invalid state means no event was delivered, while a sink error means
 the delivery attempt failed. `finish()` returns a static `FinishError`, so it
-can be propagated with `?`; inspect its `CompletionError` or
-`TerminalError`. Use `finish_recoverable()` and `RecoverableFinishError` only
-when repair and retry are required.
+can be propagated with `?`; use `elapsed()` for the finish attempt duration and
+inspect its `CompletionError` or `TerminalError`. Use `finish_recoverable()` and
+`RecoverableFinishError` only when repair and retry are required.
 
 Terminal methods return `Result<Duration, TerminalError>`. Inspect `TerminalError` when completion must be recorded reliably: it preserves elapsed time even when the final event cannot be delivered. For automatic reporting, `AutoReporter::stop()` returns `AutoReporterError`, whose `Emission` variant carries a normal delivery failure and whose `Panicked` variant preserves the worker panic payload. `Drop` remains panic-free and is intended for best-effort cleanup.
 

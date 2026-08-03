@@ -274,7 +274,7 @@ impl<'reporter> Progress<'reporter> {
         let finish_guard = self.operation_state.begin_finish();
         if let Err(source) = self.validate_finish() {
             finish_guard.close();
-            return Err(FinishError::Incomplete(source));
+            return Err(FinishError::Incomplete { elapsed, source });
         }
         finish_guard.close();
         if !self.enabled {
