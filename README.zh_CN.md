@@ -45,16 +45,27 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
         .metric(Metric::new("files", "文件").total(files.len() as u64))
         .start()?;
 
-    let files_metric = progress.metric("files").expect("configured metric must exist");
-    for (source, destination) in files {
-        files_metric.start(1)?;
-        fs::copy(source, destination)?;
-        files_metric.succeed(1)?;
-        progress.report()?;
-    }
+    let copy_result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let files_metric = progress.metric("files").expect("configured metric must exist");
+        for (source, destination) in files {
+            files_metric.start(1)?;
+            fs::copy(source, destination)?;
+            files_metric.succeed(1)?;
+            progress.report()?;
+        }
+        Ok(())
+    })();
 
-    progress.finish()?;
-    Ok(())
+    match copy_result {
+        Ok(()) => {
+            progress.finish()?;
+            Ok(())
+        }
+        Err(error) => {
+            progress.fail()?;
+            Err(error)
+        }
+    }
 }
 ```
 
