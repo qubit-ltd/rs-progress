@@ -1,3 +1,8 @@
 {
-  "scope": "package"
+  "scope": "package",
+  "threshold_exempt_files": {
+    "qubit-progress": [
+      "src/event.rs"
+    ]
+  }
 }
