@@ -6,16 +6,24 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Shared validation for operation configuration and report snapshots.
+// qubit-style: allow type-file-name
 
 use std::collections::HashSet;
 
-use crate::{ConfigurationError, Metric, Stage};
+use crate::{
+    ConfigurationError,
+    Metric,
+    OperationAttributes,
+    Stage,
+};
 
 #[cfg(feature = "serde")]
 use crate::MetricSnapshot;
 
 /// Validates the fixed metric configuration for one operation.
-pub(crate) fn validate_metrics(metrics: &[Metric]) -> Result<(), ConfigurationError> {
+pub(crate) fn validate_metrics(
+    metrics: &[Metric],
+) -> Result<(), ConfigurationError> {
     if metrics.is_empty() {
         return Err(ConfigurationError::NoMetrics);
     }
@@ -48,12 +56,28 @@ pub(crate) fn validate_stage(stage: &Stage) -> Result<(), ConfigurationError> {
     }
     match (stage.position, stage.total) {
         (None, None) => Ok(()),
-        (Some(position), Some(total)) if position > 0 && position <= total => Ok(()),
+        (Some(position), Some(total)) if position > 0 && position <= total => {
+            Ok(())
+        }
         (Some(position), Some(total)) => {
             Err(ConfigurationError::InvalidStagePosition { position, total })
         }
         _ => Err(ConfigurationError::IncompleteStagePosition),
     }
+}
+
+/// Validates operation correlation attribute keys.
+pub(crate) fn validate_attributes(
+    attributes: &OperationAttributes,
+) -> Result<(), ConfigurationError> {
+    if let Some((key, _)) =
+        attributes.iter().find(|(key, _)| key.trim().is_empty())
+    {
+        return Err(ConfigurationError::EmptyAttributeKey {
+            key: key.to_owned(),
+        });
+    }
+    Ok(())
 }
 
 /// Validates one metric's dynamic counts against its configured total.

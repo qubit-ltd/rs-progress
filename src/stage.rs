@@ -10,7 +10,10 @@
 use std::sync::Arc;
 
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer};
+use serde::{
+    Deserialize,
+    Deserializer,
+};
 
 #[cfg(feature = "serde")]
 use crate::validation::validate_stage;

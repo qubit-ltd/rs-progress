@@ -6,8 +6,13 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Errors returned after a terminal emission is attempted.
+// qubit-style: allow source-test-pair
 
-use std::{error::Error, fmt, time::Duration};
+use std::{
+    error::Error,
+    fmt,
+    time::Duration,
+};
 
 use crate::error::EmissionError;
 

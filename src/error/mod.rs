@@ -14,19 +14,22 @@ mod delivery_error;
 mod emission_error;
 mod finish_error;
 mod metric_error;
-mod metric_transition;
+mod recoverable_finish_error;
 mod reporter_error;
 mod start_error;
 mod terminal_error;
 
-pub use auto_reporter_error::{AutoReporterError, WorkerPanic};
+pub use auto_reporter_error::{
+    AutoReporterError,
+    WorkerPanic,
+};
 pub use completion_error::CompletionError;
 pub use configuration_error::ConfigurationError;
 pub use delivery_error::DeliveryError;
 pub use emission_error::EmissionError;
 pub use finish_error::FinishError;
 pub use metric_error::MetricError;
-pub use metric_transition::MetricTransition;
+pub use recoverable_finish_error::RecoverableFinishError;
 pub use reporter_error::ReporterError;
 pub use start_error::StartError;
 pub use terminal_error::TerminalError;

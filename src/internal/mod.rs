@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Internal lifecycle state shared by progress and metric handles.
+// qubit-style: allow coverage-cfg
 
 mod operation_gate;
 mod operation_lifecycle;
@@ -15,3 +16,7 @@ mod update_guard;
 pub use operation_lifecycle::OperationLifecycle;
 pub(crate) use operation_state::OperationState;
 pub(crate) use update_guard::UpdateGuard;
+
+#[cfg(coverage)]
+#[doc(hidden)]
+pub use operation_state::__coverage_internal;

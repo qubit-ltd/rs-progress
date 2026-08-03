@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Immutable, lifecycle-safe progress reporting.
+// qubit-style: allow coverage-cfg
 //!
 //! A [`Progress`] operation owns its metric state, timing and reporter.
 //! Callers configure stable metadata with [`Metric`] and update dynamic counts
@@ -39,7 +40,7 @@
 //! let tasks = progress.metric("tasks").expect("configured metric must exist");
 //! tasks.start(1)?;
 //! tasks.succeed(1)?;
-//! progress.finish().expect("complete operation must finish");
+//! progress.finish()?;
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -51,24 +52,63 @@ mod error;
 mod event;
 mod internal;
 mod metric;
+mod operation_attributes;
 mod progress;
 pub mod reporter;
 mod stage;
 mod validation;
 
-pub use auto_reporter::{AutoReporter, AutoReporterStatus, ProgressNotifier};
+pub use auto_reporter::{
+    AutoReporter,
+    AutoReporterStatus,
+    ProgressNotifier,
+};
 pub use error::{
-    AutoReporterError, CompletionError, ConfigurationError, DeliveryError, EmissionError,
-    FinishError, MetricError, MetricTransition, ReporterError, StartError, TerminalError,
+    AutoReporterError,
+    CompletionError,
+    ConfigurationError,
+    DeliveryError,
+    EmissionError,
+    FinishError,
+    MetricError,
+    RecoverableFinishError,
+    ReporterError,
+    StartError,
+    TerminalError,
     WorkerPanic,
 };
-pub use event::{Event, Phase};
+#[cfg(all(feature = "json-lines", coverage))]
+#[doc(hidden)]
+pub use event::__coverage_event_serde;
+pub use event::{
+    Event,
+    Phase,
+};
+#[cfg(coverage)]
+#[doc(hidden)]
+pub use internal::__coverage_internal;
 pub use internal::OperationLifecycle;
-pub use metric::{Metric, MetricHandle, MetricSnapshot};
-pub use progress::{Progress, ProgressBuilder};
+pub use metric::{
+    Metric,
+    MetricDelta,
+    MetricHandle,
+    MetricSnapshot,
+};
+pub use operation_attributes::OperationAttributes;
+#[cfg(coverage)]
+#[doc(hidden)]
+pub use progress::__coverage_progress_edges;
+pub use progress::{
+    Progress,
+    ProgressBuilder,
+};
 #[cfg(feature = "json-lines")]
 pub use reporter::JsonLinesReporter;
 #[cfg(feature = "log")]
 pub use reporter::LogReporter;
-pub use reporter::{NoopReporter, Reporter, TextReporter};
+pub use reporter::{
+    NoopReporter,
+    Reporter,
+    TextReporter,
+};
 pub use stage::Stage;

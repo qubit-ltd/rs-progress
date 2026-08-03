@@ -6,8 +6,12 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Errors while constructing or delivering non-start events.
+// qubit-style: allow source-test-pair
 
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt,
+};
 
 use crate::error::DeliveryError;
 
@@ -25,7 +29,9 @@ impl fmt::Display for EmissionError {
     /// Formats the emission failure.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::SequenceExhausted => formatter.write_str("progress event sequence is exhausted"),
+            Self::SequenceExhausted => {
+                formatter.write_str("progress event sequence is exhausted")
+            }
             Self::Delivery(error) => error.fmt(formatter),
         }
     }
