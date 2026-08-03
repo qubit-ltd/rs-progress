@@ -17,12 +17,12 @@ integration needed by the application:
 
 An operation has stable configuration and changing state:
 
-- `ProgressBuilder` collects the reporter, report interval, metrics, and optional `Stage` before the operation begins.
+- `ProgressBuilder` collects the reporter, report interval, metrics, optional `Stage`, and immutable operation attributes before the operation begins.
 - `Metric` is stable metadata: a machine-readable ID, a display name, and an optional total. Every event carries this metadata.
 - `Progress` owns the changing state for every configured metric. Obtain a cloneable `MetricHandle` with `Progress::metric` and use it to move quantities through the metric lifecycle.
-- `Event` is an immutable, complete observation. A reporter does not need earlier events to reconstruct its state. Enabled operations receive a process-local `operation_id`; `sequence` is zero for `Started` and then counts delivery attempts, including failed attempts.
+- `Event` is an immutable, complete observation. A reporter does not need earlier events to reconstruct its state. Enabled operations receive a process-local `operation_id`; `sequence` is zero for `Started` and then counts delivery attempts, including failed attempts. `OperationAttributes` carries optional stable string key-value correlation data through every event.
 
-The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `finish_unchecked`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. `finish()` requires zero active work and every known total to be satisfied. If that validation fails, it returns the still-reusable `Progress` together with a `CompletionError`; callers can repair the metrics and retry. Use `finish_unchecked()` only when an intentionally incomplete successful outcome is meaningful. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
+The lifecycle is `Started → Running* → Succeeded | Failed | Cancelled`. `finish`, `finish_recoverable`, `finish_unchecked`, `fail`, and `cancel` consume `Progress`, so safe Rust permits at most one terminal event and no later reports. `finish()` requires zero active work and every known total to be satisfied. Its `FinishError` is static and can be propagated with `?`; when completion validation fails, the operation is consumed. Use `finish_recoverable()` only when the caller must repair metrics and retry. Use `finish_unchecked()` only when an intentionally incomplete successful outcome is meaningful. Dropping or unwinding before a terminal call can still abandon an operation without a terminal event.
 
 ## Start an operation and update its metrics
 
@@ -35,6 +35,7 @@ use qubit_progress::{Metric, Progress, TextReporter};
 
 let reporter = TextReporter::new(std::io::stderr());
 let mut progress = Progress::builder(&reporter)
+    .attribute("job_id", "import-42")
     .metric(Metric::new("files", "Files").total(10))
     .start()?;
 let files = progress.metric("files").expect("configured metric must exist");
@@ -70,35 +71,68 @@ progress.finish()?;
 ```
 
 `finish()` rejects any metric with active work, and rejects a metric with a
-known total unless `completed == total`. A rejected finish is recoverable:
-`FinishError::Incomplete` returns the operation and a `CompletionError`, while
+known total unless `completed == total`. `FinishError::Incomplete` contains the
+completion error after the operation has been consumed. Use
+`finish_recoverable()` when a caller needs repair-and-retry behavior; its
+`RecoverableFinishError::Incomplete` contains the reusable operation.
 `FinishError::Terminal` means terminal delivery was attempted and is permanent.
 
 ## Metric lifecycle and validation
 
-`start(count)` moves an unsigned quantity from not-started to active. `complete`, `succeed`, `fail`, and `cancel` move unsigned quantities from active to their respective completed states. To undo one of these moves, call `rollback(transition, count)` with the matching `MetricTransition`; it returns terminal work to active, or active work to not-started for `MetricTransition::Start`. All counts remain non-negative. When a total is known, `active + completed` cannot exceed it.
+`start(count)` moves an unsigned quantity from not-started to active. `complete`, `succeed`, `fail`, and `cancel` move unsigned quantities from active to their respective completed states. Completed work is the sum of unclassified, succeeded, failed, and cancelled work. Metrics are monotonic; `rollback()` is not available. All counts remain non-negative. When a total is known, `active + completed` cannot exceed it.
 
 The completed count includes unclassified completion, success, failure, and cancellation. The handle serializes and validates each transition before committing it, so every emitted metric snapshot is internally consistent. When an event contains multiple metrics, each metric snapshot is internally consistent, but the collection is not a globally atomic cross-metric view while the operation is running. Terminal events are stable after the operation closes. Do not hide phase or stage information in counters: use `Stage` at startup, `set_stage` to replace it for future events, and `clear_stage` to remove it.
 
-### Observe compound updates carefully
+### Apply compound updates atomically
 
-Each `MetricHandle` method is one atomic state transition, not a transaction
-across several method calls. For example, a completed chunk whose items have
-different outcomes may be recorded as:
+Use `MetricDelta` when one business operation changes several lifecycle
+counters. The fields are additive deltas, never absolute target values, and the
+whole delta is validated and committed at one linearization point:
 
 ```rust
 let completed = 10;
 let succeeded = 8;
-items.start(completed)?;
-items.succeed(succeeded)?;
-items.complete(completed - succeeded)?;
+items.apply_delta(
+    MetricDelta::new()
+        .started(completed)
+        .succeeded(succeeded)
+        .unclassified(completed - succeeded),
+)?;
 ```
 
-An automatic reporter can observe a valid intermediate snapshot between these
-calls, such as all ten items being active or only eight being completed. Do not
-interpret a running event as an atomic business transaction. If a consumer
-needs an authoritative aggregate, use a terminal event or synchronize the
-business update and report boundary outside `MetricHandle`.
+Concurrent additive deltas cannot overwrite one another. A delta that tries to
+finish more active work than exists at its linearization point returns
+`MetricError::InsufficientActive` and changes nothing. If a consumer needs an
+authoritative aggregate, use a terminal event or synchronize the business
+update and report boundary outside `MetricHandle`.
+
+The lifecycle remains one-way: `started` adds active work, and each terminal
+field consumes active work into exactly one terminal outcome. Within one delta,
+`started` is accounted for before its terminal fields, so an atomic
+start-and-finish batch is valid. Across concurrent deltas, serialization order
+is significant: a terminal-only delta may be rejected if the corresponding
+`started` delta has not linearized yet; retry it or coordinate the two updates
+when that ordering matters.
+
+`completed()` includes unclassified completion. Use
+`MetricSnapshot::unclassified()` to inspect the neutral terminal outcome
+explicitly.
+
+## Correlate events with operation attributes
+
+Set optional string attributes on `ProgressBuilder` before `start()`:
+
+```rust
+let progress = Progress::builder(&reporter)
+    .attribute("tenant_id", "tenant-7")
+    .attribute("trace_id", "trace-abc")
+    .metric(Metric::new("files", "Files"))
+    .start()?;
+```
+
+Attributes are immutable after startup and are attached to every event. They
+are ordered for stable text and JSON output. Do not put secrets or tokens in
+attributes because reporters emit them as supplied.
 
 ## Close every operation
 
@@ -269,9 +303,10 @@ event invariants as runtime construction.
 `start()` returns `StartError`, running reports return `EmissionError`, and
 metric-handle transitions return `MetricError` directly. Do not ignore these
 errors: invalid state means no event was delivered, while a sink error means
-the delivery attempt failed. `finish()` returns `FinishError`; recover
-`CompletionError` by repairing the returned operation, or inspect
-`TerminalError` when terminal delivery fails.
+the delivery attempt failed. `finish()` returns a static `FinishError`, so it
+can be propagated with `?`; inspect its `CompletionError` or
+`TerminalError`. Use `finish_recoverable()` and `RecoverableFinishError` only
+when repair and retry are required.
 
 Terminal methods return `Result<Duration, TerminalError>`. Inspect `TerminalError` when completion must be recorded reliably: it preserves elapsed time even when the final event cannot be delivered. For automatic reporting, `AutoReporter::stop()` returns `AutoReporterError`, whose `Emission` variant carries a normal delivery failure and whose `Panicked` variant preserves the worker panic payload. `Drop` remains panic-free and is intended for best-effort cleanup.
 
@@ -280,8 +315,3 @@ When the `serde` feature is enabled, deserializing `Stage`, `MetricSnapshot`, or
 ## Further reference
 
 See the generated API documentation on [docs.rs](https://docs.rs/qubit-progress) for every type, error variant, reporter feature, and serialization detail.
-
-## TODO
-
-- Add optional stable operation correlation metadata so shared reporters can
-  associate concurrent operations with an application-level job or request.
