@@ -9,14 +9,95 @@
 
 use std::sync::{
     Mutex,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{
+        AtomicUsize,
+        Ordering,
+    },
 };
 use std::time::Duration;
 
 use qubit_progress::{
-    CompletionError, ConfigurationError, EmissionError, Event, Metric, MetricError, Phase,
-    Progress, Reporter, ReporterError, Stage, StartError,
+    CompletionError,
+    ConfigurationError,
+    EmissionError,
+    Event,
+    Metric,
+    MetricError,
+    NoopReporter,
+    OperationAttributes,
+    OperationLifecycle,
+    Phase,
+    Progress,
+    Reporter,
+    ReporterError,
+    Stage,
+    StartError,
 };
+
+fn finish_with_local_reporter() -> Result<(), Box<dyn std::error::Error>> {
+    let reporter = NoopReporter;
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("items", "Items").total(1))
+        .start()?;
+    progress.finish()?;
+    Ok(())
+}
+
+#[test]
+fn test_progress_rejects_blank_attribute_keys() {
+    let reporter = NoopReporter;
+    let result = Progress::builder(&reporter)
+        .attribute("   ", "value")
+        .metric(Metric::new("items", "Items"))
+        .start();
+    assert!(matches!(
+        result,
+        Err(StartError::InvalidConfiguration(
+            ConfigurationError::EmptyAttributeKey { .. }
+        ))
+    ));
+}
+
+#[test]
+fn test_progress_accepts_bulk_operation_attributes() {
+    let reporter = NoopReporter;
+    let mut attributes = OperationAttributes::new();
+    attributes.insert("job_id", "job-1");
+    let progress = Progress::builder(&reporter)
+        .attributes(attributes)
+        .metric(Metric::new("items", "Items"))
+        .start()
+        .expect("bulk attributes should be accepted");
+    assert_eq!(
+        progress.metric("items").expect("metric exists").id(),
+        "items"
+    );
+}
+
+#[test]
+fn test_progress_drop_closes_metric_updates() {
+    let reporter = NoopReporter;
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress must start");
+    let metric = progress.metric("tasks").expect("metric must exist");
+    drop(progress);
+    assert!(matches!(
+        metric.start(1),
+        Err(MetricError::OperationNotOpen {
+            state: OperationLifecycle::Closed,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn test_finish_error_is_propagatable_as_boxed_error() {
+    let error = finish_with_local_reporter()
+        .expect_err("incomplete finish must be returned as a boxed error");
+    assert!(error.to_string().contains("completed"));
+}
 
 /// Records complete events emitted by the progress run under test.
 #[derive(Default)]
@@ -94,6 +175,18 @@ fn test_progress_finish_unchecked_allows_incomplete_metrics() {
     );
 }
 
+#[test]
+fn test_disabled_progress_supports_recoverable_checked_finish() {
+    let reporter = DisabledReporter::new();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("disabled progress must start");
+    progress
+        .finish_recoverable()
+        .expect("disabled recoverable finish must not emit");
+}
+
 /// Verifies that finish rejects work that remains active.
 #[test]
 fn test_progress_finish_requires_active_work_to_be_zero() {
@@ -108,7 +201,7 @@ fn test_progress_finish_requires_active_work_to_be_zero() {
     tasks.start(1).expect("work must start");
 
     let error = progress
-        .finish()
+        .finish_recoverable()
         .expect_err("finish must reject active work");
     let (returned, completion) = error
         .into_parts()
@@ -145,7 +238,7 @@ fn test_progress_finish_requires_known_total_to_be_completed() {
     tasks.succeed(1).expect("work must succeed");
 
     let error = progress
-        .finish()
+        .finish_recoverable()
         .expect_err("finish must reject an incomplete total");
     let (returned, completion) = error
         .into_parts()
@@ -283,7 +376,9 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
     };
     assert!(matches!(
         error,
-        StartError::InvalidConfiguration(ConfigurationError::DuplicateMetricId { .. })
+        StartError::InvalidConfiguration(
+            ConfigurationError::DuplicateMetricId { .. }
+        )
     ));
 
     let progress = Progress::builder(&reporter)
@@ -299,9 +394,9 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
         .start(1)
         .expect_err("occupied work beyond a known total must fail");
     assert!(matches!(error, MetricError::TotalExceeded { .. }));
-    progress
-        .cancel()
-        .expect("a valid terminal snapshot must be accepted after validation failure");
+    progress.cancel().expect(
+        "a valid terminal snapshot must be accepted after validation failure",
+    );
     assert_eq!(
         reporter
             .events()
@@ -435,9 +530,9 @@ fn test_progress_propagates_running_report_failure_and_preserves_sequence() {
     progress
         .report()
         .expect("a later Running delivery must remain possible");
-    progress
-        .finish()
-        .expect("terminal delivery must remain possible after a Running failure");
+    progress.finish().expect(
+        "terminal delivery must remain possible after a Running failure",
+    );
     assert_eq!(reporter.reports.load(Ordering::Relaxed), 4);
     assert_eq!(
         reporter

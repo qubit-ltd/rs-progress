@@ -7,7 +7,12 @@
 // =============================================================================
 //! Text reporter behavior for lifecycle counters.
 
-use qubit_progress::{Metric, Progress, Stage, TextReporter};
+use qubit_progress::{
+    Metric,
+    Progress,
+    Stage,
+    TextReporter,
+};
 
 /// Verifies that text output includes the cancelled metric count.
 #[test]
@@ -52,6 +57,27 @@ fn test_text_reporter_escapes_metadata_and_includes_stage_progress() {
     )
     .expect("text output must be UTF-8");
     assert_eq!(output.lines().count(), 1);
-    assert!(output.contains("stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"));
+    assert!(output.contains(
+        "stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"
+    ));
     assert!(output.contains("metric=tasks\\nall(Tasks\\rAll)"));
+}
+
+/// Verifies text output includes escaped operation attributes.
+#[test]
+fn test_text_reporter_includes_operation_attributes() {
+    let reporter = TextReporter::new(Vec::new());
+    let progress = Progress::builder(&reporter)
+        .attribute("trace\nid", "value\r1")
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress must start");
+    drop(progress);
+    let output = String::from_utf8(
+        reporter
+            .into_inner()
+            .expect("text reporter writer mutex must not be poisoned"),
+    )
+    .expect("text output must be UTF-8");
+    assert!(output.contains("attribute=trace\\nid(value\\r1)"));
 }

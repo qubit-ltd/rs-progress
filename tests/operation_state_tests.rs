@@ -10,8 +10,87 @@
 #[path = "../src/internal/operation_gate.rs"]
 mod operation_gate;
 
-use loom::sync::{Arc, atomic::{AtomicU8, AtomicUsize}};
-use operation_gate::{AtomicU8Like, AtomicUsizeLike, GateLifecycle, OperationGate, YieldLike};
+use loom::sync::{
+    Arc,
+    atomic::{
+        AtomicU8,
+        AtomicUsize,
+    },
+};
+use operation_gate::{
+    AtomicU8Like,
+    AtomicUsizeLike,
+    GateLifecycle,
+    OperationGate,
+    YieldLike,
+};
+
+#[test]
+fn test_standard_operation_gate_lifecycle() {
+    use std::sync::atomic::{
+        AtomicU8,
+        AtomicUsize,
+    };
+
+    type StandardGate =
+        OperationGate<AtomicU8, AtomicUsize, operation_gate::StdScheduler>;
+
+    let state = StandardGate::new();
+    assert_eq!(state.lifecycle(), GateLifecycle::Open);
+    assert_eq!(state.enter_update(), Ok(()));
+    assert_eq!(state.active_updates(), 1);
+    state.leave_update();
+    assert!(state.try_begin_finish());
+    state.reopen();
+    state.close();
+    assert_eq!(state.lifecycle(), GateLifecycle::Closed);
+    assert!(!state.try_begin_finish());
+
+    let _: StandardGate = Default::default();
+    <operation_gate::StdScheduler as YieldLike>::spin_loop();
+    <operation_gate::StdScheduler as YieldLike>::yield_now();
+}
+
+#[test]
+fn test_standard_operation_gate_drains_updates_and_rejects_new_work() {
+    use std::{
+        sync::{
+            Arc,
+            Barrier,
+        },
+        thread,
+        time::Duration,
+    };
+
+    type StandardGate = OperationGate<
+        std::sync::atomic::AtomicU8,
+        std::sync::atomic::AtomicUsize,
+        operation_gate::StdScheduler,
+    >;
+    let state = Arc::new(StandardGate::new());
+    assert_eq!(state.enter_update(), Ok(()));
+    let ready = Arc::new(Barrier::new(2));
+    let finisher_state = Arc::clone(&state);
+    let finisher_ready = Arc::clone(&ready);
+    let finisher = thread::spawn(move || {
+        finisher_ready.wait();
+        finisher_state.try_begin_finish()
+    });
+    ready.wait();
+    for _ in 0..100 {
+        if state.lifecycle() == GateLifecycle::Finishing {
+            break;
+        }
+        thread::yield_now();
+    }
+    assert_eq!(state.lifecycle(), GateLifecycle::Finishing);
+    assert_eq!(state.enter_update(), Err(GateLifecycle::Finishing));
+    thread::sleep(Duration::from_millis(1));
+    state.leave_update();
+    assert!(finisher.join().expect("finisher must join"));
+    state.close();
+    assert_eq!(state.enter_update(), Err(GateLifecycle::Closed));
+}
 
 impl AtomicU8Like for AtomicU8 {
     fn new(value: u8) -> Self {
@@ -69,7 +148,28 @@ impl YieldLike for LoomScheduler {
 type LoomOperationGate = OperationGate<AtomicU8, AtomicUsize, LoomScheduler>;
 
 #[test]
-fn operation_state_never_closes_before_registered_updates_leave() {
+fn test_loom_operation_gate_rejects_updates_after_finish_and_close() {
+    loom::model(|| {
+        let state: LoomOperationGate = Default::default();
+        assert_eq!(state.lifecycle(), GateLifecycle::Open);
+        assert_eq!(state.enter_update(), Ok(()));
+        assert_eq!(state.active_updates(), 1);
+        state.leave_update();
+        assert_eq!(state.active_updates(), 0);
+
+        assert!(state.try_begin_finish());
+        assert_eq!(state.enter_update(), Err(GateLifecycle::Finishing));
+        state.reopen();
+        assert_eq!(state.lifecycle(), GateLifecycle::Open);
+        assert!(state.try_begin_finish());
+        state.close();
+        assert!(!state.try_begin_finish());
+        assert_eq!(state.enter_update(), Err(GateLifecycle::Closed));
+    });
+}
+
+#[test]
+fn test_loom_operation_state_never_closes_before_registered_updates_leave() {
     loom::model(|| {
         let state = Arc::new(LoomOperationGate::new());
         let updater_state = Arc::clone(&state);
@@ -82,7 +182,10 @@ fn operation_state_never_closes_before_registered_updates_leave() {
         let finisher_state = Arc::clone(&state);
         let finisher = loom::thread::spawn(move || {
             if finisher_state.try_begin_finish() {
-                assert_eq!(finisher_state.lifecycle(), GateLifecycle::Finishing);
+                assert_eq!(
+                    finisher_state.lifecycle(),
+                    GateLifecycle::Finishing
+                );
                 while finisher_state.active_updates() != 0 {
                     LoomScheduler::yield_now();
                 }
@@ -93,12 +196,15 @@ fn operation_state_never_closes_before_registered_updates_leave() {
         updater.join().expect("updater model must join");
         finisher.join().expect("finisher model must join");
         assert_eq!(state.active_updates(), 0);
-        assert!(matches!(state.lifecycle(), GateLifecycle::Open | GateLifecycle::Closed));
+        assert!(matches!(
+            state.lifecycle(),
+            GateLifecycle::Open | GateLifecycle::Closed
+        ));
     });
 }
 
 #[test]
-fn operation_state_can_reopen_after_validation_and_close_later() {
+fn test_loom_operation_state_can_reopen_after_validation_and_close_later() {
     loom::model(|| {
         let state = LoomOperationGate::new();
         assert!(state.try_begin_finish());

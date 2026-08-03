@@ -7,7 +7,12 @@
 // =============================================================================
 //! Stage metadata behavior.
 
-use qubit_progress::{Metric, Progress, Stage, TextReporter};
+use qubit_progress::{
+    Metric,
+    Progress,
+    Stage,
+    TextReporter,
+};
 
 #[cfg(feature = "serde")]
 use serde_json::json;

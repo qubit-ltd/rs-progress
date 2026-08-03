@@ -8,9 +8,20 @@
 //! Tests for scoped automatic progress reporting.
 
 use std::{
-    panic::{AssertUnwindSafe, catch_unwind},
-    sync::atomic::{AtomicUsize, Ordering},
-    sync::mpsc::{Receiver, SyncSender, sync_channel},
+    error::Error,
+    panic::{
+        AssertUnwindSafe,
+        catch_unwind,
+    },
+    sync::atomic::{
+        AtomicUsize,
+        Ordering,
+    },
+    sync::mpsc::{
+        Receiver,
+        SyncSender,
+        sync_channel,
+    },
     thread,
     time::Duration,
 };
@@ -231,12 +242,23 @@ fn test_auto_reporter_exposes_background_delivery_failure() {
         }
         assert!(auto.status().is_failed());
         notifier.notify();
-        let error = auto.stop().expect_err("background delivery failure must be returned");
+        let error = auto
+            .stop()
+            .expect_err("background delivery failure must be returned");
+        assert!(Error::source(&error).is_some());
+        assert!(error.to_string().contains("running delivery failed"));
         assert!(matches!(
             error,
             AutoReporterError::Emission(EmissionError::Delivery(_))
         ));
     });
+}
+
+#[test]
+fn test_auto_reporter_error_wraps_emission_failures() {
+    let error = AutoReporterError::from(EmissionError::SequenceExhausted);
+    assert_eq!(error.to_string(), "progress event sequence is exhausted");
+    assert!(Error::source(&error).is_some());
 }
 
 /// Verifies dropping a failed automatic reporter records its failed status.
@@ -262,7 +284,8 @@ fn test_auto_reporter_drop_joins_a_failed_worker() {
     });
 }
 
-/// Verifies that stopping an automatic reporter returns a structured worker panic.
+/// Verifies that stopping an automatic reporter returns a structured worker
+/// panic.
 #[test]
 fn test_auto_reporter_stop_returns_worker_panic() {
     let reporter = RunningPanickingReporter::new();
@@ -280,10 +303,70 @@ fn test_auto_reporter_stop_returns_worker_panic() {
             panic!("expected a structured worker panic");
         };
         assert_eq!(panic.message(), Some("running reporter panicked"));
+        assert!(panic.to_string().contains("running reporter panicked"));
+        assert!(format!("{panic:?}").contains("WorkerPanic"));
+        let payload = panic.into_payload();
+        assert_eq!(
+            payload.downcast_ref::<&'static str>().copied(),
+            Some("running reporter panicked")
+        );
     });
 }
 
-/// Verifies that dropping an automatic reporter never propagates a worker panic.
+/// Reporter that panics with a non-string payload.
+struct NonStringPanickingReporter {
+    /// Number of report attempts observed by this reporter.
+    reports: AtomicUsize,
+}
+
+impl NonStringPanickingReporter {
+    /// Creates a reporter that panics on its first running event.
+    const fn new() -> Self {
+        Self {
+            reports: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl Reporter for NonStringPanickingReporter {
+    /// Panics with a payload that cannot be rendered as a standard message.
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
+        if self.reports.fetch_add(1, Ordering::Relaxed) == 0 {
+            Ok(())
+        } else {
+            std::panic::panic_any(7_u8);
+        }
+    }
+}
+
+#[test]
+fn test_worker_panic_formats_unknown_payload_and_resumes_unwind() {
+    let reporter = NonStringPanickingReporter::new();
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::ZERO)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("Started event must succeed");
+
+    thread::scope(|scope| {
+        let auto = progress.spawn_auto_reporter(scope);
+        auto.notifier().notify();
+        let error = auto.stop().expect_err("worker panic must be returned");
+        assert!(Error::source(&error).is_none());
+        assert_eq!(error.to_string(), "background reporter worker panicked");
+        let AutoReporterError::Panicked(panic) = error else {
+            panic!("expected a structured worker panic");
+        };
+        assert_eq!(panic.message(), None);
+        assert!(format!("{panic:?}").contains("message: None"));
+        let result = catch_unwind(AssertUnwindSafe(|| panic.resume_unwind()));
+        let payload = result.expect_err("resume_unwind must panic");
+        assert_eq!(payload.downcast_ref::<u8>(), Some(&7_u8));
+    });
+}
+
+/// Verifies that dropping an automatic reporter never propagates a worker
+/// panic.
 #[test]
 fn test_auto_reporter_drop_swallows_worker_panic_after_joining() {
     let reporter = RunningPanickingReporter::new();
@@ -304,7 +387,10 @@ fn test_auto_reporter_drop_swallows_worker_panic_after_joining() {
                 }
                 thread::sleep(Duration::from_millis(1));
             }
-            assert!(status.is_failed(), "worker panic must be observed before Drop");
+            assert!(
+                status.is_failed(),
+                "worker panic must be observed before Drop"
+            );
         });
     }));
 

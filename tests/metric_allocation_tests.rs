@@ -8,11 +8,22 @@
 //! Allocation behavior for hot metric transitions.
 
 use std::{
-    alloc::{GlobalAlloc, Layout, System},
-    sync::atomic::{AtomicUsize, Ordering},
+    alloc::{
+        GlobalAlloc,
+        Layout,
+        System,
+    },
+    sync::atomic::{
+        AtomicUsize,
+        Ordering,
+    },
 };
 
-use qubit_progress::{Metric, NoopReporter, Progress};
+use qubit_progress::{
+    Metric,
+    NoopReporter,
+    Progress,
+};
 
 /// Counts allocations made by this integration-test binary.
 struct CountingAllocator;
@@ -29,7 +40,8 @@ unsafe impl GlobalAlloc for CountingAllocator {
         unsafe { System.alloc(layout) }
     }
 
-    /// Delegates deallocation to the system allocator without changing the count.
+    /// Delegates deallocation to the system allocator without changing the
+    /// count.
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
         unsafe { System.dealloc(pointer, layout) }
     }

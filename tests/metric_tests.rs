@@ -8,7 +8,11 @@
 //! Behavioral coverage for stateful progress metrics.
 
 use qubit_progress::{
-    Metric, MetricError, MetricTransition, NoopReporter, OperationLifecycle, Progress,
+    Metric,
+    MetricDelta,
+    MetricError,
+    NoopReporter,
+    Progress,
 };
 
 /// Verifies that constrained state transitions expose one coherent snapshot.
@@ -36,44 +40,57 @@ fn test_metric_handle_transitions_publish_one_consistent_snapshot() {
     assert_eq!(snapshot.completion_fraction(), Some(0.75));
 }
 
-/// Verifies that explicit rollbacks affect only their matching state.
+/// Verifies one delta can start and finish work atomically.
 #[test]
-fn test_metric_handle_rolls_back_matching_transitions_and_rejects_closed_updates() {
+fn test_metric_delta_commits_start_and_terminal_counts_atomically() {
     let reporter = NoopReporter;
     let progress = Progress::builder(&reporter)
-        .metric(Metric::new("tasks", "Tasks").total(2))
+        .metric(Metric::new("tasks", "Tasks").total(10))
         .start()
         .expect("progress must start");
     let tasks = progress
         .metric("tasks")
         .expect("configured metric must exist");
 
-    tasks.start(2).expect("work must start");
-    tasks.cancel(1).expect("work must cancel");
     tasks
-        .rollback(MetricTransition::Cancel, 1)
-        .expect("cancellation must roll back");
-    tasks.complete(1).expect("work must complete");
-    tasks
-        .rollback(MetricTransition::Complete, 1)
-        .expect("completion must roll back");
+        .apply_delta(
+            MetricDelta::new()
+                .started(10)
+                .succeeded(7)
+                .unclassified(2)
+                .cancelled(1),
+        )
+        .expect("compound update must succeed");
     let snapshot = tasks.snapshot();
-    assert_eq!(snapshot.active(), 2);
-    assert_eq!(snapshot.completed(), 0);
-
-    drop(progress);
-    assert!(matches!(
-        tasks.start(1),
-        Err(MetricError::OperationNotOpen {
-            state: OperationLifecycle::Closed,
-            ..
-        })
-    ));
+    assert_eq!(snapshot.active(), 0);
+    assert_eq!(snapshot.completed(), 10);
+    assert_eq!(snapshot.unclassified(), 2);
+    assert_eq!(snapshot.succeeded(), 7);
+    assert_eq!(snapshot.cancelled(), 1);
 }
 
-/// Verifies metric metadata and every public forward and rollback transition.
+/// Verifies an invalid compound update leaves every counter unchanged.
 #[test]
-fn test_metric_metadata_and_all_transition_directions() {
+fn test_metric_delta_rejects_without_partial_commit() {
+    let reporter = NoopReporter;
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress must start");
+    let tasks = progress.metric("tasks").expect("metric must exist");
+
+    let error = tasks
+        .apply_delta(MetricDelta::new().started(1).succeeded(2))
+        .expect_err("a delta cannot complete more than its newly started work");
+    assert!(matches!(error, MetricError::InsufficientActive { .. }));
+    let snapshot = tasks.snapshot();
+    assert_eq!(snapshot.active(), 0);
+    assert_eq!(snapshot.completed(), 0);
+}
+
+/// Verifies metric metadata and every public forward transition.
+#[test]
+fn test_metric_metadata_and_forward_transitions() {
     let metric = Metric::new("tasks", "Tasks").total(6);
     assert_eq!(metric.id(), "tasks");
     assert_eq!(metric.name(), "Tasks");
@@ -90,38 +107,25 @@ fn test_metric_metadata_and_all_transition_directions() {
 
     tasks.start(6).expect("work must start");
     tasks.complete(1).expect("work must complete");
-    tasks
-        .rollback(MetricTransition::Complete, 1)
-        .expect("completion must reverse");
     tasks.succeed(1).expect("work must succeed");
-    tasks
-        .rollback(MetricTransition::Succeed, 1)
-        .expect("success must reverse");
     tasks.fail(1).expect("work must fail");
-    tasks
-        .rollback(MetricTransition::Fail, 1)
-        .expect("failure must reverse");
     tasks.cancel(1).expect("work must cancel");
-    tasks
-        .rollback(MetricTransition::Cancel, 1)
-        .expect("cancellation must reverse");
-    tasks
-        .rollback(MetricTransition::Start, 6)
-        .expect("start must reverse");
 
     let snapshot = tasks.snapshot();
     assert_eq!(snapshot.id(), "tasks");
     assert_eq!(snapshot.name(), "Tasks");
     assert_eq!(snapshot.total(), Some(6));
-    assert_eq!(snapshot.completed(), 0);
-    assert_eq!(snapshot.active(), 0);
-    assert_eq!(snapshot.succeeded(), 0);
-    assert_eq!(snapshot.failed(), 0);
-    assert_eq!(snapshot.cancelled(), 0);
-    assert_eq!(snapshot.completion_fraction(), Some(0.0));
+    assert_eq!(snapshot.completed(), 4);
+    assert_eq!(snapshot.active(), 2);
+    assert_eq!(snapshot.unclassified(), 1);
+    assert_eq!(snapshot.succeeded(), 1);
+    assert_eq!(snapshot.failed(), 1);
+    assert_eq!(snapshot.cancelled(), 1);
+    assert_eq!(snapshot.completion_fraction(), Some(4.0 / 6.0));
 }
 
-/// Verifies configured totals and constrained transitions reject invalid work counts.
+/// Verifies configured totals and constrained transitions reject invalid work
+/// counts.
 #[test]
 fn test_metric_rejects_invalid_counts_and_overflow() {
     let reporter = NoopReporter;
@@ -138,15 +142,7 @@ fn test_metric_rejects_invalid_counts_and_overflow() {
     ));
     assert!(matches!(
         tasks.complete(3),
-        Err(MetricError::InsufficientCount { .. })
-    ));
-    assert!(matches!(
-        tasks.rollback(MetricTransition::Succeed, 1),
-        Err(MetricError::InsufficientCount { .. })
-    ));
-    assert!(matches!(
-        tasks.rollback(MetricTransition::Start, 3),
-        Err(MetricError::InsufficientCount { .. })
+        Err(MetricError::InsufficientActive { .. })
     ));
 
     let overflow_progress = Progress::builder(&reporter)
@@ -207,6 +203,59 @@ fn test_metric_rejects_start_after_maximum_completed_count() {
     assert_eq!(snapshot.active(), 0);
 }
 
+/// Verifies every additive counter reports overflow without a partial update.
+#[test]
+fn test_metric_delta_rejects_each_counter_overflow() {
+    let reporter = NoopReporter;
+    for (name, delta) in [
+        (
+            "unclassified",
+            MetricDelta::new().started(1).unclassified(1),
+        ),
+        ("succeeded", MetricDelta::new().started(1).succeeded(1)),
+        ("failed", MetricDelta::new().started(1).failed(1)),
+        ("cancelled", MetricDelta::new().started(1).cancelled(1)),
+    ] {
+        let progress = Progress::builder(&reporter)
+            .metric(Metric::new(name, name))
+            .start()
+            .expect("progress must start");
+        let metric = progress.metric(name).expect("metric must exist");
+        metric
+            .start(u64::MAX)
+            .expect("maximum active count must fit");
+        match name {
+            "unclassified" => metric.complete(u64::MAX),
+            "succeeded" => metric.succeed(u64::MAX),
+            "failed" => metric.fail(u64::MAX),
+            "cancelled" => metric.cancel(u64::MAX),
+            _ => unreachable!(),
+        }
+        .expect("maximum terminal count must fit");
+        assert!(matches!(
+            metric.apply_delta(delta),
+            Err(MetricError::CountOverflow { .. })
+        ));
+        let snapshot = metric.snapshot();
+        assert_eq!(snapshot.active(), 0);
+        assert_eq!(snapshot.completed(), u64::MAX);
+    }
+
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("terminal-overflow", "Terminal overflow"))
+        .start()
+        .expect("progress must start");
+    let metric = progress
+        .metric("terminal-overflow")
+        .expect("metric must exist");
+    assert!(matches!(
+        metric.apply_delta(
+            MetricDelta::new().unclassified(u64::MAX).succeeded(1),
+        ),
+        Err(MetricError::CountOverflow { .. })
+    ));
+}
+
 /// Verifies concurrent updates preserve a coherent aggregate snapshot.
 #[test]
 fn test_metric_handle_concurrent_updates_preserve_snapshot_invariants() {
@@ -238,7 +287,10 @@ fn test_metric_handle_concurrent_updates_preserve_snapshot_invariants() {
 /// Verifies readers observe conservation while writers update one metric.
 #[test]
 fn test_metric_handle_concurrent_snapshots_preserve_conservation() {
-    use std::sync::{Arc, Barrier};
+    use std::sync::{
+        Arc,
+        Barrier,
+    };
 
     const WRITERS: usize = 4;
     const READERS: usize = 4;
@@ -288,4 +340,5 @@ fn test_metric_handle_concurrent_snapshots_preserve_conservation() {
     let snapshot = tasks.snapshot();
     assert_eq!(snapshot.active(), 0);
     assert_eq!(snapshot.completed(), TOTAL);
+    assert_eq!(snapshot.unclassified(), TOTAL);
 }
