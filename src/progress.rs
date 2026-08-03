@@ -80,10 +80,25 @@ impl Reporter for CoverageTerminalReporter {
     }
 }
 
+/// Reporter retained by a progress operation.
+enum ReporterHandle<'reporter> {
+    Borrowed(&'reporter dyn Reporter),
+    Owned(Arc<dyn Reporter>),
+}
+
+impl ReporterHandle<'_> {
+    fn as_reporter(&self) -> &dyn Reporter {
+        match self {
+            Self::Borrowed(reporter) => *reporter,
+            Self::Owned(reporter) => reporter.as_ref(),
+        }
+    }
+}
+
 /// Configures one [`Progress`] operation before it starts.
 pub struct ProgressBuilder<'reporter> {
     /// Reporter receiving complete events.
-    reporter: &'reporter dyn Reporter,
+    reporter: ReporterHandle<'reporter>,
     /// Minimum interval between due-based running reports.
     interval: Duration,
     /// Stable operation metrics.
@@ -134,7 +149,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
         }
         validate_attributes(&self.attributes)?;
 
-        let enabled = self.reporter.is_enabled();
+        let enabled = self.reporter.as_reporter().is_enabled();
         let operation_state = OperationState::new();
         let operation_id = enabled.then(allocate_operation_id).transpose()?;
         let mut progress = Progress {
@@ -176,7 +191,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
 #[must_use]
 pub struct Progress<'reporter> {
     /// Reporter selected by the builder.
-    reporter: &'reporter dyn Reporter,
+    reporter: ReporterHandle<'reporter>,
     /// Stable enablement sampled once at start.
     enabled: bool,
     /// Live metrics carried by each event.
@@ -200,13 +215,24 @@ pub struct Progress<'reporter> {
 }
 
 impl<'reporter> Progress<'reporter> {
-    /// Creates a builder bound to one reporter.
+    /// Creates a builder borrowing one reporter.
     #[must_use]
     pub fn builder(
         reporter: &'reporter dyn Reporter,
     ) -> ProgressBuilder<'reporter> {
         ProgressBuilder {
-            reporter,
+            reporter: ReporterHandle::Borrowed(reporter),
+            interval: Duration::ZERO,
+            metrics: Vec::new(),
+            stage: None,
+            attributes: OperationAttributes::new(),
+        }
+    }
+    /// Creates a builder that owns one shared reporter.
+    #[must_use]
+    pub fn builder_arc(reporter: Arc<dyn Reporter>) -> ProgressBuilder<'static> {
+        ProgressBuilder {
+            reporter: ReporterHandle::Owned(reporter),
             interval: Duration::ZERO,
             metrics: Vec::new(),
             stage: None,
@@ -380,7 +406,7 @@ impl<'reporter> Progress<'reporter> {
             metrics,
             elapsed,
         );
-        match self.reporter.report(&event) {
+        match self.reporter.as_reporter().report(&event) {
             Ok(()) => Ok(()),
             Err(source) => {
                 Err(EmissionError::Delivery(DeliveryError::new(event, source)))
@@ -474,7 +500,7 @@ pub fn __coverage_progress_edges() {
     let reporter = CoverageTerminalReporter {
         attempts: AtomicU64::new(0),
     };
-    let progress = Progress::builder(&reporter)
+    let progress = Progress::builder_arc(Arc::new(reporter))
         .metric(Metric::new("coverage-terminal", "Coverage terminal"))
         .start()
         .expect("coverage terminal progress must start");
