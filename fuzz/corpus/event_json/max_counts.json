@@ -1,0 +1,1 @@
+{"operation_id":7,"sequence":1,"phase":"succeeded","stage":null,"metrics":[{"id":"items","name":"Items","total":18446744073709551615,"completed":18446744073709551615,"active":0,"succeeded":18446744073709551615,"failed":0,"cancelled":0}],"elapsed":"1ns"}

@@ -18,3 +18,10 @@ path = "fuzz_targets/event_json.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "metric_delta"
+path = "fuzz_targets/metric_delta.rs"
+test = false
+doc = false
+bench = false

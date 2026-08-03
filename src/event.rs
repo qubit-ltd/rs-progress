@@ -294,6 +294,7 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
 
 /// Validates fields that are only available after Event JSON deserialization.
 #[cfg(feature = "serde")]
+#[cfg_attr(coverage, inline(never))]
 fn validate_wire_event(
     wire: &EventWire,
     elapsed: Duration,
@@ -383,6 +384,20 @@ pub fn __coverage_event_serde() {
     let mut deserializer = serde_json::Deserializer::from_str(&text);
     let event = <Event as serde::Deserialize>::deserialize(&mut deserializer)
         .expect("coverage event must deserialize");
+    let wire = EventWire {
+        operation_id: event.operation_id(),
+        sequence: event.sequence(),
+        phase: event.phase(),
+        stage: event.stage().cloned(),
+        attributes: event.attributes().clone(),
+        metrics: event.metrics().to_vec(),
+        elapsed: "0s".into(),
+    };
+    validate_wire_event(&wire, event.elapsed())
+        .expect("coverage event validation must succeed");
+    let mut invalid_wire = wire;
+    invalid_wire.attributes.insert(" ", "invalid");
+    assert!(validate_wire_event(&invalid_wire, event.elapsed()).is_err());
     let mut output = Vec::new();
     let mut serializer = serde_json::Serializer::new(&mut output);
     coverage_serialize_event(&event, &mut serializer)

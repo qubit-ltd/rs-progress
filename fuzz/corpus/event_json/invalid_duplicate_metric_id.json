@@ -1,0 +1,1 @@
+{"operation_id":8,"sequence":1,"phase":"running","stage":null,"metrics":[{"id":"items","name":"Items","total":null,"completed":0,"active":0,"succeeded":0,"failed":0,"cancelled":0},{"id":"items","name":"Other Items","total":null,"completed":0,"active":0,"succeeded":0,"failed":0,"cancelled":0}],"elapsed":"1ns"}
