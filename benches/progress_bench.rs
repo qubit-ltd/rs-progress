@@ -9,13 +9,28 @@
 
 use std::{
     hint::black_box,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc,
+        Mutex,
+    },
     thread,
     time::Duration,
 };
 
-use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use qubit_progress::{Metric, NoopReporter, Progress, ReporterError};
+use criterion::{
+    BatchSize,
+    BenchmarkId,
+    Criterion,
+    Throughput,
+    criterion_group,
+    criterion_main,
+};
+use qubit_progress::{
+    Metric,
+    NoopReporter,
+    Progress,
+    ReporterError,
+};
 
 /// Benchmarks the disabled report fast path.
 fn bench_disabled_report(criterion: &mut Criterion) {
@@ -153,9 +168,12 @@ fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
     thread::scope(|scope| {
         let auto = progress.spawn_auto_reporter(scope);
         let notifier = auto.notifier();
-        criterion.bench_function("heartbeat_auto_reporter_notification", |bencher| {
-            bencher.iter(|| notifier.notify());
-        });
+        criterion.bench_function(
+            "heartbeat_auto_reporter_notification",
+            |bencher| {
+                bencher.iter(|| notifier.notify());
+            },
+        );
         auto.stop().expect("heartbeat reporter must stop cleanly");
     });
 }
@@ -202,7 +220,9 @@ fn bench_auto_reporter_worker_fan_in(criterion: &mut Criterion) {
                     || {
                         let progress = Progress::builder(&reporter)
                             .interval(Duration::ZERO)
-                            .metric(Metric::new("entries", "Entries").total(total))
+                            .metric(
+                                Metric::new("entries", "Entries").total(total),
+                            )
                             .start()
                             .expect("enabled progress must start");
                         let metric = progress
@@ -229,7 +249,8 @@ fn bench_auto_reporter_worker_fan_in(criterion: &mut Criterion) {
                             for handle in handles {
                                 handle.join().expect("worker must finish");
                             }
-                            auto.stop().expect("auto reporter must stop cleanly");
+                            auto.stop()
+                                .expect("auto reporter must stop cleanly");
                         });
                         black_box(metric.snapshot());
                     },
@@ -257,7 +278,9 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
                 bencher.iter_batched(
                     || {
                         let progress = Progress::builder(&reporter)
-                            .metric(Metric::new("entries", "Entries").total(total))
+                            .metric(
+                                Metric::new("entries", "Entries").total(total),
+                            )
                             .start()
                             .expect("enabled progress must start");
                         let metric = progress
@@ -272,7 +295,9 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
                                 let metric = metric.clone();
                                 scope.spawn(move || {
                                     for _ in 0..UPDATES_PER_WORKER {
-                                        metric.complete(1).expect("metric update must succeed");
+                                        metric.complete(1).expect(
+                                            "metric update must succeed",
+                                        );
                                     }
                                 });
                             }
@@ -390,14 +415,16 @@ fn bench_mutex_metric_contention(criterion: &mut Criterion) {
                                 let state = Arc::clone(&state);
                                 scope.spawn(move || {
                                     for _ in 0..UPDATES_PER_WORKER {
-                                        let mut state =
-                                            state.lock().expect("mutex must not poison");
+                                        let mut state = state
+                                            .lock()
+                                            .expect("mutex must not poison");
                                         state.complete(1);
                                     }
                                 });
                             }
                         });
-                        let state = state.lock().expect("mutex must not poison");
+                        let state =
+                            state.lock().expect("mutex must not poison");
                         black_box(state.snapshot());
                     },
                     BatchSize::SmallInput,

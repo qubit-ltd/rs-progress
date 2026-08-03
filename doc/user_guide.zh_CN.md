@@ -16,12 +16,12 @@
 
 ## 核心模型
 
-- `ProgressBuilder` 在启动前收集上报器、上报间隔、指标和可选的 `Stage`。
+- `ProgressBuilder` 在启动前收集上报器、上报间隔、指标、可选的 `Stage` 和不可变的 operation attributes。
 - 指标定义（`Metric`）是稳定元数据：机器可读 ID、显示名称和可选总量。
 - `Progress` 持有每个指标的动态状态。通过 `Progress::metric` 取得可克隆的指标句柄（`MetricHandle`）后，调用方只需执行状态转换，无需维护外部计数器。
-- `Event` 是不可变的完整观察结果，上报器无需依赖先前事件重建状态。已启用的操作会获得进程内唯一的 `operation_id`；`Started` 的 `sequence` 为零，后续序号按投递尝试递增，包括失败的尝试。
+- `Event` 是不可变的完整观察结果，上报器无需依赖先前事件重建状态。已启用的操作会获得进程内唯一的 `operation_id`；`Started` 的 `sequence` 为零，后续序号按投递尝试递增，包括失败的尝试。`OperationAttributes` 会把可选的字符串关联元数据附加到每个事件。
 
-生命周期为 `Started → Running* → Succeeded | Failed | Cancelled`。`finish`、`finish_unchecked`、`fail` 和 `cancel` 会消费 `Progress`，因此安全 Rust 中最多只能发送一个终态事件。`finish()` 要求 active 为零且所有已知总量都完成。只有在业务上允许以未完成状态成功结束时，才使用 `finish_unchecked()`；它只记录操作结束，不校验指标完成情况。校验失败时操作会关闭，但不会发送 `Succeeded`。终态前丢弃对象或 unwind 仍可能使操作没有终态事件。
+生命周期为 `Started → Running* → Succeeded | Failed | Cancelled`。`finish`、`finish_recoverable`、`finish_unchecked`、`fail` 和 `cancel` 会消费 `Progress`，因此安全 Rust 中最多只能发送一个终态事件。`finish()` 要求 active 为零且所有已知总量都完成；它返回不带生命周期的 `FinishError`，可以直接使用 `?` 传播。只有需要修复指标并重试时才使用 `finish_recoverable()`。只有在业务上允许以未完成状态成功结束时，才使用 `finish_unchecked()`。终态前丢弃对象或 unwind 仍可能使操作没有终态事件。
 
 ## 启动并更新指标
 
@@ -73,13 +73,14 @@ progress.finish()?;
 ```
 
 `finish()` 会拒绝仍有 active 工作的指标，也会拒绝 `completed != total` 的已知总量指标。
-校验失败时返回 `FinishError::Incomplete`，其中带回仍可使用的 `Progress` 和
-`CompletionError`；修复指标后可以重试。只有 `FinishError::Terminal` 表示已经尝试
-终态投递且操作不可恢复。
+校验失败时 `finish()` 返回只包含 `CompletionError` 的 `FinishError::Incomplete`，此时
+操作已经被消费。需要修复指标后重试时使用 `finish_recoverable()`，其
+`RecoverableFinishError::Incomplete` 才会带回仍可使用的 `Progress`。只有 terminal
+错误表示已经尝试终态投递且操作不可恢复。
 
 ## 指标生命周期与校验
 
-`start(count)` 把无符号数量从未开始移动到 active。`complete`、`succeed`、`fail` 和 `cancel` 把无符号数量从 active 移动到各自的完成状态。若要撤销其中一次移动，使用匹配的 `MetricTransition` 调用 `rollback(transition, count)`：终态数量回到 active，而 `MetricTransition::Start` 则把 active 数量回到未开始。任何计数都不能变为负数；已知总量时，`active + completed` 不能超过总量。
+`start(count)` 把无符号数量从未开始移动到 active。`complete`、`succeed`、`fail` 和 `cancel` 把无符号数量从 active 移动到各自的完成状态。`completed` 是未分类完成、成功、失败和取消之和；指标是单向的，不提供 `rollback()`。任何计数都不能变为负数；已知总量时，`active + completed` 不能超过总量。
 
 `completed` 包含未分类完成、成功、失败和取消。每次转换均在 CAS 临界区中校验后
 提交，因此每个发送出的指标快照都内部一致。包含多个指标的事件只保证每个指标
@@ -87,23 +88,46 @@ progress.finish()?;
 保持稳定。不要用计数表达阶段信息：在启动时使用 `Stage`，用 `set_stage` 替换后续
 事件的阶段，或用 `clear_stage` 清除它。
 
-### 注意复合更新的观测边界
+### 使用原子复合更新
 
-每个 `MetricHandle` 方法只完成一次原子状态转换，多个方法调用并不构成事务。
-例如，一个已完成的 chunk 中包含不同结果的 item，可以按以下方式记录：
+一个业务操作同时改变多个计数时，应使用 `MetricDelta`。其中所有字段都是增量，
+不是调用方根据旧快照计算出的绝对目标值；整个 delta 会在一个线性化点校验并提交：
 
 ```rust
 let completed = 10;
 let succeeded = 8;
-items.start(completed)?;
-items.succeed(succeeded)?;
-items.complete(completed - succeeded)?;
+items.apply_delta(
+    MetricDelta::new()
+        .started(completed)
+        .succeeded(succeeded)
+        .unclassified(completed - succeeded),
+)?;
 ```
 
-自动上报器可能在这些调用之间观察到有效的中间快照，例如十个 item 全部处于
-active，或只有八个 item 已完成。因此，Running 事件不能被解释为原子业务事务。
-如果消费者需要权威的聚合结果，应使用终态事件，或者在 `MetricHandle` 之外同步
-业务更新与上报边界。
+并发的增量提交不会互相覆盖；如果某个 delta 在线性化点尝试完成超过现有 active 的
+数量，会返回 `MetricError::InsufficientActive` 且不修改状态。`MetricSnapshot::unclassified()`
+可用于读取没有 outcome 分类的终态数量。
+
+生命周期仍然是单向的：`started` 增加 active，每个终态字段都把 active
+转移到且仅转移到一种终态。在同一个 delta 内，`started` 会先计入再处理终态字段，
+因此可以原子地提交“开始并完成”的批次。并发 delta 的串行化顺序会影响结果：如果
+负责增加 active 的 delta 尚未线性化，只有终态字段的 delta 可能返回
+`MetricError::InsufficientActive`；需要此顺序时应重试或在业务侧协调两次更新。
+
+## 使用 operation attributes 关联事件
+
+在 `start()` 前通过 `ProgressBuilder` 设置字符串属性：
+
+```rust
+let progress = Progress::builder(&reporter)
+    .attribute("tenant_id", "tenant-7")
+    .attribute("trace_id", "trace-abc")
+    .metric(Metric::new("files", "Files"))
+    .start()?;
+```
+
+启动后 attributes 不可修改，并会附加到每个事件。它们按稳定顺序输出到文本和 JSON；
+由于上报器会原样输出，请勿放置密码或令牌。
 
 ## 结束每次操作
 
@@ -264,8 +288,9 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 
 `start()` 返回 `StartError`，运行中上报返回 `EmissionError`，指标句柄的状态转换
 直接返回 `MetricError`。不要忽略这些错误：状态无效表示事件没有发送，而输出目标
-错误表示本次投递失败。`finish()` 返回 `FinishError`；可以修复带回的操作和
-`CompletionError`，或检查终态投递失败的 `TerminalError`。
+错误表示本次投递失败。`finish()` 返回不带生命周期的 `FinishError`，可以直接使用
+`?` 传播；需要修复并重试时使用 `finish_recoverable()` 和
+`RecoverableFinishError`。
 
 终态方法返回 `Result<Duration, TerminalError>`。如果必须可靠记录完成结果，
 应检查 `TerminalError`：即使最终事件无法投递，它仍会保留操作耗时。自动上报
@@ -278,8 +303,3 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 
 每种类型、错误变体、上报器特性和序列化细节，请参阅
 [docs.rs](https://docs.rs/qubit-progress) 生成的 API 文档。
-
-## TODO
-
-- 增加可选的稳定 operation correlation metadata，使共享 Reporter 能够把并发操作
-  关联到应用层的 job 或 request。

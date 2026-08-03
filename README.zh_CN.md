@@ -13,7 +13,7 @@
 
 进度上报常被绑死在终端进度条上，或以零散计数器散落在复制循环中。这样既难以把同一状态同时发送给日志、JSON、UI 或遥测系统，也会迫使消费者根据增量重建状态。进入多线程后，操作所有者和更新计数的工作线程又常常不是同一段代码。
 
-本库把这两类状态分开：启动时仅配置一次 `Metric` 的稳定 ID、显示名称和可选总量；随后由 `Progress` 持有动态计数，可克隆的指标句柄以经过校验的生命周期转换更新它们，每个事件都读取一个内部一致的快照。包含多个指标时，只保证每个指标快照各自一致；运行中的多个指标之间不是全局原子视图。终态方法会消费 `Progress`，因此在安全 Rust 中至多发送一个终态事件，且不能在终态后继续上报；`finish()` 要求 active 为零且已知总量全部完成；如果业务明确允许未完成状态成功结束，可使用 `finish_unchecked()`。但若在调用终态方法前丢弃对象或发生 unwind，操作仍可能没有终态事件。
+本库把这两类状态分开：启动时仅配置一次 `Metric` 的稳定 ID、显示名称和可选总量；随后由 `Progress` 持有动态计数，可克隆的指标句柄以经过校验的生命周期转换更新它们，每个事件都读取一个内部一致的快照。需要一次原子改变多个生命周期计数时使用 `MetricDelta`，需要关联业务上下文时使用会附加到每个事件的 `OperationAttributes`。包含多个指标时，只保证每个指标快照各自一致；运行中的多个指标之间不是全局原子视图。终态方法会消费 `Progress`，因此在安全 Rust 中至多发送一个终态事件，且不能在终态后继续上报；`finish()` 要求 active 为零且已知总量全部完成；如果业务明确允许未完成状态成功结束，可使用 `finish_unchecked()`。但若在调用终态方法前丢弃对象或发生 unwind，操作仍可能没有终态事件。
 
 事件投递采用“最多一次”语义：库会把上报器错误返回给调用方，不会自动重试。
 如果业务层选择重试，必须考虑上报器可能已经接受事件、但随后仍返回错误，
@@ -41,6 +41,7 @@ use qubit_progress::{Metric, Progress, TextReporter};
 fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> {
     let reporter = TextReporter::new(io::stderr());
     let mut progress = Progress::builder(&reporter)
+        .attribute("job_id", "import-42")
         .metric(Metric::new("files", "文件").total(files.len() as u64))
         .start()?;
 
