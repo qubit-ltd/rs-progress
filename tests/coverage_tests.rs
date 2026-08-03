@@ -5,10 +5,13 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-//! Integration tests for the redesigned `qubit-progress` API.
+//! Coverage-only entry points for library paths that need deterministic setup.
 
-mod auto_reporter;
 #[cfg(coverage)]
-mod coverage_tests;
-mod progress;
-mod reporter;
+#[test]
+fn test_library_coverage_hooks() {
+    qubit_progress::__coverage_internal();
+    qubit_progress::__coverage_progress_edges();
+    #[cfg(feature = "json-lines")]
+    qubit_progress::__coverage_event_serde();
+}

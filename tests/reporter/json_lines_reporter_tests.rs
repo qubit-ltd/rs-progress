@@ -8,7 +8,11 @@
 //! JSON Lines reporter behavior.
 
 #[cfg(feature = "json-lines")]
-use qubit_progress::{JsonLinesReporter, Metric, Progress};
+use qubit_progress::{
+    JsonLinesReporter,
+    Metric,
+    Progress,
+};
 
 /// Verifies that JSON Lines exposes the cancelled metric count.
 #[cfg(feature = "json-lines")]

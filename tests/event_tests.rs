@@ -9,7 +9,15 @@
 
 use std::sync::Mutex;
 
-use qubit_progress::{Event, Metric, Phase, Progress, Reporter, ReporterError};
+use qubit_progress::{
+    Event,
+    Metric,
+    OperationAttributes,
+    Phase,
+    Progress,
+    Reporter,
+    ReporterError,
+};
 
 #[cfg(feature = "serde")]
 use qubit_progress::MetricSnapshot;
@@ -33,6 +41,36 @@ impl Reporter for RecordingReporter {
             .push(event.clone());
         Ok(())
     }
+}
+
+/// Verifies builder attributes are immutable and shared by every event.
+#[test]
+fn test_event_carries_operation_attributes_through_terminal_phase() {
+    let reporter = RecordingReporter::default();
+    let mut attributes = OperationAttributes::new();
+    attributes.insert("tenant", "acme");
+    attributes.insert("trace_id", "trace-1");
+    let mut progress = Progress::builder(&reporter)
+        .attributes(attributes)
+        .attribute("trace_id", "trace-2")
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("attributes should validate");
+    progress.report().expect("running event must report");
+    progress.cancel().expect("terminal event must report");
+
+    let events = reporter
+        .events
+        .lock()
+        .expect("recording reporter mutex must not be poisoned");
+    for event in events.iter() {
+        assert_eq!(event.attribute("tenant"), Some("acme"));
+        assert_eq!(event.attribute("trace_id"), Some("trace-2"));
+    }
+    assert_eq!(
+        events[0].attributes().iter().collect::<Vec<_>>(),
+        [("tenant", "acme"), ("trace_id", "trace-2"),]
+    );
 }
 
 /// Verifies that events expose the cancelled terminal count from metric state.
@@ -117,7 +155,8 @@ fn test_event_json_deserializes_canonical_durations() {
             }],
             "elapsed": elapsed,
         });
-        let event: Event = serde_json::from_value(value).expect("event JSON must deserialize");
+        let event: Event =
+            serde_json::from_value(value).expect("event JSON must deserialize");
         assert_eq!(event.phase().as_str(), phase);
         assert_eq!(event.sequence(), sequence);
         assert_eq!(event.stage().expect("stage must exist").total(), Some(1));
@@ -129,6 +168,13 @@ fn test_event_json_deserializes_canonical_durations() {
             if elapsed == "0ns" { "0s" } else { elapsed },
         );
     }
+
+    let event: Event = serde_json::from_str(
+        r#"{"operation_id":1,"sequence":0,"phase":"started","stage":null,"metrics":[{"id":"tasks","name":"Tasks","total":null,"completed":0,"active":0,"succeeded":0,"failed":0,"cancelled":0}],"elapsed":"0s"}"#,
+    )
+    .expect("direct JSON deserialization must use the public event impl");
+    serde_json::to_string(&event)
+        .expect("direct JSON serialization must succeed");
 }
 
 /// Verifies JSON validation rejects malformed durations and event invariants.

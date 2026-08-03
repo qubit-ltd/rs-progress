@@ -9,13 +9,25 @@
 
 use std::sync::{
     Mutex,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{
+        AtomicUsize,
+        Ordering,
+    },
 };
 use std::time::Duration;
 
 use qubit_progress::{
-    DeliveryError, EmissionError, Event, FinishError, Metric, Phase, Progress, Reporter,
-    ReporterError, StartError,
+    DeliveryError,
+    EmissionError,
+    Event,
+    Metric,
+    NoopReporter,
+    Phase,
+    Progress,
+    RecoverableFinishError,
+    Reporter,
+    ReporterError,
+    StartError,
 };
 
 #[derive(Default)]
@@ -135,9 +147,9 @@ fn test_incomplete_finish_returns_reusable_progress() {
     let tasks = progress.metric("tasks").expect("metric must exist");
     tasks.start(1).expect("task must start");
 
-    let Err(FinishError::Incomplete {
+    let Err(RecoverableFinishError::Incomplete {
         progress: returned, ..
-    }) = progress.finish()
+    }) = progress.finish_recoverable()
     else {
         panic!("incomplete finish must return Progress");
     };
@@ -184,4 +196,16 @@ fn assert_delivery_error_is_send_sync<T: Send + Sync>() {}
 #[test]
 fn test_delivery_error_is_send_sync() {
     assert_delivery_error_is_send_sync::<DeliveryError>();
+}
+
+#[test]
+fn test_disabled_terminal_finish_returns_without_delivery() {
+    let progress = Progress::builder(&NoopReporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("disabled progress must start");
+    let elapsed = progress
+        .finish_unchecked()
+        .expect("disabled terminal finish must not deliver");
+    assert!(elapsed < Duration::from_secs(1));
 }

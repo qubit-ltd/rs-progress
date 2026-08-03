@@ -10,12 +10,27 @@
 use std::{
     error::Error,
     fmt,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{
+        AtomicUsize,
+        Ordering,
+    },
 };
 
 use qubit_progress::{
-    CompletionError, ConfigurationError, EmissionError, Event, FinishError, Metric, MetricError,
-    MetricTransition, OperationLifecycle, Progress, Reporter, ReporterError, StartError,
+    CompletionError,
+    ConfigurationError,
+    DeliveryError,
+    EmissionError,
+    Event,
+    FinishError,
+    Metric,
+    MetricDelta,
+    MetricError,
+    OperationLifecycle,
+    Progress,
+    Reporter,
+    ReporterError,
+    StartError,
 };
 
 #[derive(Debug)]
@@ -31,6 +46,25 @@ impl Error for OriginalReporterError {}
 
 struct TerminalFailingReporter {
     attempts: AtomicUsize,
+}
+
+struct RejectingReporter;
+
+impl Reporter for RejectingReporter {
+    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
+        Err(ReporterError::message("sink unavailable"))
+    }
+}
+
+fn start_delivery_error() -> DeliveryError {
+    let result = Progress::builder(&RejectingReporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start();
+    match result {
+        Err(StartError::Delivery(error)) => error,
+        Err(_) => panic!("start must return a delivery error"),
+        Ok(_) => panic!("start must fail"),
+    }
 }
 
 impl TerminalFailingReporter {
@@ -75,9 +109,36 @@ fn test_terminal_error_retains_elapsed_and_emission_source() {
     let FinishError::Terminal(terminal) = error else {
         panic!("terminal delivery must produce FinishError::Terminal");
     };
+    assert!(terminal.elapsed() < std::time::Duration::from_secs(1));
+    assert!(terminal.emission_error().to_string().contains("terminal"));
+    assert!(
+        terminal
+            .to_string()
+            .contains("terminal progress report failed")
+    );
+    assert!(Error::source(&terminal).is_some());
     let (elapsed, emission) = terminal.into_parts();
     assert!(elapsed < std::time::Duration::from_secs(1));
     assert!(matches!(emission, EmissionError::Delivery(_)));
+}
+
+#[test]
+fn test_terminal_error_can_extract_only_its_emission_error() {
+    let reporter = TerminalFailingReporter::new();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("Started event must succeed");
+    let FinishError::Terminal(terminal) = progress
+        .finish()
+        .expect_err("terminal reporter failure must be retained")
+    else {
+        panic!("terminal delivery must produce FinishError::Terminal");
+    };
+    assert!(matches!(
+        terminal.into_emission_error(),
+        EmissionError::Delivery(_)
+    ));
 }
 
 #[test]
@@ -91,6 +152,7 @@ fn test_public_error_variants_format() {
         ConfigurationError::DuplicateMetricId {
             metric_id: "tasks".into(),
         },
+        ConfigurationError::EmptyAttributeKey { key: "   ".into() },
         ConfigurationError::EmptyStageId,
         ConfigurationError::EmptyStageName,
         ConfigurationError::IncompleteStagePosition,
@@ -124,9 +186,8 @@ fn test_public_error_variants_format() {
             metric_id: "tasks".into(),
             state: OperationLifecycle::Closed,
         },
-        MetricError::InsufficientCount {
+        MetricError::InsufficientActive {
             metric_id: "tasks".into(),
-            transition: MetricTransition::Start,
             requested: 2,
             available: 1,
         },
@@ -143,17 +204,16 @@ fn test_public_error_variants_format() {
         assert!(!error.to_string().is_empty());
         assert!(Error::source(&error).is_none());
     }
+
+    let delta = MetricDelta::new().started(2).unclassified(1).succeeded(1);
+    assert_eq!(
+        delta,
+        MetricDelta::new().started(2).unclassified(1).succeeded(1)
+    );
 }
 
 #[test]
 fn test_start_error_preserves_delivery_source() {
-    struct RejectingReporter;
-    impl Reporter for RejectingReporter {
-        fn report(&self, _event: &Event) -> Result<(), ReporterError> {
-            Err(ReporterError::message("sink unavailable"))
-        }
-    }
-
     let result = Progress::builder(&RejectingReporter)
         .metric(Metric::new("tasks", "Tasks"))
         .start();
@@ -164,6 +224,149 @@ fn test_start_error_preserves_delivery_source() {
     assert!(matches!(error, StartError::Delivery(_)));
     assert!(Error::source(&error).is_some());
     assert!(error.to_string().contains("sink unavailable"));
+}
+
+#[test]
+fn test_delivery_error_exposes_all_accessors_and_error_chain() {
+    let error = start_delivery_error();
+    assert_eq!(error.event().phase(), qubit_progress::Phase::Started);
+    assert_eq!(error.reporter_error().to_string(), "sink unavailable");
+    assert!(error.to_string().contains("delivery of started event"));
+    assert!(Error::source(&error).is_some());
+
+    let event = error.into_event();
+    assert_eq!(event.sequence(), 0);
+
+    let error = start_delivery_error();
+    let reporter_error = error.into_reporter_error();
+    assert_eq!(reporter_error.to_string(), "sink unavailable");
+}
+
+#[test]
+fn test_emission_error_formats_sequence_and_delivery_failures() {
+    let exhausted = EmissionError::SequenceExhausted;
+    assert_eq!(
+        exhausted.to_string(),
+        "progress event sequence is exhausted"
+    );
+    assert!(Error::source(&exhausted).is_none());
+
+    let delivery = EmissionError::Delivery(start_delivery_error());
+    assert!(delivery.to_string().contains("delivery of started event"));
+    assert!(Error::source(&delivery).is_some());
+}
+
+#[test]
+fn test_finish_error_supports_recovery_and_terminal_parts() {
+    let reporter = TerminalFailingReporter::new();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks").total(2))
+        .start()
+        .expect("progress must start");
+    progress
+        .metric("tasks")
+        .expect("metric must exist")
+        .start(1)
+        .expect("work must start");
+    progress
+        .metric("tasks")
+        .expect("metric must exist")
+        .succeed(1)
+        .expect("work must succeed");
+    let incomplete = progress
+        .finish_recoverable()
+        .expect_err("incomplete work must reject checked finish");
+    assert!(incomplete.completion_error().is_some());
+    assert!(incomplete.to_string().contains("work items"));
+    assert!(
+        format!("{incomplete:?}")
+            .contains("RecoverableFinishError::Incomplete")
+    );
+    assert!(Error::source(&incomplete).is_some());
+    let returned = incomplete
+        .into_progress()
+        .expect("incomplete finish must return progress");
+    drop(returned);
+
+    let reporter = TerminalFailingReporter::new();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress must start");
+    let terminal = progress
+        .finish_recoverable()
+        .expect_err("terminal delivery must fail");
+    assert!(terminal.completion_error().is_none());
+    assert!(
+        format!("{terminal:?}").contains("RecoverableFinishError::Terminal")
+    );
+    assert!(
+        terminal
+            .to_string()
+            .contains("terminal progress report failed")
+    );
+    assert!(Error::source(&terminal).is_some());
+    assert!(terminal.into_progress().is_err());
+
+    let reporter = TerminalFailingReporter::new();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks").total(1))
+        .start()
+        .expect("progress must start");
+    progress
+        .metric("tasks")
+        .expect("metric must exist")
+        .start(1)
+        .expect("work must start");
+    let incomplete = progress
+        .finish()
+        .expect_err("incomplete work must reject checked finish");
+    assert!(incomplete.completion_error().is_some());
+    assert!(incomplete.to_string().contains("work items"));
+    assert!(format!("{incomplete:?}").contains("Incomplete"));
+    assert!(Error::source(&incomplete).is_some());
+    let FinishError::Incomplete(source) = incomplete else {
+        panic!("incomplete finish must return its completion error");
+    };
+    assert!(matches!(source, CompletionError::ActiveWork { .. }));
+
+    let reporter = TerminalFailingReporter::new();
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress must start");
+    let terminal = progress.finish().expect_err("terminal delivery must fail");
+    assert!(terminal.completion_error().is_none());
+    assert!(
+        terminal
+            .to_string()
+            .contains("terminal progress report failed")
+    );
+    assert!(format!("{terminal:?}").contains("Terminal"));
+    assert!(Error::source(&terminal).is_some());
+    assert!(matches!(terminal, FinishError::Terminal(_)));
+}
+
+#[test]
+fn test_start_error_conversions_cover_configuration_and_emission() {
+    let invalid = StartError::from(ConfigurationError::NoMetrics);
+    assert!(matches!(invalid, StartError::InvalidConfiguration(_)));
+    assert!(invalid.to_string().contains("at least one metric"));
+    assert!(Error::source(&invalid).is_some());
+
+    let exhausted = StartError::OperationIdExhausted;
+    assert_eq!(
+        exhausted.to_string(),
+        "progress operation IDs are exhausted"
+    );
+    assert!(Error::source(&exhausted).is_none());
+
+    let sequence = StartError::from(EmissionError::SequenceExhausted);
+    assert!(matches!(sequence, StartError::OperationIdExhausted));
+
+    let delivery =
+        StartError::from(EmissionError::Delivery(start_delivery_error()));
+    assert!(matches!(delivery, StartError::Delivery(_)));
 }
 
 #[test]
