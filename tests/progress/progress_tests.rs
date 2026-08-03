@@ -8,6 +8,7 @@
 //! Tests for the redesigned progress lifecycle.
 
 use std::sync::{
+    Arc,
     Mutex,
     atomic::{
         AtomicUsize,
@@ -72,6 +73,20 @@ fn test_progress_accepts_bulk_operation_attributes() {
         progress.metric("items").expect("metric exists").id(),
         "items"
     );
+}
+
+#[test]
+fn test_progress_owns_shared_reporter() -> Result<(), Box<dyn std::error::Error>> {
+    let reporter = Arc::new(RecordingReporter::default());
+    let reporter_handle: Arc<dyn Reporter> = reporter.clone();
+    let progress = Progress::builder_arc(reporter_handle)
+        .metric(Metric::new("items", "Items"))
+        .start()?;
+
+    progress.finish()?;
+
+    assert_eq!(reporter.events().len(), 2);
+    Ok(())
 }
 
 #[test]

@@ -22,6 +22,7 @@ use crate::{
 };
 
 /// Failure from checked finish while preserving a reusable progress operation.
+#[allow(clippy::large_enum_variant)]
 pub enum RecoverableFinishError<'reporter> {
     /// Completion validation failed and the operation remains reusable.
     Incomplete {
