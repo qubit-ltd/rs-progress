@@ -1,6 +1,15 @@
 # Cohesive value-object families intentionally share their implementation file.
 multiple-public-types | src/auto_reporter.rs | AutoReporter, Notifier, and Status form one scoped control protocol.
+multiple-public-types | src/error/auto_reporter_error.rs | AutoReporterError and WorkerPanic form one worker shutdown error contract.
 multiple-public-types | src/error.rs | The public error family exposes one coherent reporting contract.
 multiple-public-types | src/event.rs | Phase and Event are one immutable wire model.
+multiple-public-types | src/internal/operation_gate.rs | Atomic traits, lifecycle state, gate, and scheduler form one generic lifecycle protocol.
+multiple-public-types | src/internal/operation_state.rs | OperationState and FinishGuard form one operation lifecycle protocol.
 multiple-public-types | src/metric.rs | Metric configuration, counts, and snapshots are one metric model.
 multiple-public-types | src/progress.rs | Builder, operation, and temporary snapshot form one lifecycle API.
+coverage-cfg | src/lib.rs | Re-export coverage-only lifecycle and progress hooks for external coverage tests.
+coverage-cfg | src/event.rs | Exercise serde entry points from the instrumented library without restoring inline tests.
+coverage-cfg | src/internal/mod.rs | Gate internal lifecycle coverage helpers behind cfg(coverage).
+coverage-cfg | src/internal/operation_gate.rs | Exercise scheduler and concurrent gate branches deterministically in coverage builds.
+coverage-cfg | src/internal/operation_state.rs | Exercise the abandoned finishing guard path in coverage builds.
+coverage-cfg | src/progress.rs | Exercise operation-ID exhaustion and terminal delivery edges in coverage builds.
