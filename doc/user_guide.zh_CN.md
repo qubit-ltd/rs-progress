@@ -73,8 +73,9 @@ progress.finish()?;
 ```
 
 `finish()` 会拒绝仍有 active 工作的指标，也会拒绝 `completed != total` 的已知总量指标。
-校验失败时 `finish()` 返回只包含 `CompletionError` 的 `FinishError::Incomplete`，此时
-操作已经被消费。需要修复指标后重试时使用 `finish_recoverable()`，其
+校验失败时 `finish()` 返回包含 `CompletionError` 和校验前采样耗时的
+`FinishError::Incomplete`，此时操作已经被消费。`FinishError::elapsed()` 对校验失败和终态
+投递失败都返回本次 finish 的耗时。需要修复指标后重试时使用 `finish_recoverable()`，其
 `RecoverableFinishError::Incomplete` 才会带回仍可使用的 `Progress`。只有 terminal
 错误表示已经尝试终态投递且操作不可恢复。
 
@@ -289,7 +290,7 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 `start()` 返回 `StartError`，运行中上报返回 `EmissionError`，指标句柄的状态转换
 直接返回 `MetricError`。不要忽略这些错误：状态无效表示事件没有发送，而输出目标
 错误表示本次投递失败。`finish()` 返回不带生命周期的 `FinishError`，可以直接使用
-`?` 传播；需要修复并重试时使用 `finish_recoverable()` 和
+`?` 传播，并通过 `elapsed()` 获取本次 finish 的耗时；需要修复并重试时使用 `finish_recoverable()` 和
 `RecoverableFinishError`。
 
 终态方法返回 `Result<Duration, TerminalError>`。如果必须可靠记录完成结果，

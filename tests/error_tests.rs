@@ -322,12 +322,15 @@ fn test_finish_error_supports_recovery_and_terminal_parts() {
         .finish()
         .expect_err("incomplete work must reject checked finish");
     assert!(incomplete.completion_error().is_some());
+    let incomplete_elapsed = incomplete.elapsed();
+    assert!(incomplete_elapsed < std::time::Duration::from_secs(1));
     assert!(incomplete.to_string().contains("work items"));
     assert!(format!("{incomplete:?}").contains("Incomplete"));
     assert!(Error::source(&incomplete).is_some());
-    let FinishError::Incomplete(source) = incomplete else {
+    let FinishError::Incomplete { elapsed, source } = incomplete else {
         panic!("incomplete finish must return its completion error");
     };
+    assert_eq!(elapsed, incomplete_elapsed);
     assert!(matches!(source, CompletionError::ActiveWork { .. }));
 
     let reporter = TerminalFailingReporter::new();
@@ -337,6 +340,8 @@ fn test_finish_error_supports_recovery_and_terminal_parts() {
         .expect("progress must start");
     let terminal = progress.finish().expect_err("terminal delivery must fail");
     assert!(terminal.completion_error().is_none());
+    let finish_elapsed = terminal.elapsed();
+    assert!(finish_elapsed < std::time::Duration::from_secs(1));
     assert!(
         terminal
             .to_string()
@@ -344,7 +349,10 @@ fn test_finish_error_supports_recovery_and_terminal_parts() {
     );
     assert!(format!("{terminal:?}").contains("Terminal"));
     assert!(Error::source(&terminal).is_some());
-    assert!(matches!(terminal, FinishError::Terminal(_)));
+    let FinishError::Terminal(error) = terminal else {
+        panic!("terminal delivery must return FinishError::Terminal");
+    };
+    assert_eq!(finish_elapsed, error.elapsed());
 }
 
 #[test]
