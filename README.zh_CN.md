@@ -24,7 +24,7 @@
 
 ```toml
 [dependencies]
-qubit-progress = "0.7"
+qubit-progress = "0.8"
 ```
 
 需要序列化或反序列化事件数据时开启 `serde`；需要 `JsonLinesReporter` 时开启
