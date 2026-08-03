@@ -33,8 +33,8 @@
 //! ```
 //! use qubit_progress::{Metric, Progress, TextReporter};
 //!
-//! let reporter = TextReporter::new(Vec::new());
-//! let progress = Progress::builder(&reporter)
+//! let reporter = std::sync::Arc::new(TextReporter::new(Vec::new()));
+//! let progress = Progress::builder_arc(reporter)
 //!     .metric(Metric::new("tasks", "Tasks").total(1))
 //!     .start()?;
 //! let tasks = progress.metric("tasks").expect("configured metric must exist");
