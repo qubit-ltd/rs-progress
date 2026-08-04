@@ -40,7 +40,7 @@ log = ["dep:log"]
 
 [dependencies]
 log = { version = "0.4", optional = true }
-qubit-fast-cas = { version = "0.3", path = "../rs-fast-cas" }
+qubit-fast-cas = "0.3"
 serde = { version = "1.0", features = ["derive", "rc"], optional = true }
 serde_json = { version = "1.0", optional = true }
 
