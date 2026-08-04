@@ -76,7 +76,8 @@ fn test_progress_accepts_bulk_operation_attributes() {
 }
 
 #[test]
-fn test_progress_owns_shared_reporter() -> Result<(), Box<dyn std::error::Error>> {
+fn test_progress_owns_shared_reporter() -> Result<(), Box<dyn std::error::Error>>
+{
     let reporter = Arc::new(RecordingReporter::default());
     let reporter_handle: Arc<dyn Reporter> = reporter.clone();
     let progress = Progress::builder_arc(reporter_handle)
