@@ -230,7 +230,9 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Creates a builder that owns one shared reporter.
     #[must_use]
-    pub fn builder_arc(reporter: Arc<dyn Reporter>) -> ProgressBuilder<'static> {
+    pub fn builder_arc(
+        reporter: Arc<dyn Reporter>,
+    ) -> ProgressBuilder<'static> {
         ProgressBuilder {
             reporter: ReporterHandle::Owned(reporter),
             interval: Duration::ZERO,
