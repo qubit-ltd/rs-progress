@@ -87,7 +87,7 @@ use qubit_progress::{Metric, Progress, TextReporter};
 
 let reporter = TextReporter::new(std::io::stderr());
 let mut progress = Progress::builder(&reporter)
-    .interval(Duration::ZERO)
+    .interval(Duration::from_secs(1))
     .metric(Metric::new("files", "Files").total(2))
     .start()?;
 let files_metric = progress.metric("files").expect("configured metric must exist");
@@ -95,12 +95,11 @@ let files_metric = progress.metric("files").expect("configured metric must exist
 thread::scope(|scope| -> Result<(), qubit_progress::AutoReporterError> {
     let auto = progress.spawn_auto_reporter(scope);
 
-    let notifier = auto.notifier();
     let worker = scope.spawn(move || {
+        // This worker copies two files as one batch, so each transition updates two files.
         files_metric.start(2).expect("metric update must succeed");
-        // Perform the copy here.
+        // Copy both files here.
         files_metric.succeed(2).expect("metric update must succeed");
-        notifier.notify();
     });
     worker.join().expect("copy worker panicked");
     auto.stop()?;
@@ -111,7 +110,7 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Use a positive interval when a periodic heartbeat is more useful than immediate notifications. In this mode, `notify()` is a no-op so workers avoid synchronization work; the background reporter wakes only for its timer or `stop()`. Relative deadlines accept even `Duration::MAX`; that value simply has no future automatic due deadline.
+Without `.interval(...)`, the default is `Duration::ZERO`: workers call `notify()` after changes, and repeated notifications coalesce into at most one pending report. This example sets a positive interval, so the background reporter sends periodic heartbeats instead; `notify()` is a no-op and workers avoid notification synchronization work. The background reporter wakes only for its timer or `stop()`. Relative deadlines accept even `Duration::MAX`; that value simply has no future automatic due deadline.
 
 ## Next steps
 
