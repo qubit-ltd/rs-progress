@@ -84,7 +84,7 @@ use qubit_progress::{Metric, Progress, TextReporter};
 
 let reporter = TextReporter::new(std::io::stderr());
 let mut progress = Progress::builder(&reporter)
-    .interval(Duration::ZERO)
+    .interval(Duration::from_secs(1))
     .metric(Metric::new("files", "文件").total(2))
     .start()?;
 let files_metric = progress.metric("files").expect("configured metric must exist");
@@ -92,12 +92,11 @@ let files_metric = progress.metric("files").expect("configured metric must exist
 thread::scope(|scope| -> Result<(), qubit_progress::AutoReporterError> {
     let auto = progress.spawn_auto_reporter(scope);
 
-    let notifier = auto.notifier();
     let worker = scope.spawn(move || {
+        // 此工作线程将两个文件作为一批复制，因此每次状态转换都更新两个文件。
         files_metric.start(2).expect("metric update must succeed");
-        // 在这里执行复制。
+        // 在这里复制这两个文件。
         files_metric.succeed(2).expect("metric update must succeed");
-        notifier.notify();
     });
     worker.join().expect("copy worker panicked");
     auto.stop()?;
@@ -108,7 +107,7 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-若更需要周期性心跳而不是即时通知，可设置正的上报间隔。此时 `notify()` 是无操作，工作线程无需为通知付出同步成本；后台上报器只会因定时器或 `stop()` 被唤醒。相对时间调度接受包括 `Duration::MAX` 在内的所有间隔；该值只是不再产生未来的自动到期点。
+未调用 `.interval(...)` 时，默认间隔是 `Duration::ZERO`：工作线程在状态变化后调用 `notify()`，重复通知会合并为至多一个待发送上报。本示例设置了正间隔，因此后台上报器会改为周期性发送心跳；`notify()` 是无操作，工作线程无需承担通知同步开销。后台上报器只会因定时器或 `stop()` 被唤醒。相对时间调度接受包括 `Duration::MAX` 在内的所有间隔；该值只是不再产生未来的自动到期点。
 
 ## 下一步
 
