@@ -313,7 +313,7 @@ checksum = "91048ed7cf5a65b23f0b6af148ec5245f84cd5364e6f4f2cb0ee15ff6fcc4a85"
 
 [[package]]
 name = "qubit-progress"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "criterion",
  "log",
