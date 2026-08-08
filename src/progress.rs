@@ -9,60 +9,44 @@
 // qubit-style: allow multiple-public-types
 // qubit-style: allow coverage-cfg
 
-use std::{
-    sync::Arc,
-    sync::atomic::{
-        AtomicU64,
-        Ordering,
-    },
-    time::{
-        Duration,
-        Instant,
-    },
-};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use std::time::Instant;
 
-use crate::{
-    Event,
-    Metric,
-    MetricHandle,
-    MetricSnapshot,
-    OperationAttributes,
-    Phase,
-    Reporter,
-    Stage,
-    auto_reporter::{
-        self,
-        AutoReporter,
-    },
-    error::{
-        CompletionError,
-        ConfigurationError,
-        DeliveryError,
-        EmissionError,
-        FinishError,
-        RecoverableFinishError,
-        StartError,
-        TerminalError,
-    },
-    internal::OperationState,
-    validation::{
-        validate_attributes,
-        validate_metrics,
-        validate_stage,
-    },
-};
-
+use crate::Event;
+use crate::Metric;
+use crate::MetricHandle;
+use crate::MetricSnapshot;
 #[cfg(coverage)]
-use crate::{
-    NoopReporter,
-    error::ReporterError,
-};
+use crate::NoopReporter;
+use crate::OperationAttributes;
+use crate::Phase;
+use crate::Reporter;
+use crate::Stage;
+use crate::auto_reporter;
+use crate::auto_reporter::AutoReporter;
+use crate::error::CompletionError;
+use crate::error::ConfigurationError;
+use crate::error::DeliveryError;
+use crate::error::EmissionError;
+use crate::error::FinishError;
+use crate::error::RecoverableFinishError;
+#[cfg(coverage)]
+use crate::error::ReporterError;
+use crate::error::StartError;
+use crate::error::TerminalError;
+use crate::internal::OperationState;
+use crate::validation::validate_attributes;
+use crate::validation::validate_metrics;
+use crate::validation::validate_stage;
 
 /// Process-local source of nonzero operation identifiers.
 static NEXT_OPERATION_ID: AtomicU64 = AtomicU64::new(1);
 
-#[cfg(coverage)]
 /// Reporter that fails only after the Started event.
+#[cfg(coverage)]
 struct CoverageTerminalReporter {
     /// Number of delivery attempts observed by the reporter.
     attempts: AtomicU64,

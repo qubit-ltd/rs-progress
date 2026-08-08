@@ -8,11 +8,9 @@
 //! Errors returned after a terminal emission is attempted.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-    time::Duration,
-};
+use std::error::Error;
+use std::fmt;
+use std::time::Duration;
 
 use crate::error::EmissionError;
 

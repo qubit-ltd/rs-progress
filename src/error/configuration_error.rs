@@ -8,10 +8,8 @@
 //! Errors found while validating fixed progress configuration.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-};
+use std::error::Error;
+use std::fmt;
 
 /// Invalid fixed metadata supplied to a progress operation.
 #[derive(Clone, Debug, Eq, PartialEq)]

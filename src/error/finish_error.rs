@@ -8,16 +8,12 @@
 //! Errors returned by checked successful completion.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-    time::Duration,
-};
+use std::error::Error;
+use std::fmt;
+use std::time::Duration;
 
-use crate::error::{
-    CompletionError,
-    TerminalError,
-};
+use crate::error::CompletionError;
+use crate::error::TerminalError;
 
 /// Failure from checked finish after the operation has been consumed.
 #[derive(Debug)]

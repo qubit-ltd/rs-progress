@@ -7,19 +7,13 @@
 // =============================================================================
 //! JSON Lines reporter for complete events.
 
-use std::{
-    io::Write,
-    sync::{
-        Mutex,
-        PoisonError,
-    },
-};
+use std::io::Write;
+use std::sync::Mutex;
+use std::sync::PoisonError;
 
-use crate::{
-    Event,
-    Reporter,
-    ReporterError,
-};
+use crate::Event;
+use crate::Reporter;
+use crate::ReporterError;
 
 /// Writes one complete event as one JSON line.
 pub struct JsonLinesReporter<W> {

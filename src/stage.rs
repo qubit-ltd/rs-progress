@@ -10,16 +10,19 @@
 use std::sync::Arc;
 
 #[cfg(feature = "serde")]
-use serde::{
-    Deserialize,
-    Deserializer,
-};
+use serde::Deserialize;
+#[cfg(feature = "serde")]
+use serde::Deserializer;
+#[cfg(feature = "serde")]
+use serde::Serialize;
+#[cfg(feature = "serde")]
+use serde::de::Error;
 
 #[cfg(feature = "serde")]
 use crate::validation::validate_stage;
 
 /// Human-readable sub-stage attached to subsequently emitted events.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Stage {
     /// Machine-readable stage identifier.
@@ -60,7 +63,7 @@ impl<'de> Deserialize<'de> for Stage {
             position: wire.position,
             total: wire.total,
         };
-        validate_stage(&stage).map_err(serde::de::Error::custom)?;
+        validate_stage(&stage).map_err(Error::custom)?;
         Ok(stage)
     }
 }

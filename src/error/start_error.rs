@@ -8,16 +8,12 @@
 //! Errors encountered while starting a progress operation.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-};
+use std::error::Error;
+use std::fmt;
 
-use crate::error::{
-    ConfigurationError,
-    DeliveryError,
-    EmissionError,
-};
+use crate::error::ConfigurationError;
+use crate::error::DeliveryError;
+use crate::error::EmissionError;
 
 /// Failure before a usable progress operation can be returned.
 #[derive(Clone, Debug)]

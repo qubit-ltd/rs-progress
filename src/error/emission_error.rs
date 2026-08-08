@@ -8,10 +8,8 @@
 //! Errors while constructing or delivering non-start events.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-};
+use std::error::Error;
+use std::fmt;
 
 use crate::error::DeliveryError;
 

@@ -9,25 +9,18 @@
 // qubit-style: allow multiple-public-types
 // qubit-style: allow coverage-cfg
 
-use std::{
-    sync::Arc,
-    time::Duration,
-};
-
-use crate::{
-    MetricSnapshot,
-    OperationAttributes,
-    Stage,
-};
+use std::sync::Arc;
+use std::time::Duration;
 
 #[cfg(feature = "serde")]
-use crate::{
-    Metric,
-    validation::{
-        validate_attributes,
-        validate_metrics,
-    },
-};
+use crate::Metric;
+use crate::MetricSnapshot;
+use crate::OperationAttributes;
+use crate::Stage;
+#[cfg(feature = "serde")]
+use crate::validation::validate_attributes;
+#[cfg(feature = "serde")]
+use crate::validation::validate_metrics;
 
 /// Lifecycle phase of one immutable progress event.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

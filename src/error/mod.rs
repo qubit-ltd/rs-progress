@@ -19,10 +19,8 @@ mod reporter_error;
 mod start_error;
 mod terminal_error;
 
-pub use auto_reporter_error::{
-    AutoReporterError,
-    WorkerPanic,
-};
+pub use auto_reporter_error::AutoReporterError;
+pub use auto_reporter_error::WorkerPanic;
 pub use completion_error::CompletionError;
 pub use configuration_error::ConfigurationError;
 pub use delivery_error::DeliveryError;

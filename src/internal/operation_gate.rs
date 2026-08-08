@@ -10,14 +10,10 @@
 // qubit-style: allow source-test-pair
 // qubit-style: allow multiple-public-types
 
-use std::{
-    marker::PhantomData,
-    sync::atomic::{
-        AtomicU8,
-        AtomicUsize,
-        Ordering,
-    },
-};
+use std::marker::PhantomData;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 /// Atomic byte operations required by [`OperationGate`].
 pub trait AtomicU8Like {
