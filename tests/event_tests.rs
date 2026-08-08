@@ -9,21 +9,25 @@
 
 use std::sync::Mutex;
 
-use qubit_progress::{
-    Event,
-    Metric,
-    OperationAttributes,
-    Phase,
-    Progress,
-    Reporter,
-    ReporterError,
-};
-
+use qubit_progress::Event;
+use qubit_progress::Metric;
 #[cfg(feature = "serde")]
 use qubit_progress::MetricSnapshot;
-
+use qubit_progress::OperationAttributes;
+use qubit_progress::Phase;
+use qubit_progress::Progress;
+use qubit_progress::Reporter;
+use qubit_progress::ReporterError;
+#[cfg(feature = "serde")]
+use serde_json::from_str;
+#[cfg(feature = "serde")]
+use serde_json::from_value;
 #[cfg(feature = "serde")]
 use serde_json::json;
+#[cfg(feature = "serde")]
+use serde_json::to_string;
+#[cfg(feature = "serde")]
+use serde_json::to_value;
 
 /// Stores delivered events for one test operation.
 #[derive(Default)]
@@ -156,12 +160,12 @@ fn test_event_json_deserializes_canonical_durations() {
             "elapsed": elapsed,
         });
         let event: Event =
-            serde_json::from_value(value).expect("event JSON must deserialize");
+            from_value(value).expect("event JSON must deserialize");
         assert_eq!(event.phase().as_str(), phase);
         assert_eq!(event.sequence(), sequence);
         assert_eq!(event.stage().expect("stage must exist").total(), Some(1));
         assert_eq!(
-            serde_json::to_value(&event)
+            to_value(&event)
                 .expect("event JSON must serialize")
                 .pointer("/elapsed")
                 .expect("elapsed must serialize"),
@@ -169,12 +173,11 @@ fn test_event_json_deserializes_canonical_durations() {
         );
     }
 
-    let event: Event = serde_json::from_str(
+    let event: Event = from_str(
         r#"{"operation_id":1,"sequence":0,"phase":"started","stage":null,"metrics":[{"id":"tasks","name":"Tasks","total":null,"completed":0,"active":0,"succeeded":0,"failed":0,"cancelled":0}],"elapsed":"0s"}"#,
     )
     .expect("direct JSON deserialization must use the public event impl");
-    serde_json::to_string(&event)
-        .expect("direct JSON serialization must succeed");
+    to_string(&event).expect("direct JSON serialization must succeed");
 }
 
 /// Verifies JSON validation rejects malformed durations and event invariants.
@@ -219,7 +222,7 @@ fn test_event_json_rejects_invalid_invariants() {
     ] {
         let mut invalid = valid.clone();
         *invalid.pointer_mut(pointer).expect("field must exist") = replacement;
-        assert!(serde_json::from_value::<Event>(invalid).is_err());
+        assert!(from_value::<Event>(invalid).is_err());
     }
 
     for invalid in [
@@ -274,7 +277,7 @@ fn test_event_json_rejects_invalid_invariants() {
             ], "elapsed": "1ns"
         }),
     ] {
-        assert!(serde_json::from_value::<Event>(invalid).is_err());
+        assert!(from_value::<Event>(invalid).is_err());
     }
 }
 
@@ -289,6 +292,6 @@ fn test_metric_snapshot_deserialization_rejects_invalid_invariants() {
         json!({"id":"tasks", "name":"Tasks", "total":1, "completed":1, "active":0, "succeeded":2, "failed":0, "cancelled":0}),
         json!({"id":"tasks", "name":"Tasks", "total":0, "completed":0, "active":1, "succeeded":0, "failed":0, "cancelled":0}),
     ] {
-        assert!(serde_json::from_value::<MetricSnapshot>(value).is_err());
+        assert!(from_value::<MetricSnapshot>(value).is_err());
     }
 }

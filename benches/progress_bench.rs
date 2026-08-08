@@ -7,30 +7,22 @@
 // =============================================================================
 //! Criterion benchmarks for the redesigned progress reporting paths.
 
-use std::{
-    hint::black_box,
-    sync::{
-        Arc,
-        Mutex,
-    },
-    thread,
-    time::Duration,
-};
+use std::hint::black_box;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
-use criterion::{
-    BatchSize,
-    BenchmarkId,
-    Criterion,
-    Throughput,
-    criterion_group,
-    criterion_main,
-};
-use qubit_progress::{
-    Metric,
-    NoopReporter,
-    Progress,
-    ReporterError,
-};
+use criterion::BatchSize;
+use criterion::BenchmarkId;
+use criterion::Criterion;
+use criterion::Throughput;
+use criterion::criterion_group;
+use criterion::criterion_main;
+use qubit_progress::Metric;
+use qubit_progress::NoopReporter;
+use qubit_progress::Progress;
+use qubit_progress::ReporterError;
 
 /// Benchmarks the disabled report fast path.
 fn bench_disabled_report(criterion: &mut Criterion) {

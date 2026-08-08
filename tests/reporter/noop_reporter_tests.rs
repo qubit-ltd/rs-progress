@@ -7,11 +7,9 @@
 // =============================================================================
 //! No-op reporter behavior.
 
-use qubit_progress::{
-    Metric,
-    NoopReporter,
-    Progress,
-};
+use qubit_progress::Metric;
+use qubit_progress::NoopReporter;
+use qubit_progress::Progress;
 
 /// Verifies that the no-op reporter disables delivery but keeps metric state.
 #[test]

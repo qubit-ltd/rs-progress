@@ -7,13 +7,12 @@
 // =============================================================================
 //! Stage metadata behavior.
 
-use qubit_progress::{
-    Metric,
-    Progress,
-    Stage,
-    TextReporter,
-};
-
+use qubit_progress::Metric;
+use qubit_progress::Progress;
+use qubit_progress::Stage;
+use qubit_progress::TextReporter;
+#[cfg(feature = "serde")]
+use serde_json::from_value;
 #[cfg(feature = "serde")]
 use serde_json::json;
 
@@ -50,6 +49,6 @@ fn test_stage_deserialization_rejects_invalid_metadata() {
         json!({"id": "copy", "name": "Copy", "position": 0, "total": 1}),
         json!({"id": "copy", "name": "Copy", "position": 2, "total": 1}),
     ] {
-        assert!(serde_json::from_value::<Stage>(value).is_err());
+        assert!(from_value::<Stage>(value).is_err());
     }
 }

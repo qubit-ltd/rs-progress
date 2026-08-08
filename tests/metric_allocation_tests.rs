@@ -7,23 +7,15 @@
 // =============================================================================
 //! Allocation behavior for hot metric transitions.
 
-use std::{
-    alloc::{
-        GlobalAlloc,
-        Layout,
-        System,
-    },
-    sync::atomic::{
-        AtomicUsize,
-        Ordering,
-    },
-};
+use std::alloc::GlobalAlloc;
+use std::alloc::Layout;
+use std::alloc::System;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
-use qubit_progress::{
-    Metric,
-    NoopReporter,
-    Progress,
-};
+use qubit_progress::Metric;
+use qubit_progress::NoopReporter;
+use qubit_progress::Progress;
 
 /// Counts allocations made by this integration-test binary.
 struct CountingAllocator;

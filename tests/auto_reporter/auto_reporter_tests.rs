@@ -7,35 +7,25 @@
 // =============================================================================
 //! Tests for scoped automatic progress reporting.
 
-use std::{
-    error::Error,
-    panic::{
-        AssertUnwindSafe,
-        catch_unwind,
-    },
-    sync::atomic::{
-        AtomicUsize,
-        Ordering,
-    },
-    sync::mpsc::{
-        Receiver,
-        SyncSender,
-        sync_channel,
-    },
-    thread,
-    time::Duration,
-};
+use std::error::Error;
+use std::panic::AssertUnwindSafe;
+use std::panic::catch_unwind;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::sync_channel;
+use std::thread;
+use std::time::Duration;
 
-use qubit_progress::{
-    AutoReporterError,
-    EmissionError,
-    Event,
-    Metric,
-    Phase,
-    Progress,
-    Reporter,
-    ReporterError,
-};
+use qubit_progress::AutoReporterError;
+use qubit_progress::EmissionError;
+use qubit_progress::Event;
+use qubit_progress::Metric;
+use qubit_progress::Phase;
+use qubit_progress::Progress;
+use qubit_progress::Reporter;
+use qubit_progress::ReporterError;
 
 /// Reporter that exposes emitted phases to the waiting integration test.
 struct SignalingReporter {

@@ -7,12 +7,10 @@
 // =============================================================================
 //! Text reporter behavior for lifecycle counters.
 
-use qubit_progress::{
-    Metric,
-    Progress,
-    Stage,
-    TextReporter,
-};
+use qubit_progress::Metric;
+use qubit_progress::Progress;
+use qubit_progress::Stage;
+use qubit_progress::TextReporter;
 
 /// Verifies that text output includes the cancelled metric count.
 #[test]
