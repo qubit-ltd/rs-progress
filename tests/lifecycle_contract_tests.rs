@@ -7,28 +7,22 @@
 // =============================================================================
 //! Contract tests for the replacement progress lifecycle API.
 
-use std::sync::{
-    Mutex,
-    atomic::{
-        AtomicUsize,
-        Ordering,
-    },
-};
+use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use qubit_progress::{
-    DeliveryError,
-    EmissionError,
-    Event,
-    Metric,
-    NoopReporter,
-    Phase,
-    Progress,
-    RecoverableFinishError,
-    Reporter,
-    ReporterError,
-    StartError,
-};
+use qubit_progress::DeliveryError;
+use qubit_progress::EmissionError;
+use qubit_progress::Event;
+use qubit_progress::Metric;
+use qubit_progress::NoopReporter;
+use qubit_progress::Phase;
+use qubit_progress::Progress;
+use qubit_progress::RecoverableFinishError;
+use qubit_progress::Reporter;
+use qubit_progress::ReporterError;
+use qubit_progress::StartError;
 
 #[derive(Default)]
 struct RecordingReporter {

@@ -7,13 +7,11 @@
 // =============================================================================
 //! Behavioral coverage for stateful progress metrics.
 
-use qubit_progress::{
-    Metric,
-    MetricDelta,
-    MetricError,
-    NoopReporter,
-    Progress,
-};
+use qubit_progress::Metric;
+use qubit_progress::MetricDelta;
+use qubit_progress::MetricError;
+use qubit_progress::NoopReporter;
+use qubit_progress::Progress;
 
 /// Verifies that constrained state transitions expose one coherent snapshot.
 #[test]
@@ -287,10 +285,8 @@ fn test_metric_handle_concurrent_updates_preserve_snapshot_invariants() {
 /// Verifies readers observe conservation while writers update one metric.
 #[test]
 fn test_metric_handle_concurrent_snapshots_preserve_conservation() {
-    use std::sync::{
-        Arc,
-        Barrier,
-    };
+    use std::sync::Arc;
+    use std::sync::Barrier;
 
     const WRITERS: usize = 4;
     const READERS: usize = 4;

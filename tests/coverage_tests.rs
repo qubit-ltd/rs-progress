@@ -8,10 +8,17 @@
 //! Coverage-only entry points for library paths that need deterministic setup.
 
 #[cfg(coverage)]
+use qubit_progress::__coverage_event_serde;
+#[cfg(coverage)]
+use qubit_progress::__coverage_internal;
+#[cfg(coverage)]
+use qubit_progress::__coverage_progress_edges;
+
+#[cfg(coverage)]
 #[test]
 fn test_library_coverage_hooks() {
-    qubit_progress::__coverage_internal();
-    qubit_progress::__coverage_progress_edges();
+    __coverage_internal();
+    __coverage_progress_edges();
     #[cfg(feature = "json-lines")]
-    qubit_progress::__coverage_event_serde();
+    __coverage_event_serde();
 }

@@ -7,33 +7,27 @@
 // =============================================================================
 //! Tests for the redesigned progress lifecycle.
 
-use std::sync::{
-    Arc,
-    Mutex,
-    atomic::{
-        AtomicUsize,
-        Ordering,
-    },
-};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use qubit_progress::{
-    CompletionError,
-    ConfigurationError,
-    EmissionError,
-    Event,
-    Metric,
-    MetricError,
-    NoopReporter,
-    OperationAttributes,
-    OperationLifecycle,
-    Phase,
-    Progress,
-    Reporter,
-    ReporterError,
-    Stage,
-    StartError,
-};
+use qubit_progress::CompletionError;
+use qubit_progress::ConfigurationError;
+use qubit_progress::EmissionError;
+use qubit_progress::Event;
+use qubit_progress::Metric;
+use qubit_progress::MetricError;
+use qubit_progress::NoopReporter;
+use qubit_progress::OperationAttributes;
+use qubit_progress::OperationLifecycle;
+use qubit_progress::Phase;
+use qubit_progress::Progress;
+use qubit_progress::Reporter;
+use qubit_progress::ReporterError;
+use qubit_progress::Stage;
+use qubit_progress::StartError;
 
 fn finish_with_local_reporter() -> Result<(), Box<dyn std::error::Error>> {
     let reporter = NoopReporter;

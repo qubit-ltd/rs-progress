@@ -10,14 +10,12 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use qubit_progress::{
-    Metric,
-    MetricDelta,
-    MetricHandle,
-    MetricSnapshot,
-    NoopReporter,
-    Progress,
-};
+use qubit_progress::Metric;
+use qubit_progress::MetricDelta;
+use qubit_progress::MetricHandle;
+use qubit_progress::MetricSnapshot;
+use qubit_progress::NoopReporter;
+use qubit_progress::Progress;
 
 /// Limits parser and state-machine work for one fuzz input.
 const MAX_INPUT_BYTES: usize = 64 * 1024;

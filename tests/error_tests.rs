@@ -7,31 +7,26 @@
 // =============================================================================
 //! Behavioral coverage for progress error values.
 
-use std::{
-    error::Error,
-    fmt,
-    sync::atomic::{
-        AtomicUsize,
-        Ordering,
-    },
-};
+use std::error::Error;
+use std::fmt;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
-use qubit_progress::{
-    CompletionError,
-    ConfigurationError,
-    DeliveryError,
-    EmissionError,
-    Event,
-    FinishError,
-    Metric,
-    MetricDelta,
-    MetricError,
-    OperationLifecycle,
-    Progress,
-    Reporter,
-    ReporterError,
-    StartError,
-};
+use qubit_progress::CompletionError;
+use qubit_progress::ConfigurationError;
+use qubit_progress::DeliveryError;
+use qubit_progress::EmissionError;
+use qubit_progress::Event;
+use qubit_progress::FinishError;
+use qubit_progress::Metric;
+use qubit_progress::MetricDelta;
+use qubit_progress::MetricError;
+use qubit_progress::OperationLifecycle;
+use qubit_progress::Phase;
+use qubit_progress::Progress;
+use qubit_progress::Reporter;
+use qubit_progress::ReporterError;
+use qubit_progress::StartError;
 
 #[derive(Debug)]
 struct OriginalReporterError;
@@ -229,7 +224,7 @@ fn test_start_error_preserves_delivery_source() {
 #[test]
 fn test_delivery_error_exposes_all_accessors_and_error_chain() {
     let error = start_delivery_error();
-    assert_eq!(error.event().phase(), qubit_progress::Phase::Started);
+    assert_eq!(error.event().phase(), Phase::Started);
     assert_eq!(error.reporter_error().to_string(), "sink unavailable");
     assert!(error.to_string().contains("delivery of started event"));
     assert!(Error::source(&error).is_some());

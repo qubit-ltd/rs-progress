@@ -7,24 +7,18 @@
 // =============================================================================
 //! Reporter output and event serialization tests.
 
-use std::{
-    io::{
-        self,
-        Write,
-    },
-    panic::{
-        AssertUnwindSafe,
-        catch_unwind,
-    },
-    sync::Mutex,
-};
+use std::io;
+use std::io::Write;
+use std::panic::AssertUnwindSafe;
+use std::panic::catch_unwind;
+use std::sync::Mutex;
 
-use qubit_progress::{
-    Metric,
-    Progress,
-    Reporter,
-    TextReporter,
-};
+use qubit_progress::Event;
+use qubit_progress::Metric;
+use qubit_progress::NoopReporter;
+use qubit_progress::Progress;
+use qubit_progress::Reporter;
+use qubit_progress::TextReporter;
 
 /// Verifies that the text sink emits one complete event record per delivery.
 #[test]
@@ -110,7 +104,7 @@ fn test_text_reporter_propagates_writer_failure() {
 /// Verifies the reporter closure implementation accepts complete events.
 #[test]
 fn test_reporter_closure_receives_started_event() {
-    let reporter = |event: &qubit_progress::Event| {
+    let reporter = |event: &Event| {
         assert_eq!(event.phase().as_str(), "started");
         Ok(())
     };
@@ -161,10 +155,10 @@ impl Write for PanickingWriter {
 }
 
 /// Builds an event suitable for direct reporter delivery checks.
-fn create_started_event() -> qubit_progress::Event {
+fn create_started_event() -> Event {
     let events = Mutex::new(Vec::new());
     {
-        let capture = |event: &qubit_progress::Event| {
+        let capture = |event: &Event| {
             events
                 .lock()
                 .expect("event collection mutex must not be poisoned")
@@ -300,9 +294,7 @@ fn test_json_lines_reporter_writes_complete_line_in_one_write() {
 /// Verifies NoopReporter accepts direct reporter calls.
 #[test]
 fn test_noop_reporter_accepts_direct_delivery() {
-    let reporter = |event: &qubit_progress::Event| {
-        qubit_progress::NoopReporter.report(event)
-    };
+    let reporter = |event: &Event| NoopReporter.report(event);
     let _ = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks"))
         .start()
@@ -315,7 +307,7 @@ fn test_noop_reporter_accepts_direct_delivery() {
 fn test_log_reporter_accepts_direct_delivery() {
     use qubit_progress::LogReporter;
 
-    let reporter = |event: &qubit_progress::Event| LogReporter.report(event);
+    let reporter = |event: &Event| LogReporter.report(event);
     let _ = Progress::builder(&reporter)
         .metric(Metric::new("tasks", "Tasks"))
         .start()
