@@ -58,57 +58,45 @@ pub mod reporter;
 mod stage;
 mod validation;
 
-pub use auto_reporter::{
-    AutoReporter,
-    AutoReporterStatus,
-    ProgressNotifier,
-};
-pub use error::{
-    AutoReporterError,
-    CompletionError,
-    ConfigurationError,
-    DeliveryError,
-    EmissionError,
-    FinishError,
-    MetricError,
-    RecoverableFinishError,
-    ReporterError,
-    StartError,
-    TerminalError,
-    WorkerPanic,
-};
+pub use auto_reporter::AutoReporter;
+pub use auto_reporter::AutoReporterStatus;
+pub use auto_reporter::ProgressNotifier;
+pub use error::AutoReporterError;
+pub use error::CompletionError;
+pub use error::ConfigurationError;
+pub use error::DeliveryError;
+pub use error::EmissionError;
+pub use error::FinishError;
+pub use error::MetricError;
+pub use error::RecoverableFinishError;
+pub use error::ReporterError;
+pub use error::StartError;
+pub use error::TerminalError;
+pub use error::WorkerPanic;
 #[cfg(all(feature = "json-lines", coverage))]
 #[doc(hidden)]
 pub use event::__coverage_event_serde;
-pub use event::{
-    Event,
-    Phase,
-};
+pub use event::Event;
+pub use event::Phase;
 #[cfg(coverage)]
 #[doc(hidden)]
 pub use internal::__coverage_internal;
 pub use internal::OperationLifecycle;
-pub use metric::{
-    Metric,
-    MetricDelta,
-    MetricHandle,
-    MetricSnapshot,
-};
+pub use metric::Metric;
+pub use metric::MetricDelta;
+pub use metric::MetricHandle;
+pub use metric::MetricSnapshot;
 pub use operation_attributes::OperationAttributes;
 #[cfg(coverage)]
 #[doc(hidden)]
 pub use progress::__coverage_progress_edges;
-pub use progress::{
-    Progress,
-    ProgressBuilder,
-};
+pub use progress::Progress;
+pub use progress::ProgressBuilder;
 #[cfg(feature = "json-lines")]
 pub use reporter::JsonLinesReporter;
 #[cfg(feature = "log")]
 pub use reporter::LogReporter;
-pub use reporter::{
-    NoopReporter,
-    Reporter,
-    TextReporter,
-};
+pub use reporter::NoopReporter;
+pub use reporter::Reporter;
+pub use reporter::TextReporter;
 pub use stage::Stage;

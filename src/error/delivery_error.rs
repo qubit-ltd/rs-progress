@@ -8,15 +8,11 @@
 //! Errors associated with one concrete Event delivery attempt.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-};
+use std::error::Error;
+use std::fmt;
 
-use crate::{
-    Event,
-    error::ReporterError,
-};
+use crate::Event;
+use crate::error::ReporterError;
 
 /// Failure while delivering one complete Event to a reporter.
 #[derive(Clone, Debug)]

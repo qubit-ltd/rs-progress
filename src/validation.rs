@@ -10,15 +10,12 @@
 
 use std::collections::HashSet;
 
-use crate::{
-    ConfigurationError,
-    Metric,
-    OperationAttributes,
-    Stage,
-};
-
+use crate::ConfigurationError;
+use crate::Metric;
 #[cfg(feature = "serde")]
 use crate::MetricSnapshot;
+use crate::OperationAttributes;
+use crate::Stage;
 
 /// Validates the fixed metric configuration for one operation.
 pub(crate) fn validate_metrics(

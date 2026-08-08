@@ -8,38 +8,24 @@
 //! Scoped background reporting for one exclusively borrowed progress operation.
 // qubit-style: allow multiple-public-types
 
-use std::{
-    marker::PhantomData,
-    panic::{
-        AssertUnwindSafe,
-        catch_unwind,
-        resume_unwind,
-    },
-    sync::{
-        Arc,
-        Weak,
-        atomic::{
-            AtomicBool,
-            Ordering,
-        },
-        mpsc::{
-            Receiver,
-            SyncSender,
-            sync_channel,
-        },
-    },
-    thread::{
-        self,
-        ScopedJoinHandle,
-    },
-};
+use std::marker::PhantomData;
+use std::panic::AssertUnwindSafe;
+use std::panic::catch_unwind;
+use std::panic::resume_unwind;
+use std::sync::Arc;
+use std::sync::Weak;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::sync_channel;
+use std::thread;
+use std::thread::ScopedJoinHandle;
 
-use crate::{
-    AutoReporterError,
-    EmissionError,
-    Progress,
-    WorkerPanic,
-};
+use crate::AutoReporterError;
+use crate::EmissionError;
+use crate::Progress;
+use crate::WorkerPanic;
 
 /// Handle controlling one scoped automatic reporter.
 #[must_use]

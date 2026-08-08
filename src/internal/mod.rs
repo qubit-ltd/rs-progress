@@ -14,9 +14,8 @@ mod operation_state;
 mod update_guard;
 
 pub use operation_lifecycle::OperationLifecycle;
-pub(crate) use operation_state::OperationState;
-pub(crate) use update_guard::UpdateGuard;
-
 #[cfg(coverage)]
 #[doc(hidden)]
 pub use operation_state::__coverage_internal;
+pub(crate) use operation_state::OperationState;
+pub(crate) use update_guard::UpdateGuard;

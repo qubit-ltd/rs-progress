@@ -8,11 +8,9 @@
 //! Errors returned directly by reporter sinks.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-    sync::Arc,
-};
+use std::error::Error;
+use std::fmt;
+use std::sync::Arc;
 
 /// Reporter failure that preserves its original error chain.
 #[derive(Clone, Debug)]

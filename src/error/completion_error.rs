@@ -8,10 +8,8 @@
 //! Errors explaining why checked successful completion is unavailable.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-};
+use std::error::Error;
+use std::fmt;
 
 /// Metric state that prevents checked successful completion.
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -8,10 +8,8 @@
 //! Errors returned by live metric transitions.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-};
+use std::error::Error;
+use std::fmt;
 
 use crate::OperationLifecycle;
 

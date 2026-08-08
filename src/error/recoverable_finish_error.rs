@@ -8,18 +8,12 @@
 //! Errors returned by recoverable checked successful completion.
 // qubit-style: allow source-test-pair
 
-use std::{
-    error::Error,
-    fmt,
-};
+use std::error::Error;
+use std::fmt;
 
-use crate::{
-    Progress,
-    error::{
-        CompletionError,
-        TerminalError,
-    },
-};
+use crate::Progress;
+use crate::error::CompletionError;
+use crate::error::TerminalError;
 
 /// Failure from checked finish while preserving a reusable progress operation.
 #[allow(clippy::large_enum_variant)]

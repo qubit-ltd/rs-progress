@@ -8,35 +8,28 @@
 //! Metric configuration and immutable metric snapshots.
 // qubit-style: allow multiple-public-types
 
-use std::{
-    hint::spin_loop,
-    sync::{
-        Arc,
-        atomic::{
-            AtomicU64,
-            Ordering,
-        },
-    },
-    thread,
-};
+use std::hint::spin_loop;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::thread;
 
 use qubit_fast_cas::CasCell;
-
 #[cfg(feature = "serde")]
-use serde::{
-    Deserialize,
-    Deserializer,
-};
-
+use serde::Deserialize;
 #[cfg(feature = "serde")]
-use crate::validation::{
-    validate_metrics,
-    validate_snapshot_counts,
-};
-use crate::{
-    MetricError,
-    internal::OperationState,
-};
+use serde::Deserializer;
+#[cfg(feature = "serde")]
+use serde::Serialize;
+#[cfg(feature = "serde")]
+use serde::de::Error;
+
+use crate::MetricError;
+use crate::internal::OperationState;
+#[cfg(feature = "serde")]
+use crate::validation::validate_metrics;
+#[cfg(feature = "serde")]
+use crate::validation::validate_snapshot_counts;
 
 /// Stable metadata for one metric in a progress operation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -515,7 +508,7 @@ impl Drop for MetricGateGuard<'_> {
 }
 
 /// Immutable complete state for one metric in an emitted event.
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetricSnapshot {
     /// Machine-readable metric ID.
@@ -656,9 +649,8 @@ impl<'de> Deserialize<'de> for MetricSnapshot {
             total: snapshot.total,
         };
         validate_metrics(std::slice::from_ref(&metric))
-            .map_err(serde::de::Error::custom)?;
-        validate_snapshot_counts(&snapshot)
-            .map_err(serde::de::Error::custom)?;
+            .map_err(Error::custom)?;
+        validate_snapshot_counts(&snapshot).map_err(Error::custom)?;
         Ok(snapshot)
     }
 }

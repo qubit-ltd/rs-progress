@@ -7,20 +7,14 @@
 // =============================================================================
 //! Line-oriented human-readable event reporter.
 
-use std::{
-    fmt::Write as _,
-    io::Write,
-    sync::{
-        Mutex,
-        PoisonError,
-    },
-};
+use std::fmt::Write as _;
+use std::io::Write;
+use std::sync::Mutex;
+use std::sync::PoisonError;
 
-use crate::{
-    Event,
-    Reporter,
-    ReporterError,
-};
+use crate::Event;
+use crate::Reporter;
+use crate::ReporterError;
 
 /// Writes one complete human-readable record for each reported event.
 pub struct TextReporter<W> {

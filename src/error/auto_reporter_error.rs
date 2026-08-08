@@ -9,12 +9,10 @@
 // qubit-style: allow source-test-pair
 // qubit-style: allow multiple-public-types
 
-use std::{
-    any::Any,
-    error::Error,
-    fmt,
-    panic,
-};
+use std::any::Any;
+use std::error::Error;
+use std::fmt;
+use std::panic;
 
 use crate::EmissionError;
 

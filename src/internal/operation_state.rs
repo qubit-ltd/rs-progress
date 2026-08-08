@@ -11,18 +11,12 @@
 
 use std::sync::Arc;
 
-use crate::{
-    MetricError,
-    internal::{
-        OperationLifecycle,
-        UpdateGuard,
-        operation_gate::{
-            GateLifecycle,
-            OperationGate,
-            StdScheduler,
-        },
-    },
-};
+use crate::MetricError;
+use crate::internal::OperationLifecycle;
+use crate::internal::UpdateGuard;
+use crate::internal::operation_gate::GateLifecycle;
+use crate::internal::operation_gate::OperationGate;
+use crate::internal::operation_gate::StdScheduler;
 
 /// Lifecycle and in-flight update counters shared by one operation.
 pub(crate) struct OperationState {

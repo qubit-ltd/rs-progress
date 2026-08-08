@@ -7,11 +7,9 @@
 // =============================================================================
 //! `log` facade reporter for complete events.
 
-use crate::{
-    Event,
-    Reporter,
-    ReporterError,
-};
+use crate::Event;
+use crate::Reporter;
+use crate::ReporterError;
 
 /// Reports each complete event through the `log` facade at info level.
 #[derive(Clone, Copy, Debug, Default)]
