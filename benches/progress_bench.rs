@@ -31,9 +31,7 @@ fn bench_disabled_report(criterion: &mut Criterion) {
         .metric(Metric::new("entries", "Entries").total(1))
         .start()
         .expect("disabled progress must start");
-    let metric = progress
-        .metric("entries")
-        .expect("configured metric must exist");
+    let metric = progress.metric("entries").expect("configured metric must exist");
     metric.start(1).expect("metric update must succeed");
     metric.complete(1).expect("metric update must succeed");
     criterion.bench_function("disabled_report", |bencher| {
@@ -53,12 +51,8 @@ fn bench_enabled_report(criterion: &mut Criterion) {
         .metric(Metric::new("entries", "Entries").total(1))
         .start()
         .expect("enabled progress must start");
-    let metric = progress
-        .metric("entries")
-        .expect("configured metric must exist");
-    metric
-        .start(black_box(1))
-        .expect("metric update must succeed");
+    let metric = progress.metric("entries").expect("configured metric must exist");
+    metric.start(black_box(1)).expect("metric update must succeed");
     metric.complete(1).expect("metric update must succeed");
     criterion.bench_function("enabled_report", |bencher| {
         bencher.iter(|| {
@@ -80,9 +74,7 @@ fn bench_not_due_report(criterion: &mut Criterion) {
         .expect("enabled progress must start");
     criterion.bench_function("not_due_report", |bencher| {
         bencher.iter(|| {
-            progress
-                .report_if_due()
-                .expect("undued report must succeed");
+            progress.report_if_due().expect("undued report must succeed");
         });
     });
 }
@@ -160,12 +152,9 @@ fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
     thread::scope(|scope| {
         let auto = progress.spawn_auto_reporter(scope);
         let notifier = auto.notifier();
-        criterion.bench_function(
-            "heartbeat_auto_reporter_notification",
-            |bencher| {
-                bencher.iter(|| notifier.notify());
-            },
-        );
+        criterion.bench_function("heartbeat_auto_reporter_notification", |bencher| {
+            bencher.iter(|| notifier.notify());
+        });
         auto.stop().expect("heartbeat reporter must stop cleanly");
     });
 }
@@ -212,14 +201,10 @@ fn bench_auto_reporter_worker_fan_in(criterion: &mut Criterion) {
                     || {
                         let progress = Progress::builder(&reporter)
                             .interval(Duration::ZERO)
-                            .metric(
-                                Metric::new("entries", "Entries").total(total),
-                            )
+                            .metric(Metric::new("entries", "Entries").total(total))
                             .start()
                             .expect("enabled progress must start");
-                        let metric = progress
-                            .metric("entries")
-                            .expect("configured metric must exist");
+                        let metric = progress.metric("entries").expect("configured metric must exist");
                         metric.start(total).expect("metric start must succeed");
                         (progress, metric)
                     },
@@ -232,17 +217,14 @@ fn bench_auto_reporter_worker_fan_in(criterion: &mut Criterion) {
                                 let metric = metric.clone();
                                 let notifier = notifier.clone();
                                 handles.push(scope.spawn(move || {
-                                    metric
-                                        .complete(UPDATES_PER_WORKER)
-                                        .expect("metric update must succeed");
+                                    metric.complete(UPDATES_PER_WORKER).expect("metric update must succeed");
                                     notifier.notify();
                                 }));
                             }
                             for handle in handles {
                                 handle.join().expect("worker must finish");
                             }
-                            auto.stop()
-                                .expect("auto reporter must stop cleanly");
+                            auto.stop().expect("auto reporter must stop cleanly");
                         });
                         black_box(metric.snapshot());
                     },
@@ -270,14 +252,10 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
                 bencher.iter_batched(
                     || {
                         let progress = Progress::builder(&reporter)
-                            .metric(
-                                Metric::new("entries", "Entries").total(total),
-                            )
+                            .metric(Metric::new("entries", "Entries").total(total))
                             .start()
                             .expect("enabled progress must start");
-                        let metric = progress
-                            .metric("entries")
-                            .expect("configured metric must exist");
+                        let metric = progress.metric("entries").expect("configured metric must exist");
                         metric.start(total).expect("metric start must succeed");
                         (progress, metric)
                     },
@@ -287,9 +265,7 @@ fn bench_metric_handle_contention(criterion: &mut Criterion) {
                                 let metric = metric.clone();
                                 scope.spawn(move || {
                                     for _ in 0..UPDATES_PER_WORKER {
-                                        metric.complete(1).expect(
-                                            "metric update must succeed",
-                                        );
+                                        metric.complete(1).expect("metric update must succeed");
                                     }
                                 });
                             }
@@ -370,10 +346,7 @@ impl MutexMetricCounts {
         let occupied = completed
             .checked_add(self.active)
             .expect("mutex metric occupied count must not overflow");
-        assert!(
-            occupied <= self.total,
-            "mutex metric total must not be exceeded"
-        );
+        assert!(occupied <= self.total, "mutex metric total must not be exceeded");
     }
 
     /// Returns all counters in the same shape as a metric snapshot.
@@ -407,16 +380,13 @@ fn bench_mutex_metric_contention(criterion: &mut Criterion) {
                                 let state = Arc::clone(&state);
                                 scope.spawn(move || {
                                     for _ in 0..UPDATES_PER_WORKER {
-                                        let mut state = state
-                                            .lock()
-                                            .expect("mutex must not poison");
+                                        let mut state = state.lock().expect("mutex must not poison");
                                         state.complete(1);
                                     }
                                 });
                             }
                         });
-                        let state =
-                            state.lock().expect("mutex must not poison");
+                        let state = state.lock().expect("mutex must not poison");
                         black_box(state.snapshot());
                     },
                     BatchSize::SmallInput,

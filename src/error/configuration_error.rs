@@ -56,8 +56,7 @@ impl fmt::Display for ConfigurationError {
     /// Formats a concise configuration explanation.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoMetrics => formatter
-                .write_str("a progress operation requires at least one metric"),
+            Self::NoMetrics => formatter.write_str("a progress operation requires at least one metric"),
             Self::EmptyMetricId { index } => {
                 write!(formatter, "metric at index {index} has an empty ID")
             }
@@ -72,13 +71,10 @@ impl fmt::Display for ConfigurationError {
             }
             Self::EmptyStageId => formatter.write_str("stage ID is empty"),
             Self::EmptyStageName => formatter.write_str("stage name is empty"),
-            Self::IncompleteStagePosition => formatter.write_str(
-                "stage position and total must be supplied together",
-            ),
-            Self::InvalidStagePosition { position, total } => write!(
-                formatter,
-                "stage position {position} is outside 1..={total}"
-            ),
+            Self::IncompleteStagePosition => formatter.write_str("stage position and total must be supplied together"),
+            Self::InvalidStagePosition { position, total } => {
+                write!(formatter, "stage position {position} is outside 1..={total}")
+            }
         }
     }
 }

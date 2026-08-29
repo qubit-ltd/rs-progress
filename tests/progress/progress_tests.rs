@@ -63,15 +63,11 @@ fn test_progress_accepts_bulk_operation_attributes() {
         .metric(Metric::new("items", "Items"))
         .start()
         .expect("bulk attributes should be accepted");
-    assert_eq!(
-        progress.metric("items").expect("metric exists").id(),
-        "items"
-    );
+    assert_eq!(progress.metric("items").expect("metric exists").id(), "items");
 }
 
 #[test]
-fn test_progress_owns_shared_reporter() -> Result<(), Box<dyn std::error::Error>>
-{
+fn test_progress_owns_shared_reporter() -> Result<(), Box<dyn std::error::Error>> {
     let reporter = Arc::new(RecordingReporter::default());
     let reporter_handle: Arc<dyn Reporter> = reporter.clone();
     let progress = Progress::builder_arc(reporter_handle)
@@ -104,8 +100,7 @@ fn test_progress_drop_closes_metric_updates() {
 
 #[test]
 fn test_finish_error_is_propagatable_as_boxed_error() {
-    let error = finish_with_local_reporter()
-        .expect_err("incomplete finish must be returned as a boxed error");
+    let error = finish_with_local_reporter().expect_err("incomplete finish must be returned as a boxed error");
     assert!(error.to_string().contains("completed"));
 }
 
@@ -145,16 +140,12 @@ fn test_progress_carries_configured_total_in_every_event() {
         .metric(Metric::new("tasks", "Tasks").total(3))
         .start()
         .expect("progress run must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
 
     tasks.start(2).expect("work must start");
     tasks.succeed(1).expect("work must succeed");
     progress.report().expect("running event must report");
-    tasks
-        .succeed(1)
-        .expect("remaining active work must succeed");
+    tasks.succeed(1).expect("remaining active work must succeed");
     tasks.start(1).expect("final work must start");
     tasks.succeed(1).expect("final work must succeed");
     progress.finish().expect("terminal event must report");
@@ -205,17 +196,13 @@ fn test_progress_finish_requires_active_work_to_be_zero() {
         .metric(Metric::new("tasks", "Tasks").total(1))
         .start()
         .expect("progress run must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
     tasks.start(1).expect("work must start");
 
     let error = progress
         .finish_recoverable()
         .expect_err("finish must reject active work");
-    let (returned, completion) = error
-        .into_parts()
-        .expect("incomplete finish is recoverable");
+    let (returned, completion) = error.into_parts().expect("incomplete finish is recoverable");
     assert!(matches!(
         completion,
         CompletionError::ActiveWork {
@@ -241,18 +228,14 @@ fn test_progress_finish_requires_known_total_to_be_completed() {
         .metric(Metric::new("tasks", "Tasks").total(2))
         .start()
         .expect("progress run must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
     tasks.start(1).expect("work must start");
     tasks.succeed(1).expect("work must succeed");
 
     let error = progress
         .finish_recoverable()
         .expect_err("finish must reject an incomplete total");
-    let (returned, completion) = error
-        .into_parts()
-        .expect("incomplete finish is recoverable");
+    let (returned, completion) = error.into_parts().expect("incomplete finish is recoverable");
     assert!(matches!(
         completion,
         CompletionError::IncompleteTotal {
@@ -276,20 +259,14 @@ fn test_progress_finish_accepts_complete_known_and_unknown_metrics() {
         .metric(Metric::new("bytes", "Bytes"))
         .start()
         .expect("progress run must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured task metric must exist");
+    let tasks = progress.metric("tasks").expect("configured task metric must exist");
     tasks.start(1).expect("task must start");
     tasks.succeed(1).expect("task must succeed");
-    let bytes = progress
-        .metric("bytes")
-        .expect("configured byte metric must exist");
+    let bytes = progress.metric("bytes").expect("configured byte metric must exist");
     bytes.start(4).expect("bytes must start");
     bytes.complete(4).expect("bytes must complete");
 
-    progress
-        .finish()
-        .expect("complete metrics must pass finish");
+    progress.finish().expect("complete metrics must pass finish");
     assert_eq!(
         reporter.events().last().expect("terminal event").phase(),
         Phase::Succeeded
@@ -310,9 +287,7 @@ fn test_progress_accepts_maximum_interval_without_absolute_deadline() {
         .report_if_due()
         .expect("maximum interval is not due immediately");
     assert_eq!(reporter.events().len(), 1);
-    progress
-        .cancel()
-        .expect("terminal event must remain available");
+    progress.cancel().expect("terminal event must remain available");
 }
 
 /// Reporter whose sampled enablement is disabled and whose calls are counted.
@@ -351,21 +326,13 @@ fn test_disabled_progress_tracks_metrics_without_delivery() {
         .metric(Metric::new("tasks", "Tasks").total(1))
         .start()
         .expect("disabled progress configuration must still validate");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
 
     tasks.start(1).expect("work must start");
     tasks.succeed(1).expect("work must succeed");
-    progress
-        .report()
-        .expect("disabled running report must be a no-op");
-    progress
-        .report_if_due()
-        .expect("disabled due report must be a no-op");
-    progress
-        .finish()
-        .expect("disabled terminal report must be a no-op");
+    progress.report().expect("disabled running report must be a no-op");
+    progress.report_if_due().expect("disabled due report must be a no-op");
+    progress.finish().expect("disabled terminal report must be a no-op");
 
     assert_eq!(tasks.snapshot().succeeded(), 1,);
     assert_eq!(reporter.reports.load(Ordering::Relaxed), 0);
@@ -386,9 +353,7 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
     };
     assert!(matches!(
         error,
-        StartError::InvalidConfiguration(
-            ConfigurationError::DuplicateMetricId { .. }
-        )
+        StartError::InvalidConfiguration(ConfigurationError::DuplicateMetricId { .. })
     ));
 
     let progress = Progress::builder(&reporter)
@@ -396,17 +361,15 @@ fn test_progress_rejects_invalid_configuration_and_snapshot_counts() {
         .metric(Metric::new("tasks", "Tasks").total(2))
         .start()
         .expect("valid progress must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
     tasks.start(2).expect("declared work must start");
     let error = tasks
         .start(1)
         .expect_err("occupied work beyond a known total must fail");
     assert!(matches!(error, MetricError::TotalExceeded { .. }));
-    progress.cancel().expect(
-        "a valid terminal snapshot must be accepted after validation failure",
-    );
+    progress
+        .cancel()
+        .expect("a valid terminal snapshot must be accepted after validation failure");
     assert_eq!(
         reporter
             .events()
@@ -444,9 +407,7 @@ fn test_progress_updates_stage_and_respects_due_interval() {
         .expect("progress must start");
     assert!(progress.is_enabled());
     assert!(progress.elapsed() < Duration::from_secs(1));
-    progress
-        .report_if_due()
-        .expect("early report must be skipped");
+    progress.report_if_due().expect("early report must be skipped");
     progress
         .set_stage(Stage::new("verify", "Verify").position(2, 2))
         .expect("replacement stage must be valid");
@@ -532,17 +493,15 @@ fn test_progress_propagates_running_report_failure_and_preserves_sequence() {
         .start()
         .expect("Started delivery must succeed");
 
-    let error = progress
-        .report()
-        .expect_err("the first Running delivery must fail");
+    let error = progress.report().expect_err("the first Running delivery must fail");
     assert!(matches!(error, EmissionError::Delivery(_)));
 
     progress
         .report()
         .expect("a later Running delivery must remain possible");
-    progress.finish().expect(
-        "terminal delivery must remain possible after a Running failure",
-    );
+    progress
+        .finish()
+        .expect("terminal delivery must remain possible after a Running failure");
     assert_eq!(reporter.reports.load(Ordering::Relaxed), 4);
     assert_eq!(
         reporter

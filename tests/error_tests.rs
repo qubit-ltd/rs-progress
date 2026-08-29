@@ -84,12 +84,7 @@ impl Reporter for TerminalFailingReporter {
 fn test_reporter_error_clone_preserves_original_source() {
     let original = ReporterError::new(OriginalReporterError);
     let cloned = original.clone();
-    assert!(
-        cloned
-            .source_error()
-            .downcast_ref::<OriginalReporterError>()
-            .is_some()
-    );
+    assert!(cloned.source_error().downcast_ref::<OriginalReporterError>().is_some());
 }
 
 #[test]
@@ -106,11 +101,7 @@ fn test_terminal_error_retains_elapsed_and_emission_source() {
     };
     assert!(terminal.elapsed() < std::time::Duration::from_secs(1));
     assert!(terminal.emission_error().to_string().contains("terminal"));
-    assert!(
-        terminal
-            .to_string()
-            .contains("terminal progress report failed")
-    );
+    assert!(terminal.to_string().contains("terminal progress report failed"));
     assert!(Error::source(&terminal).is_some());
     let (elapsed, emission) = terminal.into_parts();
     assert!(elapsed < std::time::Duration::from_secs(1));
@@ -130,10 +121,7 @@ fn test_terminal_error_can_extract_only_its_emission_error() {
     else {
         panic!("terminal delivery must produce FinishError::Terminal");
     };
-    assert!(matches!(
-        terminal.into_emission_error(),
-        EmissionError::Delivery(_)
-    ));
+    assert!(matches!(terminal.into_emission_error(), EmissionError::Delivery(_)));
 }
 
 #[test]
@@ -151,10 +139,7 @@ fn test_public_error_variants_format() {
         ConfigurationError::EmptyStageId,
         ConfigurationError::EmptyStageName,
         ConfigurationError::IncompleteStagePosition,
-        ConfigurationError::InvalidStagePosition {
-            position: 3,
-            total: 2,
-        },
+        ConfigurationError::InvalidStagePosition { position: 3, total: 2 },
     ];
     for error in configuration {
         assert!(!error.to_string().is_empty());
@@ -201,10 +186,7 @@ fn test_public_error_variants_format() {
     }
 
     let delta = MetricDelta::new().started(2).unclassified(1).succeeded(1);
-    assert_eq!(
-        delta,
-        MetricDelta::new().started(2).unclassified(1).succeeded(1)
-    );
+    assert_eq!(delta, MetricDelta::new().started(2).unclassified(1).succeeded(1));
 }
 
 #[test]
@@ -240,10 +222,7 @@ fn test_delivery_error_exposes_all_accessors_and_error_chain() {
 #[test]
 fn test_emission_error_formats_sequence_and_delivery_failures() {
     let exhausted = EmissionError::SequenceExhausted;
-    assert_eq!(
-        exhausted.to_string(),
-        "progress event sequence is exhausted"
-    );
+    assert_eq!(exhausted.to_string(), "progress event sequence is exhausted");
     assert!(Error::source(&exhausted).is_none());
 
     let delivery = EmissionError::Delivery(start_delivery_error());
@@ -273,10 +252,7 @@ fn test_finish_error_supports_recovery_and_terminal_parts() {
         .expect_err("incomplete work must reject checked finish");
     assert!(incomplete.completion_error().is_some());
     assert!(incomplete.to_string().contains("work items"));
-    assert!(
-        format!("{incomplete:?}")
-            .contains("RecoverableFinishError::Incomplete")
-    );
+    assert!(format!("{incomplete:?}").contains("RecoverableFinishError::Incomplete"));
     assert!(Error::source(&incomplete).is_some());
     let returned = incomplete
         .into_progress()
@@ -288,18 +264,10 @@ fn test_finish_error_supports_recovery_and_terminal_parts() {
         .metric(Metric::new("tasks", "Tasks"))
         .start()
         .expect("progress must start");
-    let terminal = progress
-        .finish_recoverable()
-        .expect_err("terminal delivery must fail");
+    let terminal = progress.finish_recoverable().expect_err("terminal delivery must fail");
     assert!(terminal.completion_error().is_none());
-    assert!(
-        format!("{terminal:?}").contains("RecoverableFinishError::Terminal")
-    );
-    assert!(
-        terminal
-            .to_string()
-            .contains("terminal progress report failed")
-    );
+    assert!(format!("{terminal:?}").contains("RecoverableFinishError::Terminal"));
+    assert!(terminal.to_string().contains("terminal progress report failed"));
     assert!(Error::source(&terminal).is_some());
     assert!(terminal.into_progress().is_err());
 
@@ -337,11 +305,7 @@ fn test_finish_error_supports_recovery_and_terminal_parts() {
     assert!(terminal.completion_error().is_none());
     let finish_elapsed = terminal.elapsed();
     assert!(finish_elapsed < std::time::Duration::from_secs(1));
-    assert!(
-        terminal
-            .to_string()
-            .contains("terminal progress report failed")
-    );
+    assert!(terminal.to_string().contains("terminal progress report failed"));
     assert!(format!("{terminal:?}").contains("Terminal"));
     assert!(Error::source(&terminal).is_some());
     let FinishError::Terminal(error) = terminal else {
@@ -358,17 +322,13 @@ fn test_start_error_conversions_cover_configuration_and_emission() {
     assert!(Error::source(&invalid).is_some());
 
     let exhausted = StartError::OperationIdExhausted;
-    assert_eq!(
-        exhausted.to_string(),
-        "progress operation IDs are exhausted"
-    );
+    assert_eq!(exhausted.to_string(), "progress operation IDs are exhausted");
     assert!(Error::source(&exhausted).is_none());
 
     let sequence = StartError::from(EmissionError::SequenceExhausted);
     assert!(matches!(sequence, StartError::OperationIdExhausted));
 
-    let delivery =
-        StartError::from(EmissionError::Delivery(start_delivery_error()));
+    let delivery = StartError::from(EmissionError::Delivery(start_delivery_error()));
     assert!(matches!(delivery, StartError::Delivery(_)));
 }
 

@@ -31,10 +31,7 @@ struct RecordingReporter {
 
 impl RecordingReporter {
     fn events(&self) -> Vec<Event> {
-        self.events
-            .lock()
-            .expect("events mutex must not poison")
-            .clone()
+        self.events.lock().expect("events mutex must not poison").clone()
     }
 }
 
@@ -109,26 +106,16 @@ fn test_running_delivery_error_consumes_sequence_and_keeps_progress_open() {
         .start()
         .expect("started delivery must succeed");
 
-    let first = progress
-        .report()
-        .expect_err("first running delivery must fail");
+    let first = progress.report().expect_err("first running delivery must fail");
     let EmissionError::Delivery(first) = first else {
         panic!("running failure must use EmissionError::Delivery");
     };
     assert_eq!(first.event().sequence(), 1);
     progress.report().expect("progress must remain usable");
-    progress
-        .cancel()
-        .expect("terminal delivery must remain possible");
+    progress.cancel().expect("terminal delivery must remain possible");
 
-    let events = reporter
-        .events
-        .lock()
-        .expect("events mutex must not poison");
-    assert_eq!(
-        events.iter().map(Event::sequence).collect::<Vec<_>>(),
-        [0, 1, 2, 3]
-    );
+    let events = reporter.events.lock().expect("events mutex must not poison");
+    assert_eq!(events.iter().map(Event::sequence).collect::<Vec<_>>(), [0, 1, 2, 3]);
 }
 
 #[test]
@@ -141,16 +128,11 @@ fn test_incomplete_finish_returns_reusable_progress() {
     let tasks = progress.metric("tasks").expect("metric must exist");
     tasks.start(1).expect("task must start");
 
-    let Err(RecoverableFinishError::Incomplete {
-        progress: returned, ..
-    }) = progress.finish_recoverable()
-    else {
+    let Err(RecoverableFinishError::Incomplete { progress: returned, .. }) = progress.finish_recoverable() else {
         panic!("incomplete finish must return Progress");
     };
     progress = returned;
-    tasks
-        .succeed(1)
-        .expect("returned progress must reopen metric updates");
+    tasks.succeed(1).expect("returned progress must reopen metric updates");
     progress.finish().expect("repaired progress must finish");
 }
 

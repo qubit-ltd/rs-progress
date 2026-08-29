@@ -165,12 +165,9 @@ impl<'de> serde::Deserialize<'de> for Event {
     where
         D: serde::Deserializer<'de>,
     {
-        let wire =
-            <EventWire as serde::Deserialize>::deserialize(deserializer)?;
-        let elapsed =
-            parse_duration(&wire.elapsed).map_err(serde::de::Error::custom)?;
-        validate_wire_event(&wire, elapsed)
-            .map_err(serde::de::Error::custom)?;
+        let wire = <EventWire as serde::Deserialize>::deserialize(deserializer)?;
+        let elapsed = parse_duration(&wire.elapsed).map_err(serde::de::Error::custom)?;
+        validate_wire_event(&wire, elapsed).map_err(serde::de::Error::custom)?;
         Ok(Self::new(
             wire.operation_id,
             wire.sequence,
@@ -253,9 +250,7 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
     let (amount, unit) = ["ms", "us", "ns", "h", "m", "s"]
         .into_iter()
         .find_map(|unit| text.strip_suffix(unit).map(|amount| (amount, unit)))
-        .ok_or_else(|| {
-            "elapsed must end in h, m, s, ms, us, or ns".to_owned()
-        })?;
+        .ok_or_else(|| "elapsed must end in h, m, s, ms, us, or ns".to_owned())?;
     if amount.is_empty() || !amount.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err("elapsed amount must be an unsigned integer".into());
     }
@@ -270,63 +265,36 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
     };
     let nanoseconds = amount
         .parse::<u128>()
-        .map_err(|_| {
-            "elapsed amount is outside the supported range".to_owned()
-        })?
+        .map_err(|_| "elapsed amount is outside the supported range".to_owned())?
         .checked_mul(multiplier)
         .ok_or_else(|| "elapsed duration overflows".to_owned())?;
     let seconds = nanoseconds / 1_000_000_000;
     if seconds > u128::from(u64::MAX) {
         return Err("elapsed duration overflows".into());
     }
-    Ok(Duration::new(
-        seconds as u64,
-        (nanoseconds % 1_000_000_000) as u32,
-    ))
+    Ok(Duration::new(seconds as u64, (nanoseconds % 1_000_000_000) as u32))
 }
 
 /// Validates fields that are only available after Event JSON deserialization.
 #[cfg(feature = "serde")]
 #[cfg_attr(coverage, inline(never))]
-fn validate_wire_event(
-    wire: &EventWire,
-    elapsed: Duration,
-) -> Result<(), String> {
+fn validate_wire_event(wire: &EventWire, elapsed: Duration) -> Result<(), String> {
     if wire.operation_id == 0 {
         return Err("operation_id must be nonzero".into());
     }
-    let definitions = wire
-        .metrics
-        .iter()
-        .map(metric_definition)
-        .collect::<Vec<_>>();
+    let definitions = wire.metrics.iter().map(metric_definition).collect::<Vec<_>>();
     validate_attributes(&wire.attributes).map_err(|error| error.to_string())?;
     validate_metrics(&definitions).map_err(|error| error.to_string())?;
     match wire.phase {
         Phase::Started => {
-            if wire.sequence != 0
-                || !elapsed.is_zero()
-                || wire.metrics.iter().any(has_dynamic_counts)
-            {
-                return Err(
-                    "started event must have sequence 0, zero elapsed, and zero counts".into(),
-                );
+            if wire.sequence != 0 || !elapsed.is_zero() || wire.metrics.iter().any(has_dynamic_counts) {
+                return Err("started event must have sequence 0, zero elapsed, and zero counts".into());
             }
         }
-        Phase::Running
-        | Phase::Succeeded
-        | Phase::Failed
-        | Phase::Cancelled
-            if wire.sequence == 0 =>
-        {
-            return Err(
-                "non-started event must have a positive sequence".into()
-            );
+        Phase::Running | Phase::Succeeded | Phase::Failed | Phase::Cancelled if wire.sequence == 0 => {
+            return Err("non-started event must have a positive sequence".into());
         }
-        Phase::Running
-        | Phase::Succeeded
-        | Phase::Failed
-        | Phase::Cancelled => {}
+        Phase::Running | Phase::Succeeded | Phase::Failed | Phase::Cancelled => {}
     }
     Ok(())
 }
@@ -372,11 +340,9 @@ pub fn __coverage_event_serde() {
         }],
         "elapsed": "0s"
     });
-    let text =
-        serde_json::to_string(&value).expect("coverage JSON must serialize");
+    let text = serde_json::to_string(&value).expect("coverage JSON must serialize");
     let mut deserializer = serde_json::Deserializer::from_str(&text);
-    let event = <Event as serde::Deserialize>::deserialize(&mut deserializer)
-        .expect("coverage event must deserialize");
+    let event = <Event as serde::Deserialize>::deserialize(&mut deserializer).expect("coverage event must deserialize");
     let wire = EventWire {
         operation_id: event.operation_id(),
         sequence: event.sequence(),
@@ -386,15 +352,13 @@ pub fn __coverage_event_serde() {
         metrics: event.metrics().to_vec(),
         elapsed: "0s".into(),
     };
-    validate_wire_event(&wire, event.elapsed())
-        .expect("coverage event validation must succeed");
+    validate_wire_event(&wire, event.elapsed()).expect("coverage event validation must succeed");
     let mut invalid_wire = wire;
     invalid_wire.attributes.insert(" ", "invalid");
     assert!(validate_wire_event(&invalid_wire, event.elapsed()).is_err());
     let mut output = Vec::new();
     let mut serializer = serde_json::Serializer::new(&mut output);
-    coverage_serialize_event(&event, &mut serializer)
-        .expect("coverage event must serialize");
+    coverage_serialize_event(&event, &mut serializer).expect("coverage event must serialize");
 }
 
 #[cfg(all(feature = "json-lines", coverage))]

@@ -103,12 +103,8 @@ where
     pub fn lifecycle(&self) -> GateLifecycle {
         match self.lifecycle.load() {
             value if value == GateLifecycle::Open as u8 => GateLifecycle::Open,
-            value if value == GateLifecycle::Finishing as u8 => {
-                GateLifecycle::Finishing
-            }
-            value if value == GateLifecycle::Closed as u8 => {
-                GateLifecycle::Closed
-            }
+            value if value == GateLifecycle::Finishing as u8 => GateLifecycle::Finishing,
+            value if value == GateLifecycle::Closed as u8 => GateLifecycle::Closed,
             _ => unreachable!("operation lifecycle must contain a known value"),
         }
     }
@@ -153,10 +149,7 @@ where
     pub fn try_begin_finish(&self) -> bool {
         if self
             .lifecycle
-            .compare_exchange(
-                GateLifecycle::Open as u8,
-                GateLifecycle::Finishing as u8,
-            )
+            .compare_exchange(GateLifecycle::Open as u8, GateLifecycle::Finishing as u8)
             .is_err()
         {
             return false;

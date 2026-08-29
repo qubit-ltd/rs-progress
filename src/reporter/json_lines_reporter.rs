@@ -45,12 +45,12 @@ where
 {
     /// Serializes one complete event and writes one newline-delimited record.
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
-        let mut encoded =
-            serde_json::to_vec(event).map_err(ReporterError::new)?;
+        let mut encoded = serde_json::to_vec(event).map_err(ReporterError::new)?;
         encoded.push(b'\n');
-        let mut writer = self.writer.lock().map_err(|_| {
-            ReporterError::message("JSON Lines reporter mutex is poisoned")
-        })?;
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| ReporterError::message("JSON Lines reporter mutex is poisoned"))?;
         writer.write_all(&encoded).map_err(ReporterError::new)
     }
 }

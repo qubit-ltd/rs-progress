@@ -45,9 +45,10 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     #[must_use]
     pub fn notifier(&self) -> ProgressNotifier {
         ProgressNotifier {
-            inner: self.inner.as_ref().and_then(|inner| {
-                inner.notification_driven.then(|| Arc::downgrade(inner))
-            }),
+            inner: self
+                .inner
+                .as_ref()
+                .and_then(|inner| inner.notification_driven.then(|| Arc::downgrade(inner))),
         }
     }
 
@@ -83,9 +84,7 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     }
 
     /// Joins the scoped worker once and returns either its result or panic.
-    fn join_worker(
-        &mut self,
-    ) -> Result<Result<(), EmissionError>, WorkerPanic> {
+    fn join_worker(&mut self) -> Result<Result<(), EmissionError>, WorkerPanic> {
         let Some(join) = self.join.take() else {
             return Ok(Ok(()));
         };

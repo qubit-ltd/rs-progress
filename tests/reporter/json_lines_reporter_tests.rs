@@ -23,9 +23,7 @@ fn test_json_lines_reporter_serializes_cancelled_count() {
         .metric(Metric::new("tasks", "Tasks").total(1))
         .start()
         .expect("progress must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
     tasks.start(1).expect("work must start");
     tasks.cancel(1).expect("work must cancel");
     progress.finish().expect("progress must finish");

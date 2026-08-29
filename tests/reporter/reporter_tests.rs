@@ -200,11 +200,7 @@ fn test_line_reporters_report_every_writer_shape() {
         JsonLinesReporter::new(Vec::new())
             .report(&event)
             .expect("JSON Lines Vec writer must accept an event");
-        assert!(
-            JsonLinesReporter::new(FailingWriter)
-                .report(&event)
-                .is_err()
-        );
+        assert!(JsonLinesReporter::new(FailingWriter).report(&event).is_err());
         assert!(
             catch_unwind(AssertUnwindSafe(|| {
                 let _ = JsonLinesReporter::new(PanickingWriter).report(&event);
@@ -266,9 +262,7 @@ fn test_text_reporter_writes_complete_line_in_one_write() {
     reporter
         .report(&event)
         .expect("recording writer must accept the text event");
-    let writer = reporter
-        .into_inner()
-        .expect("text reporter mutex must not be poisoned");
+    let writer = reporter.into_inner().expect("text reporter mutex must not be poisoned");
     assert_eq!(writer.writes.len(), 1);
     assert!(writer.writes[0].ends_with(b"\n"));
 }

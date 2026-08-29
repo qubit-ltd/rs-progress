@@ -142,9 +142,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
             metrics: self
                 .metrics
                 .into_iter()
-                .map(|metric| {
-                    MetricHandle::new(metric, Arc::clone(&operation_state))
-                })
+                .map(|metric| MetricHandle::new(metric, Arc::clone(&operation_state)))
                 .collect(),
             operation_state,
             stage: self.stage,
@@ -201,9 +199,7 @@ pub struct Progress<'reporter> {
 impl<'reporter> Progress<'reporter> {
     /// Creates a builder borrowing one reporter.
     #[must_use]
-    pub fn builder(
-        reporter: &'reporter dyn Reporter,
-    ) -> ProgressBuilder<'reporter> {
+    pub fn builder(reporter: &'reporter dyn Reporter) -> ProgressBuilder<'reporter> {
         ProgressBuilder {
             reporter: ReporterHandle::Borrowed(reporter),
             interval: Duration::ZERO,
@@ -214,9 +210,7 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Creates a builder that owns one shared reporter.
     #[must_use]
-    pub fn builder_arc(
-        reporter: Arc<dyn Reporter>,
-    ) -> ProgressBuilder<'static> {
+    pub fn builder_arc(reporter: Arc<dyn Reporter>) -> ProgressBuilder<'static> {
         ProgressBuilder {
             reporter: ReporterHandle::Owned(reporter),
             interval: Duration::ZERO,
@@ -237,10 +231,7 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Returns a cloneable live metric selected by its stable ID.
     pub fn metric(&self, metric_id: &str) -> Option<MetricHandle> {
-        self.metrics
-            .iter()
-            .find(|metric| metric.id() == metric_id)
-            .cloned()
+        self.metrics.iter().find(|metric| metric.id() == metric_id).cloned()
     }
     /// Immediately emits a Running event from current metric state.
     pub fn report(&mut self) -> Result<(), EmissionError> {
@@ -261,10 +252,7 @@ impl<'reporter> Progress<'reporter> {
         self.report()
     }
     /// Replaces stage metadata attached to subsequent events.
-    pub fn set_stage(
-        &mut self,
-        stage: Stage,
-    ) -> Result<(), ConfigurationError> {
+    pub fn set_stage(&mut self, stage: Stage) -> Result<(), ConfigurationError> {
         validate_stage(&stage)?;
         self.stage = Some(stage);
         Ok(())
@@ -294,24 +282,17 @@ impl<'reporter> Progress<'reporter> {
         }
         self.emit(Phase::Succeeded, self.metric_snapshots(), elapsed)
             .map(|()| elapsed)
-            .map_err(|source| {
-                FinishError::Terminal(TerminalError::new(elapsed, source))
-            })
+            .map_err(|source| FinishError::Terminal(TerminalError::new(elapsed, source)))
     }
     /// Consumes this operation and emits a successful terminal event while
     /// preserving the operation when completion validation fails.
     #[allow(clippy::result_large_err)]
-    pub fn finish_recoverable(
-        mut self,
-    ) -> Result<Duration, RecoverableFinishError<'reporter>> {
+    pub fn finish_recoverable(mut self) -> Result<Duration, RecoverableFinishError<'reporter>> {
         let elapsed = self.elapsed();
         let finish_guard = self.operation_state.begin_finish();
         if let Err(source) = self.validate_finish() {
             finish_guard.reopen();
-            return Err(RecoverableFinishError::Incomplete {
-                progress: self,
-                source,
-            });
+            return Err(RecoverableFinishError::Incomplete { progress: self, source });
         }
         finish_guard.close();
         if !self.enabled {
@@ -319,11 +300,7 @@ impl<'reporter> Progress<'reporter> {
         }
         self.emit(Phase::Succeeded, self.metric_snapshots(), elapsed)
             .map(|()| elapsed)
-            .map_err(|source| {
-                RecoverableFinishError::Terminal(TerminalError::new(
-                    elapsed, source,
-                ))
-            })
+            .map_err(|source| RecoverableFinishError::Terminal(TerminalError::new(elapsed, source)))
     }
     /// Consumes this operation and emits a failed terminal event.
     pub fn fail(self) -> Result<Duration, TerminalError> {
@@ -371,18 +348,10 @@ impl<'reporter> Progress<'reporter> {
         Ok(())
     }
     /// Delivers one complete event after reserving its delivery sequence.
-    fn emit(
-        &mut self,
-        phase: Phase,
-        metrics: Vec<MetricSnapshot>,
-        elapsed: Duration,
-    ) -> Result<(), EmissionError> {
-        let operation_id =
-            self.operation_id.ok_or(EmissionError::SequenceExhausted)?;
+    fn emit(&mut self, phase: Phase, metrics: Vec<MetricSnapshot>, elapsed: Duration) -> Result<(), EmissionError> {
+        let operation_id = self.operation_id.ok_or(EmissionError::SequenceExhausted)?;
         let sequence = self.next_sequence;
-        self.next_sequence = sequence
-            .checked_add(1)
-            .ok_or(EmissionError::SequenceExhausted)?;
+        self.next_sequence = sequence.checked_add(1).ok_or(EmissionError::SequenceExhausted)?;
         let event = Event::new(
             operation_id,
             sequence,
@@ -394,17 +363,12 @@ impl<'reporter> Progress<'reporter> {
         );
         match self.reporter.as_reporter().report(&event) {
             Ok(()) => Ok(()),
-            Err(source) => {
-                Err(EmissionError::Delivery(DeliveryError::new(event, source)))
-            }
+            Err(source) => Err(EmissionError::Delivery(DeliveryError::new(event, source))),
         }
     }
     /// Tests whether a due-based running report can run now.
     fn is_due(&self) -> bool {
-        self.interval.is_zero()
-            || self
-                .next_due_elapsed
-                .is_some_and(|deadline| self.elapsed() >= deadline)
+        self.interval.is_zero() || self.next_due_elapsed.is_some_and(|deadline| self.elapsed() >= deadline)
     }
     /// Returns the configured interval to the crate-private background loop.
     pub(crate) const fn report_interval(&self) -> Duration {
@@ -453,12 +417,7 @@ fn allocate_operation_id() -> Result<u64, StartError> {
         }
         let next = current.checked_add(1).unwrap_or(0);
         if NEXT_OPERATION_ID
-            .compare_exchange_weak(
-                current,
-                next,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            )
+            .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
         {
             return Ok(current);
@@ -471,10 +430,7 @@ fn allocate_operation_id() -> Result<u64, StartError> {
 #[doc(hidden)]
 pub fn __coverage_progress_edges() {
     let previous = NEXT_OPERATION_ID.swap(0, Ordering::Relaxed);
-    assert!(matches!(
-        allocate_operation_id(),
-        Err(StartError::OperationIdExhausted)
-    ));
+    assert!(matches!(allocate_operation_id(), Err(StartError::OperationIdExhausted)));
     NEXT_OPERATION_ID.store(previous.max(1), Ordering::Relaxed);
 
     let progress = Progress::builder(&NoopReporter)

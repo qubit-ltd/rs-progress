@@ -21,9 +21,7 @@ fn test_metric_handle_transitions_publish_one_consistent_snapshot() {
         .metric(Metric::new("tasks", "Tasks").total(4))
         .start()
         .expect("progress must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
 
     tasks.start(4).expect("starting work must succeed");
     tasks.succeed(2).expect("successful work must succeed");
@@ -46,18 +44,10 @@ fn test_metric_delta_commits_start_and_terminal_counts_atomically() {
         .metric(Metric::new("tasks", "Tasks").total(10))
         .start()
         .expect("progress must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
 
     tasks
-        .apply_delta(
-            MetricDelta::new()
-                .started(10)
-                .succeeded(7)
-                .unclassified(2)
-                .cancelled(1),
-        )
+        .apply_delta(MetricDelta::new().started(10).succeeded(7).unclassified(2).cancelled(1))
         .expect("compound update must succeed");
     let snapshot = tasks.snapshot();
     assert_eq!(snapshot.active(), 0);
@@ -134,14 +124,8 @@ fn test_metric_rejects_invalid_counts_and_overflow() {
     let tasks = progress.metric("tasks").expect("metric must exist");
 
     tasks.start(2).expect("work must start");
-    assert!(matches!(
-        tasks.start(1),
-        Err(MetricError::TotalExceeded { .. })
-    ));
-    assert!(matches!(
-        tasks.complete(3),
-        Err(MetricError::InsufficientActive { .. })
-    ));
+    assert!(matches!(tasks.start(1), Err(MetricError::TotalExceeded { .. })));
+    assert!(matches!(tasks.complete(3), Err(MetricError::InsufficientActive { .. })));
 
     let overflow_progress = Progress::builder(&reporter)
         .metric(Metric::new("overflow", "Overflow"))
@@ -150,13 +134,8 @@ fn test_metric_rejects_invalid_counts_and_overflow() {
     let overflow = overflow_progress
         .metric("overflow")
         .expect("overflow metric must exist");
-    overflow
-        .start(u64::MAX)
-        .expect("first large count must fit");
-    assert!(matches!(
-        overflow.start(1),
-        Err(MetricError::CountOverflow { .. })
-    ));
+    overflow.start(u64::MAX).expect("first large count must fit");
+    assert!(matches!(overflow.start(1), Err(MetricError::CountOverflow { .. })));
     assert_eq!(overflow.snapshot().completion_fraction(), None);
 }
 
@@ -171,9 +150,7 @@ fn test_metric_accepts_maximum_terminal_count() {
     let tasks = progress.metric("tasks").expect("metric must exist");
 
     tasks.start(u64::MAX).expect("large work must start");
-    tasks
-        .succeed(u64::MAX)
-        .expect("maximum terminal count must succeed");
+    tasks.succeed(u64::MAX).expect("maximum terminal count must succeed");
     assert_eq!(tasks.snapshot().succeeded(), u64::MAX,);
 }
 
@@ -188,9 +165,7 @@ fn test_metric_rejects_start_after_maximum_completed_count() {
     let tasks = progress.metric("tasks").expect("metric must exist");
 
     tasks.start(u64::MAX).expect("large work must start");
-    tasks
-        .succeed(u64::MAX)
-        .expect("maximum terminal count must succeed");
+    tasks.succeed(u64::MAX).expect("maximum terminal count must succeed");
 
     assert!(matches!(
         tasks.start(1),
@@ -206,10 +181,7 @@ fn test_metric_rejects_start_after_maximum_completed_count() {
 fn test_metric_delta_rejects_each_counter_overflow() {
     let reporter = NoopReporter;
     for (name, delta) in [
-        (
-            "unclassified",
-            MetricDelta::new().started(1).unclassified(1),
-        ),
+        ("unclassified", MetricDelta::new().started(1).unclassified(1)),
         ("succeeded", MetricDelta::new().started(1).succeeded(1)),
         ("failed", MetricDelta::new().started(1).failed(1)),
         ("cancelled", MetricDelta::new().started(1).cancelled(1)),
@@ -219,9 +191,7 @@ fn test_metric_delta_rejects_each_counter_overflow() {
             .start()
             .expect("progress must start");
         let metric = progress.metric(name).expect("metric must exist");
-        metric
-            .start(u64::MAX)
-            .expect("maximum active count must fit");
+        metric.start(u64::MAX).expect("maximum active count must fit");
         match name {
             "unclassified" => metric.complete(u64::MAX),
             "succeeded" => metric.succeed(u64::MAX),
@@ -243,13 +213,9 @@ fn test_metric_delta_rejects_each_counter_overflow() {
         .metric(Metric::new("terminal-overflow", "Terminal overflow"))
         .start()
         .expect("progress must start");
-    let metric = progress
-        .metric("terminal-overflow")
-        .expect("metric must exist");
+    let metric = progress.metric("terminal-overflow").expect("metric must exist");
     assert!(matches!(
-        metric.apply_delta(
-            MetricDelta::new().unclassified(u64::MAX).succeeded(1),
-        ),
+        metric.apply_delta(MetricDelta::new().unclassified(u64::MAX).succeeded(1),),
         Err(MetricError::CountOverflow { .. })
     ));
 }

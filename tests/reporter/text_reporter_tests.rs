@@ -20,9 +20,7 @@ fn test_text_reporter_includes_cancelled_count() {
         .metric(Metric::new("tasks", "Tasks").total(1))
         .start()
         .expect("progress must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
     tasks.start(1).expect("work must start");
     tasks.cancel(1).expect("work must cancel");
     progress.finish().expect("progress must finish");
@@ -55,9 +53,7 @@ fn test_text_reporter_escapes_metadata_and_includes_stage_progress() {
     )
     .expect("text output must be UTF-8");
     assert_eq!(output.lines().count(), 1);
-    assert!(output.contains(
-        "stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"
-    ));
+    assert!(output.contains("stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"));
     assert!(output.contains("metric=tasks\\nall(Tasks\\rAll)"));
 }
 
