@@ -21,11 +21,7 @@ use crate::internal::operation_gate::StdScheduler;
 /// Lifecycle and in-flight update counters shared by one operation.
 pub(crate) struct OperationState {
     /// Generic atomic lifecycle protocol used by production and Loom tests.
-    gate: OperationGate<
-        std::sync::atomic::AtomicU8,
-        std::sync::atomic::AtomicUsize,
-        StdScheduler,
-    >,
+    gate: OperationGate<std::sync::atomic::AtomicU8, std::sync::atomic::AtomicUsize, StdScheduler>,
 }
 
 impl OperationState {
@@ -48,10 +44,7 @@ impl OperationState {
 
     /// Registers one metric update while the operation remains open.
     #[inline]
-    pub(crate) fn enter_update<'state>(
-        &'state self,
-        metric_id: &str,
-    ) -> Result<UpdateGuard<'state>, MetricError> {
+    pub(crate) fn enter_update<'state>(&'state self, metric_id: &str) -> Result<UpdateGuard<'state>, MetricError> {
         match self.gate.enter_update() {
             Ok(()) => Ok(UpdateGuard::new(self)),
             Err(state) => Err(MetricError::OperationNotOpen {

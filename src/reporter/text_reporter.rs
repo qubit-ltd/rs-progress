@@ -48,12 +48,11 @@ where
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
         let mut line = format_event(event);
         line.push('\n');
-        let mut writer = self.writer.lock().map_err(|_| {
-            ReporterError::message("text reporter mutex is poisoned")
-        })?;
-        writer
-            .write_all(line.as_bytes())
-            .map_err(ReporterError::new)
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| ReporterError::message("text reporter mutex is poisoned"))?;
+        writer.write_all(line.as_bytes()).map_err(ReporterError::new)
     }
 }
 
@@ -77,12 +76,7 @@ fn format_event(event: &Event) -> String {
         );
     }
     for (key, value) in event.attributes().iter() {
-        let _ = write!(
-            line,
-            " attribute={}({})",
-            key.escape_default(),
-            value.escape_default(),
-        );
+        let _ = write!(line, " attribute={}({})", key.escape_default(), value.escape_default(),);
     }
     for metric in event.metrics() {
         let _ = write!(

@@ -19,9 +19,7 @@ fn test_noop_reporter_preserves_metric_state_without_events() {
         .metric(Metric::new("tasks", "Tasks").total(1))
         .start()
         .expect("progress must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
     tasks.start(1).expect("work must start");
     tasks.succeed(1).expect("work must succeed");
     progress.finish().expect("disabled progress must finish");

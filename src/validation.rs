@@ -18,9 +18,7 @@ use crate::OperationAttributes;
 use crate::Stage;
 
 /// Validates the fixed metric configuration for one operation.
-pub(crate) fn validate_metrics(
-    metrics: &[Metric],
-) -> Result<(), ConfigurationError> {
+pub(crate) fn validate_metrics(metrics: &[Metric]) -> Result<(), ConfigurationError> {
     if metrics.is_empty() {
         return Err(ConfigurationError::NoMetrics);
     }
@@ -53,35 +51,23 @@ pub(crate) fn validate_stage(stage: &Stage) -> Result<(), ConfigurationError> {
     }
     match (stage.position, stage.total) {
         (None, None) => Ok(()),
-        (Some(position), Some(total)) if position > 0 && position <= total => {
-            Ok(())
-        }
-        (Some(position), Some(total)) => {
-            Err(ConfigurationError::InvalidStagePosition { position, total })
-        }
+        (Some(position), Some(total)) if position > 0 && position <= total => Ok(()),
+        (Some(position), Some(total)) => Err(ConfigurationError::InvalidStagePosition { position, total }),
         _ => Err(ConfigurationError::IncompleteStagePosition),
     }
 }
 
 /// Validates operation correlation attribute keys.
-pub(crate) fn validate_attributes(
-    attributes: &OperationAttributes,
-) -> Result<(), ConfigurationError> {
-    if let Some((key, _)) =
-        attributes.iter().find(|(key, _)| key.trim().is_empty())
-    {
-        return Err(ConfigurationError::EmptyAttributeKey {
-            key: key.to_owned(),
-        });
+pub(crate) fn validate_attributes(attributes: &OperationAttributes) -> Result<(), ConfigurationError> {
+    if let Some((key, _)) = attributes.iter().find(|(key, _)| key.trim().is_empty()) {
+        return Err(ConfigurationError::EmptyAttributeKey { key: key.to_owned() });
     }
     Ok(())
 }
 
 /// Validates one metric's dynamic counts against its configured total.
 #[cfg(feature = "serde")]
-pub(crate) fn validate_snapshot_counts(
-    snapshot: &MetricSnapshot,
-) -> Result<(), SnapshotValidationError> {
+pub(crate) fn validate_snapshot_counts(snapshot: &MetricSnapshot) -> Result<(), SnapshotValidationError> {
     let classified = snapshot
         .succeeded()
         .checked_add(snapshot.failed())
@@ -106,12 +92,11 @@ pub(crate) fn validate_snapshot_counts(
                 metric_id: snapshot.id().into(),
             });
         }
-        let occupied = snapshot
-            .completed()
-            .checked_add(snapshot.active())
-            .ok_or_else(|| SnapshotValidationError::CountOverflow {
+        let occupied = snapshot.completed().checked_add(snapshot.active()).ok_or_else(|| {
+            SnapshotValidationError::CountOverflow {
                 metric_id: snapshot.id().into(),
-            })?;
+            }
+        })?;
         if occupied > total {
             return Err(SnapshotValidationError::CountsExceedTotal {
                 metric_id: snapshot.id().into(),
@@ -151,10 +136,9 @@ impl std::fmt::Display for SnapshotValidationError {
                 formatter,
                 "completed plus active work exceeds total for metric {metric_id:?}"
             ),
-            Self::NonZeroCountsForZeroTotal { metric_id } => write!(
-                formatter,
-                "zero-total metric {metric_id:?} has nonzero counts"
-            ),
+            Self::NonZeroCountsForZeroTotal { metric_id } => {
+                write!(formatter, "zero-total metric {metric_id:?} has nonzero counts")
+            }
         }
     }
 }

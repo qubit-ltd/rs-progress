@@ -59,9 +59,7 @@ fn test_auto_reporter_reports_zero_interval_after_notification() {
         .metric(Metric::new("tasks", "Tasks").total(1))
         .start()
         .expect("progress run must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
     assert_eq!(
         phases
             .recv_timeout(Duration::from_secs(1))
@@ -232,15 +230,10 @@ fn test_auto_reporter_exposes_background_delivery_failure() {
         }
         assert!(auto.status().is_failed());
         notifier.notify();
-        let error = auto
-            .stop()
-            .expect_err("background delivery failure must be returned");
+        let error = auto.stop().expect_err("background delivery failure must be returned");
         assert!(Error::source(&error).is_some());
         assert!(error.to_string().contains("running delivery failed"));
-        assert!(matches!(
-            error,
-            AutoReporterError::Emission(EmissionError::Delivery(_))
-        ));
+        assert!(matches!(error, AutoReporterError::Emission(EmissionError::Delivery(_))));
     });
 }
 
@@ -377,10 +370,7 @@ fn test_auto_reporter_drop_swallows_worker_panic_after_joining() {
                 }
                 thread::sleep(Duration::from_millis(1));
             }
-            assert!(
-                status.is_failed(),
-                "worker panic must be observed before Drop"
-            );
+            assert!(status.is_failed(), "worker panic must be observed before Drop");
         });
     }));
 

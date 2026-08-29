@@ -39,9 +39,7 @@ fn test_progress_rejects_blank_metric_metadata() {
     };
     assert!(matches!(
         error,
-        StartError::InvalidConfiguration(
-            ConfigurationError::EmptyMetricId { .. }
-        )
+        StartError::InvalidConfiguration(ConfigurationError::EmptyMetricId { .. })
     ));
 }
 
@@ -51,9 +49,7 @@ fn test_progress_rejects_invalid_fixed_metadata() {
     let reporter = NoopReporter;
     let cases = [
         (
-            Progress::builder(&reporter)
-                .metric(Metric::new("tasks", " "))
-                .start(),
+            Progress::builder(&reporter).metric(Metric::new("tasks", " ")).start(),
             "empty metric name",
         ),
         (

@@ -53,11 +53,7 @@ fn test_standard_operation_gate_drains_updates_and_rejects_new_work() {
     use std::thread;
     use std::time::Duration;
 
-    type StandardGate = OperationGate<
-        std::sync::atomic::AtomicU8,
-        std::sync::atomic::AtomicUsize,
-        StdScheduler,
-    >;
+    type StandardGate = OperationGate<std::sync::atomic::AtomicU8, std::sync::atomic::AtomicUsize, StdScheduler>;
     let state = Arc::new(StandardGate::new());
     assert_eq!(state.enter_update(), Ok(()));
     let ready = Arc::new(Barrier::new(2));
@@ -93,12 +89,7 @@ impl AtomicU8Like for AtomicU8 {
     }
 
     fn compare_exchange(&self, current: u8, new: u8) -> Result<u8, u8> {
-        self.compare_exchange(
-            current,
-            new,
-            LoomOrdering::AcqRel,
-            LoomOrdering::Acquire,
-        )
+        self.compare_exchange(current, new, LoomOrdering::AcqRel, LoomOrdering::Acquire)
     }
 
     fn store(&self, value: u8) {
@@ -173,10 +164,7 @@ fn test_loom_operation_state_never_closes_before_registered_updates_leave() {
         let finisher_state = Arc::clone(&state);
         let finisher = loom_thread::spawn(move || {
             if finisher_state.try_begin_finish() {
-                assert_eq!(
-                    finisher_state.lifecycle(),
-                    GateLifecycle::Finishing
-                );
+                assert_eq!(finisher_state.lifecycle(), GateLifecycle::Finishing);
                 while finisher_state.active_updates() != 0 {
                     LoomScheduler::yield_now();
                 }
@@ -187,10 +175,7 @@ fn test_loom_operation_state_never_closes_before_registered_updates_leave() {
         updater.join().expect("updater model must join");
         finisher.join().expect("finisher model must join");
         assert_eq!(state.active_updates(), 0);
-        assert!(matches!(
-            state.lifecycle(),
-            GateLifecycle::Open | GateLifecycle::Closed
-        ));
+        assert!(matches!(state.lifecycle(), GateLifecycle::Open | GateLifecycle::Closed));
     });
 }
 

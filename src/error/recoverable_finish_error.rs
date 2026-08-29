@@ -48,9 +48,7 @@ impl<'reporter> RecoverableFinishError<'reporter> {
     }
 
     /// Consumes this error and returns its recoverable or terminal parts.
-    pub fn into_parts(
-        self,
-    ) -> Result<(Progress<'reporter>, CompletionError), TerminalError> {
+    pub fn into_parts(self) -> Result<(Progress<'reporter>, CompletionError), TerminalError> {
         match self {
             Self::Incomplete { progress, source } => Ok((progress, source)),
             Self::Terminal(error) => Err(error),

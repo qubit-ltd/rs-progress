@@ -20,10 +20,8 @@ fuzz_target!(|input: &[u8]| {
         return;
     }
     if let Ok(event) = serde_json::from_slice::<Event>(input) {
-        let encoded = serde_json::to_vec(&event)
-            .expect("a deserialized event must serialize to JSON");
-        let decoded = serde_json::from_slice::<Event>(&encoded)
-            .expect("serialized event JSON must deserialize");
+        let encoded = serde_json::to_vec(&event).expect("a deserialized event must serialize to JSON");
+        let decoded = serde_json::from_slice::<Event>(&encoded).expect("serialized event JSON must deserialize");
         assert_eq!(decoded, event, "event JSON round trips exactly");
     }
 });

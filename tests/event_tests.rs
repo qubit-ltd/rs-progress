@@ -85,9 +85,7 @@ fn test_event_carries_cancelled_metric_count() {
         .metric(Metric::new("tasks", "Tasks").total(2))
         .start()
         .expect("progress must start");
-    let tasks = progress
-        .metric("tasks")
-        .expect("configured metric must exist");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
     tasks.start(2).expect("work must start");
     tasks.cancel(2).expect("work must cancel");
     progress.finish().expect("progress must finish");
@@ -98,13 +96,7 @@ fn test_event_carries_cancelled_metric_count() {
         .expect("recording reporter mutex must not be poisoned");
     let terminal = events.last().expect("terminal event must exist");
     assert_eq!(terminal.phase(), Phase::Succeeded);
-    assert_eq!(
-        terminal
-            .metric("tasks")
-            .expect("metric must exist")
-            .cancelled(),
-        2,
-    );
+    assert_eq!(terminal.metric("tasks").expect("metric must exist").cancelled(), 2,);
 }
 
 /// Verifies all event accessors and phase names through delivered events.
@@ -159,8 +151,7 @@ fn test_event_json_deserializes_canonical_durations() {
             }],
             "elapsed": elapsed,
         });
-        let event: Event =
-            from_value(value).expect("event JSON must deserialize");
+        let event: Event = from_value(value).expect("event JSON must deserialize");
         assert_eq!(event.phase().as_str(), phase);
         assert_eq!(event.sequence(), sequence);
         assert_eq!(event.stage().expect("stage must exist").total(), Some(1));
@@ -200,21 +191,12 @@ fn test_event_json_rejects_invalid_invariants() {
         ("/elapsed", json!("1xs")),
         ("/elapsed", json!("-1s")),
         ("/elapsed", json!("")),
-        (
-            "/elapsed",
-            json!("340282366920938463463374607431768211456ns"),
-        ),
-        (
-            "/elapsed",
-            json!("340282366920938463463374607431768211455h"),
-        ),
+        ("/elapsed", json!("340282366920938463463374607431768211456ns")),
+        ("/elapsed", json!("340282366920938463463374607431768211455h")),
         ("/elapsed", json!("18446744073709551615h")),
         ("/sequence", json!(1)),
         ("/metrics/0/active", json!(1)),
-        (
-            "/stage",
-            json!({"id":"copy", "name":"Copy", "position":1, "total":0}),
-        ),
+        ("/stage", json!({"id":"copy", "name":"Copy", "position":1, "total":0})),
         (
             "/stage",
             json!({"id":"copy", "name":"Copy", "position":null, "total":1}),

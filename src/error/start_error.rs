@@ -32,9 +32,7 @@ impl fmt::Display for StartError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidConfiguration(error) => error.fmt(formatter),
-            Self::OperationIdExhausted => {
-                formatter.write_str("progress operation IDs are exhausted")
-            }
+            Self::OperationIdExhausted => formatter.write_str("progress operation IDs are exhausted"),
             Self::Delivery(error) => error.fmt(formatter),
         }
     }

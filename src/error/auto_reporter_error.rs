@@ -101,10 +101,7 @@ impl fmt::Display for WorkerPanic {
     /// Formats the panic and includes its standard string message when known.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.message() {
-            Some(message) => write!(
-                formatter,
-                "background reporter worker panicked: {message}"
-            ),
+            Some(message) => write!(formatter, "background reporter worker panicked: {message}"),
             None => formatter.write_str("background reporter worker panicked"),
         }
     }

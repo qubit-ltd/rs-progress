@@ -40,9 +40,7 @@ impl OperationAttributes {
     /// Returns all attributes in stable key order.
     #[must_use = "the iterator yields configured attributes"]
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> + '_ {
-        self.entries
-            .iter()
-            .map(|(key, value)| (key.as_ref(), value.as_ref()))
+        self.entries.iter().map(|(key, value)| (key.as_ref(), value.as_ref()))
     }
 
     /// Returns whether no attributes are configured.

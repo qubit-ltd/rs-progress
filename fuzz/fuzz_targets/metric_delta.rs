@@ -45,11 +45,7 @@ struct ModelCounts {
 
 impl ModelCounts {
     /// Applies a delta if all metric invariants accept it.
-    fn apply(
-        &mut self,
-        delta: [u64; COUNTER_COUNT],
-        total: Option<u64>,
-    ) -> bool {
+    fn apply(&mut self, delta: [u64; COUNTER_COUNT], total: Option<u64>) -> bool {
         let [started, unclassified, succeeded, failed, cancelled] = delta;
         let terminal = unclassified
             .checked_add(succeeded)
@@ -66,9 +62,7 @@ impl ModelCounts {
             return false;
         }
         let active = available_active - terminal;
-        let Some(next_unclassified) =
-            self.unclassified.checked_add(unclassified)
-        else {
+        let Some(next_unclassified) = self.unclassified.checked_add(unclassified) else {
             return false;
         };
         let Some(next_succeeded) = self.succeeded.checked_add(succeeded) else {
@@ -151,9 +145,7 @@ fn create_metric(total: Option<u64>) -> (Progress<'static>, MetricHandle) {
         .metric(metric)
         .start()
         .expect("fuzz metric configuration must start");
-    let handle = progress
-        .metric("items")
-        .expect("configured fuzz metric must exist");
+    let handle = progress.metric("items").expect("configured fuzz metric must exist");
     (progress, handle)
 }
 
@@ -203,7 +195,5 @@ fuzz_target!(|input: &[u8]| {
         }
     }
 
-    progress
-        .finish_unchecked()
-        .expect("disabled fuzz progress must finish");
+    progress.finish_unchecked().expect("disabled fuzz progress must finish");
 });

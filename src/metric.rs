@@ -164,10 +164,7 @@ pub struct MetricHandle {
 
 impl MetricHandle {
     /// Creates one live handle from validated metric metadata.
-    pub(crate) fn new(
-        metric: Metric,
-        operation_state: Arc<OperationState>,
-    ) -> Self {
+    pub(crate) fn new(metric: Metric, operation_state: Arc<OperationState>) -> Self {
         Self {
             inner: Arc::new(MetricInner::new(metric)),
             operation_state,
@@ -315,10 +312,7 @@ impl MetricInner {
 
             match self.gate.compare_set(version, version.wrapping_add(1)) {
                 Ok(()) => {
-                    let _guard = MetricGateGuard::new(
-                        &self.gate,
-                        version.wrapping_add(2),
-                    );
+                    let _guard = MetricGateGuard::new(&self.gate, version.wrapping_add(2));
                     let mut counts = self.read_counts();
                     let result = update(&mut counts);
                     if result.is_ok() {
@@ -338,9 +332,7 @@ impl MetricInner {
     fn read_counts(&self) -> MetricCounts {
         MetricCounts {
             active: self.active.load(Ordering::Acquire),
-            completed_unclassified: self
-                .completed_unclassified
-                .load(Ordering::Acquire),
+            completed_unclassified: self.completed_unclassified.load(Ordering::Acquire),
             succeeded: self.succeeded.load(Ordering::Acquire),
             failed: self.failed.load(Ordering::Acquire),
             cancelled: self.cancelled.load(Ordering::Acquire),
@@ -411,15 +403,10 @@ impl MetricCounts {
     }
 
     /// Validates the aggregate conservation invariants for one pending state.
-    fn validate(
-        self,
-        metric_id: &str,
-        total: Option<u64>,
-    ) -> Result<(), MetricError> {
-        let occupied =
-            self.occupied().ok_or_else(|| MetricError::CountOverflow {
-                metric_id: metric_id.into(),
-            })?;
+    fn validate(self, metric_id: &str, total: Option<u64>) -> Result<(), MetricError> {
+        let occupied = self.occupied().ok_or_else(|| MetricError::CountOverflow {
+            metric_id: metric_id.into(),
+        })?;
         if let Some(total) = total
             && occupied > total
         {
@@ -434,11 +421,7 @@ impl MetricCounts {
 }
 
 /// Applies one validated additive delta to dynamic metric counts.
-fn apply_delta_to_counts(
-    counts: &mut MetricCounts,
-    delta: MetricDelta,
-    metric_id: &str,
-) -> Result<(), MetricError> {
+fn apply_delta_to_counts(counts: &mut MetricCounts, delta: MetricDelta, metric_id: &str) -> Result<(), MetricError> {
     let terminal_delta = delta
         .unclassified
         .checked_add(delta.succeeded)
@@ -474,11 +457,11 @@ fn apply_delta_to_counts(
         .ok_or_else(|| MetricError::CountOverflow {
             metric_id: metric_id.into(),
         })?;
-    counts.failed =
-        counts.failed.checked_add(delta.failed).ok_or_else(|| {
-            MetricError::CountOverflow {
-                metric_id: metric_id.into(),
-            }
+    counts.failed = counts
+        .failed
+        .checked_add(delta.failed)
+        .ok_or_else(|| MetricError::CountOverflow {
+            metric_id: metric_id.into(),
         })?;
     counts.cancelled = counts
         .cancelled
@@ -536,9 +519,7 @@ impl MetricSnapshot {
             id: Arc::clone(&metric.id),
             name: Arc::clone(&metric.name),
             total: metric.total,
-            completed: counts
-                .completed()
-                .expect("validated metric counts must fit in u64"),
+            completed: counts.completed().expect("validated metric counts must fit in u64"),
             active: counts.active,
             succeeded: counts.succeeded,
             failed: counts.failed,
@@ -648,8 +629,7 @@ impl<'de> Deserialize<'de> for MetricSnapshot {
             name: Arc::clone(&snapshot.name),
             total: snapshot.total,
         };
-        validate_metrics(std::slice::from_ref(&metric))
-            .map_err(Error::custom)?;
+        validate_metrics(std::slice::from_ref(&metric)).map_err(Error::custom)?;
         validate_snapshot_counts(&snapshot).map_err(Error::custom)?;
         Ok(snapshot)
     }
