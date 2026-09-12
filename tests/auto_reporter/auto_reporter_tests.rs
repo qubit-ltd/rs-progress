@@ -17,8 +17,10 @@ use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::sync_channel;
 use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 
 use qubit_progress::AutoReporterError;
+use qubit_progress::AutoReporterStatus;
 use qubit_progress::EmissionError;
 use qubit_progress::Event;
 use qubit_progress::Metric;
@@ -151,6 +153,15 @@ impl Reporter for RunningFailingReporter {
     }
 }
 
+/// Waits until a background reporter publishes its terminal failure status.
+fn wait_for_auto_reporter_failure(status: &AutoReporterStatus) {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while !status.is_failed() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert!(status.is_failed(), "background reporter must report its failure");
+}
+
 /// Reporter that panics on its first running event.
 struct RunningPanickingReporter {
     /// Number of report attempts observed by this reporter.
@@ -222,13 +233,7 @@ fn test_auto_reporter_exposes_background_delivery_failure() {
         let auto = progress.spawn_auto_reporter(scope);
         let notifier = auto.notifier();
         notifier.notify();
-        for _ in 0..100 {
-            if auto.status().is_failed() {
-                break;
-            }
-            thread::sleep(Duration::from_millis(1));
-        }
-        assert!(auto.status().is_failed());
+        wait_for_auto_reporter_failure(&auto.status());
         notifier.notify();
         let error = auto.stop().expect_err("background delivery failure must be returned");
         assert!(Error::source(&error).is_some());
@@ -257,13 +262,7 @@ fn test_auto_reporter_drop_joins_a_failed_worker() {
     thread::scope(|scope| {
         let auto = progress.spawn_auto_reporter(scope);
         auto.notifier().notify();
-        for _ in 0..100 {
-            if auto.status().is_failed() {
-                break;
-            }
-            thread::sleep(Duration::from_millis(1));
-        }
-        assert!(auto.status().is_failed());
+        wait_for_auto_reporter_failure(&auto.status());
     });
 }
 
