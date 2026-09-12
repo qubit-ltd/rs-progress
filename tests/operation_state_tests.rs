@@ -10,13 +10,21 @@
 #[path = "../src/internal/operation_gate.rs"]
 mod operation_gate;
 
+#[cfg(not(coverage))]
 use loom::model;
+#[cfg(not(coverage))]
 use loom::sync::Arc;
+#[cfg(not(coverage))]
 use loom::sync::atomic::AtomicU8;
+#[cfg(not(coverage))]
 use loom::sync::atomic::AtomicUsize;
+#[cfg(not(coverage))]
 use loom::sync::atomic::Ordering as LoomOrdering;
+#[cfg(not(coverage))]
 use loom::thread as loom_thread;
+#[cfg(not(coverage))]
 use operation_gate::AtomicU8Like;
+#[cfg(not(coverage))]
 use operation_gate::AtomicUsizeLike;
 use operation_gate::GateLifecycle;
 use operation_gate::OperationGate;
@@ -79,6 +87,7 @@ fn test_standard_operation_gate_drains_updates_and_rejects_new_work() {
     assert_eq!(state.enter_update(), Err(GateLifecycle::Closed));
 }
 
+#[cfg(not(coverage))]
 impl AtomicU8Like for AtomicU8 {
     fn new(value: u8) -> Self {
         Self::new(value)
@@ -97,6 +106,7 @@ impl AtomicU8Like for AtomicU8 {
     }
 }
 
+#[cfg(not(coverage))]
 impl AtomicUsizeLike for AtomicUsize {
     fn new(value: usize) -> Self {
         Self::new(value)
@@ -115,8 +125,10 @@ impl AtomicUsizeLike for AtomicUsize {
     }
 }
 
+#[cfg(not(coverage))]
 struct LoomScheduler;
 
+#[cfg(not(coverage))]
 impl YieldLike for LoomScheduler {
     fn spin_loop() {
         std::hint::spin_loop();
@@ -127,8 +139,10 @@ impl YieldLike for LoomScheduler {
     }
 }
 
+#[cfg(not(coverage))]
 type LoomOperationGate = OperationGate<AtomicU8, AtomicUsize, LoomScheduler>;
 
+#[cfg(not(coverage))]
 #[test]
 fn test_loom_operation_gate_rejects_updates_after_finish_and_close() {
     model(|| {
@@ -150,6 +164,7 @@ fn test_loom_operation_gate_rejects_updates_after_finish_and_close() {
     });
 }
 
+#[cfg(not(coverage))]
 #[test]
 fn test_loom_operation_state_never_closes_before_registered_updates_leave() {
     model(|| {
@@ -179,6 +194,7 @@ fn test_loom_operation_state_never_closes_before_registered_updates_leave() {
     });
 }
 
+#[cfg(not(coverage))]
 #[test]
 fn test_loom_operation_state_can_reopen_after_validation_and_close_later() {
     model(|| {
