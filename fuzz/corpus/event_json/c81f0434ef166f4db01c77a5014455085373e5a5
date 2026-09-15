@@ -1,0 +1,1 @@
+{"operation_id":2,"sequence":1,"phase":"running","stage":{"id":"copy","name":"Copy","position":1,"total":2},"attributes":{"job_id":"fuzz-1"},"metrics":[{"id":"items","name":"Items","total":5,"compsequence":1,"phase":"running","stage":{"id":"copy","name":"Copy","ped":"250ms"}

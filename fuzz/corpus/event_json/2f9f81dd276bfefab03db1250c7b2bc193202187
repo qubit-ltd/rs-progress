@@ -1,0 +1,1 @@
+{"operation_id":2,"sequence":1,"phase":"running","stage":{"id":"copy","name":"Copy","position":1,"total":2},"attributes":{"job_id":"fuzz-1"},"metrics":[{"id":"itemso","name":"Items","total":88888885,"completed":2,"active":1,"succeeded":1,"failed":1,"cancelled":0}],"elapsed":"250ms"}failed":1,"canc

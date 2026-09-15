@@ -1,0 +1,1 @@
+{"operation_id":2,"sequenchase":"running","stage":{"id":"copy","name":"Copy","position":1,"totnce":1,"phase":"running","stage":{"id":"copy","name":"Copy","position":1,"total":2},"attrifutes":{"job_id":"fuedzz-1"},"metrics":[{"id":"items","name":"Items","total":0,"comncelled":0}],"elapsed":"250ms"}
