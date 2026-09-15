@@ -6,7 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Scoped background reporting for one exclusively borrowed progress operation.
-// qubit-style: allow multiple-public-types
 
 use std::marker::PhantomData;
 use std::panic::AssertUnwindSafe;

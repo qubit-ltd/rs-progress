@@ -6,8 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Immutable progress events and lifecycle phases.
-// qubit-style: allow multiple-public-types
-// qubit-style: allow coverage-cfg
 
 use std::sync::Arc;
 use std::time::Duration;

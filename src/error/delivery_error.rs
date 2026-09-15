@@ -6,7 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Errors associated with one concrete Event delivery attempt.
-// qubit-style: allow source-test-pair
 
 use std::error::Error;
 use std::fmt;
