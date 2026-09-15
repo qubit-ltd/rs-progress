@@ -1,0 +1,1 @@
+{"opepation_id":3,"sequence":2,"trics":[{"id":"items","name":"Items","total":5,"completedphase":"succeeded","stage":null,"metrics":[{"id":"items","name":"Items","total":5,"completed":5,"ctive":0,"succeeded":4,"failed":1,"cancelled":0}],"elapsed":"1s"}
