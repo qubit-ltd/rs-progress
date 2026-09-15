@@ -6,7 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Shared validation for operation configuration and report snapshots.
-// qubit-style: allow type-file-name
 
 use std::collections::HashSet;
 

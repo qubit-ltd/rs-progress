@@ -6,8 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Shared operation lifecycle and transition-freezing protocol.
-// qubit-style: allow multiple-public-types
-// qubit-style: allow coverage-cfg
 
 use std::sync::Arc;
 

@@ -6,8 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Operation lifecycle, metric state and report scheduling.
-// qubit-style: allow multiple-public-types
-// qubit-style: allow coverage-cfg
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;

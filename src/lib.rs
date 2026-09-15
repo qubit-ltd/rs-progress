@@ -6,7 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Immutable, lifecycle-safe progress reporting.
-// qubit-style: allow coverage-cfg
 //!
 //! A [`Progress`] operation owns its metric state, timing and reporter.
 //! Callers configure stable metadata with [`Metric`] and update dynamic counts

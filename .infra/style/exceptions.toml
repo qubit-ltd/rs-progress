@@ -1,0 +1,71 @@
+format = 1
+
+[[exceptions]]
+rule = "coverage-cfg"
+path = "src/event.rs"
+reason = "Exercise serde entry points from the instrumented library without restoring inline tests."
+
+[[exceptions]]
+rule = "coverage-cfg"
+path = "src/internal/mod.rs"
+reason = "Gate internal lifecycle coverage helpers behind cfg(coverage)."
+
+[[exceptions]]
+rule = "coverage-cfg"
+path = "src/internal/operation_gate.rs"
+reason = "Exercise scheduler and concurrent gate branches deterministically in coverage builds."
+
+[[exceptions]]
+rule = "coverage-cfg"
+path = "src/internal/operation_state.rs"
+reason = "Exercise the abandoned finishing guard path in coverage builds."
+
+[[exceptions]]
+rule = "coverage-cfg"
+path = "src/lib.rs"
+reason = "Re-export coverage-only lifecycle and progress hooks for external coverage tests."
+
+[[exceptions]]
+rule = "coverage-cfg"
+path = "src/progress.rs"
+reason = "Exercise operation-ID exhaustion and terminal delivery edges in coverage builds."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/auto_reporter.rs"
+reason = "AutoReporter, Notifier, and Status form one scoped control protocol."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/error/auto_reporter_error.rs"
+reason = "AutoReporterError and WorkerPanic form one worker shutdown error contract."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/event.rs"
+reason = "Phase and Event are one immutable wire model."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/internal/operation_gate.rs"
+reason = "Atomic traits, lifecycle state, gate, and scheduler form one generic lifecycle protocol."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/internal/operation_state.rs"
+reason = "OperationState and FinishGuard form one operation lifecycle protocol."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/metric.rs"
+reason = "Metric configuration, counts, and snapshots are one metric model."
+
+[[exceptions]]
+rule = "public-type-layout"
+path = "src/progress.rs"
+reason = "Builder, operation, and temporary snapshot form one lifecycle API."
+
+[[exceptions]]
+rule = "test-redirect"
+path = "tests/operation_state_tests.rs"
+reason = "Concrete Loom tests import the production operation gate so model checking exercises the same protocol implementation."

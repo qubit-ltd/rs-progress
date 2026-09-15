@@ -6,7 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Errors found while validating fixed progress configuration.
-// qubit-style: allow source-test-pair
 
 use std::error::Error;
 use std::fmt;

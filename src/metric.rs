@@ -6,7 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Metric configuration and immutable metric snapshots.
-// qubit-style: allow multiple-public-types
 
 use std::hint::spin_loop;
 use std::sync::Arc;

@@ -6,7 +6,6 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Errors returned by recoverable checked successful completion.
-// qubit-style: allow source-test-pair
 
 use std::error::Error;
 use std::fmt;
