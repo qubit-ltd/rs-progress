@@ -270,6 +270,19 @@ early, but `stop()` remains authoritative: it joins the thread, returns its
 validation or reporter error, or a structured worker panic. Dropping the handle
 still stops and joins the worker without propagating a panic.
 
+## Asynchronous reporters
+
+`AsyncReporter` returns a boxed, sendable future from `report()`, and
+`AsyncProgress` mirrors the synchronous lifecycle with `start_async()`,
+`report_async()`, due reports, and async terminal methods. The crate does not
+depend on a particular async runtime; the caller awaits these methods on its
+own executor. A completed `Ok(())` means the reporter accepted the event.
+
+If a caller cancels an in-flight report future, delivery status is unknown.
+Running reports consume their sequence before awaiting delivery, and terminal
+operations are consumed when their future is polled. Do not retry a terminal
+event automatically unless the reporter provides its own deduplication.
+
 ## Disabled operations
 
 Enablement belongs to `Reporter::is_enabled()` and is sampled once by `start()`. A disabled operation still validates its fixed configuration and maintains metric state, but emits no events and starts no automatic reporting thread. This makes an unconditional reporting path cheap when a sink is disabled.

@@ -254,6 +254,16 @@ progress.finish()?;
 它会 join 后台线程，返回校验或上报器错误，或返回结构化的后台 panic 信息。
 直接丢弃句柄仍会停止并回收后台线程，但不会传播 panic。
 
+## 异步上报器
+
+`AsyncReporter::report()` 返回可发送的装箱 Future，`AsyncProgress` 提供与同步生命周期
+对应的 `start_async()`、`report_async()`、到期上报和异步终态方法。crate 不依赖特定异步
+运行时；调用方在自己的 executor 中 await 这些方法。Future 返回 `Ok(())` 表示上报器已
+接收事件。
+
+若调用方取消正在等待的上报 Future，投递结果未知。运行中事件会在等待投递前消耗序号，
+终态操作在 Future 被轮询后即被消费。除非上报器自身提供去重，否则不要自动重试终态事件。
+
 ## 禁用操作
 
 `Reporter::is_enabled()` 的结果由 `start()` 采样一次。禁用操作仍会校验固定配置并
