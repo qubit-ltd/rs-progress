@@ -7,6 +7,7 @@
 // =============================================================================
 //! Reporter abstraction and built-in sinks.
 
+mod async_reporter;
 #[cfg(feature = "json-lines")]
 mod json_lines_reporter;
 #[cfg(feature = "log")]
@@ -16,6 +17,8 @@ mod noop_reporter;
 mod reporter;
 mod text_reporter;
 
+pub use async_reporter::AsyncReporter;
+pub use async_reporter::ReportFuture;
 #[cfg(feature = "json-lines")]
 pub use json_lines_reporter::JsonLinesReporter;
 #[cfg(feature = "log")]
