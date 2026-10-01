@@ -46,6 +46,8 @@
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
+mod async_progress;
+mod async_progress_builder;
 mod auto_reporter;
 mod error;
 mod event;
@@ -57,6 +59,8 @@ pub mod reporter;
 mod stage;
 mod validation;
 
+pub use async_progress::AsyncProgress;
+pub use async_progress::AsyncProgressBuilder;
 pub use auto_reporter::AutoReporter;
 pub use auto_reporter::AutoReporterStatus;
 pub use auto_reporter::ProgressNotifier;
@@ -91,11 +95,13 @@ pub use operation_attributes::OperationAttributes;
 pub use progress::__coverage_progress_edges;
 pub use progress::Progress;
 pub use progress::ProgressBuilder;
+pub use reporter::AsyncReporter;
 #[cfg(feature = "json-lines")]
 pub use reporter::JsonLinesReporter;
 #[cfg(feature = "log")]
 pub use reporter::LogReporter;
 pub use reporter::NoopReporter;
+pub use reporter::ReportFuture;
 pub use reporter::Reporter;
 pub use reporter::TextReporter;
 pub use stage::Stage;

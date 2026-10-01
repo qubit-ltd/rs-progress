@@ -13,6 +13,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
+#[cfg(coverage)]
 use crate::Event;
 use crate::Metric;
 use crate::MetricHandle;
@@ -25,7 +26,6 @@ use crate::Reporter;
 use crate::Stage;
 use crate::auto_reporter;
 use crate::auto_reporter::AutoReporter;
-use crate::error::CompletionError;
 use crate::error::ConfigurationError;
 use crate::error::DeliveryError;
 use crate::error::EmissionError;
@@ -36,12 +36,15 @@ use crate::error::ReporterError;
 use crate::error::StartError;
 use crate::error::TerminalError;
 use crate::internal::OperationState;
+use crate::internal::build_event;
+use crate::internal::metric_snapshots;
+use crate::internal::validate_finish;
 use crate::validation::validate_attributes;
 use crate::validation::validate_metrics;
 use crate::validation::validate_stage;
 
 /// Process-local source of nonzero operation identifiers.
-static NEXT_OPERATION_ID: AtomicU64 = AtomicU64::new(1);
+pub(crate) static NEXT_OPERATION_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Reporter that fails only after the Started event.
 #[cfg(coverage)]
@@ -153,7 +156,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
         };
 
         if enabled {
-            let metrics = progress.metric_snapshots();
+            let metrics = metric_snapshots(&progress.metrics);
             progress
                 .emit(Phase::Started, metrics, Duration::ZERO)
                 .map_err(StartError::from)?;
@@ -236,7 +239,7 @@ impl<'reporter> Progress<'reporter> {
         if !self.enabled {
             return Ok(());
         }
-        let metrics = self.metric_snapshots();
+        let metrics = metric_snapshots(&self.metrics);
         let elapsed = self.elapsed();
         let result = self.emit(Phase::Running, metrics, elapsed);
         self.reset_deadline();
@@ -270,7 +273,7 @@ impl<'reporter> Progress<'reporter> {
     pub fn finish(mut self) -> Result<Duration, FinishError> {
         let elapsed = self.elapsed();
         let finish_guard = self.operation_state.begin_finish();
-        if let Err(source) = self.validate_finish() {
+        if let Err(source) = validate_finish(&self.metrics) {
             finish_guard.close();
             return Err(FinishError::Incomplete { elapsed, source });
         }
@@ -278,7 +281,7 @@ impl<'reporter> Progress<'reporter> {
         if !self.enabled {
             return Ok(elapsed);
         }
-        self.emit(Phase::Succeeded, self.metric_snapshots(), elapsed)
+        self.emit(Phase::Succeeded, metric_snapshots(&self.metrics), elapsed)
             .map(|()| elapsed)
             .map_err(|source| FinishError::Terminal(TerminalError::new(elapsed, source)))
     }
@@ -288,7 +291,7 @@ impl<'reporter> Progress<'reporter> {
     pub fn finish_recoverable(mut self) -> Result<Duration, RecoverableFinishError<'reporter>> {
         let elapsed = self.elapsed();
         let finish_guard = self.operation_state.begin_finish();
-        if let Err(source) = self.validate_finish() {
+        if let Err(source) = validate_finish(&self.metrics) {
             finish_guard.reopen();
             return Err(RecoverableFinishError::Incomplete { progress: self, source });
         }
@@ -296,7 +299,7 @@ impl<'reporter> Progress<'reporter> {
         if !self.enabled {
             return Ok(elapsed);
         }
-        self.emit(Phase::Succeeded, self.metric_snapshots(), elapsed)
+        self.emit(Phase::Succeeded, metric_snapshots(&self.metrics), elapsed)
             .map(|()| elapsed)
             .map_err(|source| RecoverableFinishError::Terminal(TerminalError::new(elapsed, source)))
     }
@@ -319,46 +322,17 @@ impl<'reporter> Progress<'reporter> {
     {
         auto_reporter::spawn(self, scope)
     }
-    /// Copies each metric into one independently consistent event snapshot.
-    fn metric_snapshots(&self) -> Vec<MetricSnapshot> {
-        self.metrics.iter().map(MetricHandle::snapshot).collect()
-    }
-    /// Validates the metric invariants required for successful finish.
-    fn validate_finish(&self) -> Result<(), CompletionError> {
-        for metric in &self.metrics {
-            let snapshot = metric.snapshot();
-            if snapshot.active() != 0 {
-                return Err(CompletionError::ActiveWork {
-                    metric_id: snapshot.id().to_owned(),
-                    active: snapshot.active(),
-                });
-            }
-            if let Some(total) = snapshot.total()
-                && snapshot.completed() != total
-            {
-                return Err(CompletionError::IncompleteTotal {
-                    metric_id: snapshot.id().to_owned(),
-                    completed: snapshot.completed(),
-                    total,
-                });
-            }
-        }
-        Ok(())
-    }
     /// Delivers one complete event after reserving its delivery sequence.
     fn emit(&mut self, phase: Phase, metrics: Vec<MetricSnapshot>, elapsed: Duration) -> Result<(), EmissionError> {
-        let operation_id = self.operation_id.ok_or(EmissionError::SequenceExhausted)?;
-        let sequence = self.next_sequence;
-        self.next_sequence = sequence.checked_add(1).ok_or(EmissionError::SequenceExhausted)?;
-        let event = Event::new(
-            operation_id,
-            sequence,
+        let event = build_event(
+            self.operation_id,
+            &mut self.next_sequence,
             phase,
-            self.stage.clone(),
-            Arc::clone(&self.attributes),
+            self.stage.as_ref(),
+            &self.attributes,
             metrics,
             elapsed,
-        );
+        )?;
         match self.reporter.as_reporter().report(&event) {
             Ok(()) => Ok(()),
             Err(source) => Err(EmissionError::Delivery(DeliveryError::new(event, source))),
@@ -391,7 +365,7 @@ impl<'reporter> Progress<'reporter> {
         if !self.enabled {
             return Ok(elapsed);
         }
-        self.emit(phase, self.metric_snapshots(), elapsed)
+        self.emit(phase, metric_snapshots(&self.metrics), elapsed)
             .map(|()| elapsed)
             .map_err(|source| TerminalError::new(elapsed, source))
     }
@@ -407,7 +381,7 @@ impl Drop for Progress<'_> {
 
 /// Allocates a nonzero operation ID without wrapping or reuse.
 #[inline(never)]
-fn allocate_operation_id() -> Result<u64, StartError> {
+pub(crate) fn allocate_operation_id() -> Result<u64, StartError> {
     loop {
         let current = NEXT_OPERATION_ID.load(Ordering::Relaxed);
         if current == 0 {
