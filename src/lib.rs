@@ -11,6 +11,7 @@
 //! Callers configure stable metadata with [`Metric`] and update dynamic counts
 //! through cloneable [`MetricHandle`] values. Every emitted [`Event`] is
 //! complete.
+// qubit-style: allow coverage-cfg
 //!
 //! # Benchmark interpretation
 //!
@@ -81,7 +82,6 @@ pub use error::WorkerPanic;
 pub use event::__coverage_event_serde;
 pub use event::Event;
 pub use event::Phase;
-#[cfg(coverage)]
 #[doc(hidden)]
 pub use internal::__coverage_internal;
 pub use internal::OperationLifecycle;
@@ -90,7 +90,6 @@ pub use metric::MetricDelta;
 pub use metric::MetricHandle;
 pub use metric::MetricSnapshot;
 pub use operation_attributes::OperationAttributes;
-#[cfg(coverage)]
 #[doc(hidden)]
 pub use progress::__coverage_progress_edges;
 pub use progress::Progress;

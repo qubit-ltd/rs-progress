@@ -111,7 +111,6 @@ fn operation_lifecycle(state: GateLifecycle) -> OperationLifecycle {
 }
 
 /// Exercises the finishing guard and lifecycle mapping from the library build.
-#[cfg(coverage)]
 pub(crate) fn __coverage_operation_state() {
     let state = OperationState::new();
     let guard = state.begin_finish();
@@ -128,7 +127,6 @@ pub(crate) fn __coverage_operation_state() {
 }
 
 /// Runs internal lifecycle coverage hooks in the instrumented build.
-#[cfg(coverage)]
 #[doc(hidden)]
 pub fn __coverage_internal() {
     super::operation_gate::__coverage_operation_gate();

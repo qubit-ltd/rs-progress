@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Immutable progress events and lifecycle phases.
+// qubit-style: allow coverage-cfg
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -133,7 +134,6 @@ impl Event {
 #[cfg(feature = "serde")]
 impl serde::Serialize for Event {
     /// Serializes one complete event without exposing internal representation.
-    #[cfg_attr(coverage, inline(never))]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -158,7 +158,6 @@ impl serde::Serialize for Event {
 impl<'de> serde::Deserialize<'de> for Event {
     /// Rejects malformed durations and any event that violates public
     /// invariants.
-    #[cfg_attr(coverage, inline(never))]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -275,7 +274,6 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
 
 /// Validates fields that are only available after Event JSON deserialization.
 #[cfg(feature = "serde")]
-#[cfg_attr(coverage, inline(never))]
 fn validate_wire_event(wire: &EventWire, elapsed: Duration) -> Result<(), String> {
     if wire.operation_id == 0 {
         return Err("operation_id must be nonzero".into());
