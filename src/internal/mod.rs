@@ -14,7 +14,6 @@ mod progress_core;
 mod update_guard;
 
 pub use operation_lifecycle::OperationLifecycle;
-#[cfg(coverage)]
 #[doc(hidden)]
 pub use operation_state::__coverage_internal;
 pub(crate) use operation_state::OperationState;

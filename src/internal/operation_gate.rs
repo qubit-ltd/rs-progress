@@ -257,7 +257,6 @@ impl AtomicUsizeLike for AtomicUsize {
 }
 
 /// Exercises the standard gate implementation from the instrumented library.
-#[cfg(coverage)]
 #[doc(hidden)]
 pub fn __coverage_operation_gate() {
     use std::sync::Arc;

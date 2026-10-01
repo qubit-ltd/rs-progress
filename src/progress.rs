@@ -13,12 +13,10 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
-#[cfg(coverage)]
 use crate::Event;
 use crate::Metric;
 use crate::MetricHandle;
 use crate::MetricSnapshot;
-#[cfg(coverage)]
 use crate::NoopReporter;
 use crate::OperationAttributes;
 use crate::Phase;
@@ -31,7 +29,6 @@ use crate::error::DeliveryError;
 use crate::error::EmissionError;
 use crate::error::FinishError;
 use crate::error::RecoverableFinishError;
-#[cfg(coverage)]
 use crate::error::ReporterError;
 use crate::error::StartError;
 use crate::error::TerminalError;
@@ -47,13 +44,11 @@ use crate::validation::validate_stage;
 pub(crate) static NEXT_OPERATION_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Reporter that fails only after the Started event.
-#[cfg(coverage)]
 struct CoverageTerminalReporter {
     /// Number of delivery attempts observed by the reporter.
     attempts: AtomicU64,
 }
 
-#[cfg(coverage)]
 impl Reporter for CoverageTerminalReporter {
     /// Fails terminal delivery after allowing operation startup.
     fn report(&self, _event: &Event) -> Result<(), ReporterError> {
@@ -398,7 +393,6 @@ pub(crate) fn allocate_operation_id() -> Result<u64, StartError> {
 }
 
 /// Exercises progress-only edge paths from the instrumented library build.
-#[cfg(coverage)]
 #[doc(hidden)]
 pub fn __coverage_progress_edges() {
     let previous = NEXT_OPERATION_ID.swap(0, Ordering::Relaxed);
