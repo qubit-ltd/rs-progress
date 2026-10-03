@@ -23,6 +23,9 @@ include = [
     "/benches/**",
 ]
 
+[workspace]
+exclude = ["fuzz"]
+
 [lib]
 name = "qubit_progress"
 doctest = true
