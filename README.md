@@ -26,7 +26,7 @@ deduplicating.
 
 ```toml
 [dependencies]
-qubit-progress = "0.8"
+qubit-progress = "0.9"
 ```
 
 Enable `serde` to serialize and deserialize event data, `json-lines` for
