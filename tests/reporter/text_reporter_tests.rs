@@ -31,7 +31,10 @@ fn test_text_reporter_includes_cancelled_count() {
             .expect("text reporter writer mutex must not be poisoned"),
     )
     .expect("text output must be UTF-8");
-    assert!(output.contains("cancelled=1"));
+    assert!(
+        output.contains("cancelled=1"),
+        "text output must include the cancelled metric count"
+    );
 }
 
 /// Verifies that text records escape control characters and retain stage
@@ -52,9 +55,19 @@ fn test_text_reporter_escapes_metadata_and_includes_stage_progress() {
             .expect("text reporter writer mutex must not be poisoned"),
     )
     .expect("text output must be UTF-8");
-    assert_eq!(output.lines().count(), 1);
-    assert!(output.contains("stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"));
-    assert!(output.contains("metric=tasks\\nall(Tasks\\rAll)"));
+    assert_eq!(
+        output.lines().count(),
+        1,
+        "escaped control characters must not create additional output lines"
+    );
+    assert!(
+        output.contains("stage=copy\\nfiles(Copy\\rFiles) position=Some(2) total=Some(3)"),
+        "text output must escape stage metadata and include stage progress"
+    );
+    assert!(
+        output.contains("metric=tasks\\nall(Tasks\\rAll)"),
+        "text output must escape metric metadata"
+    );
 }
 
 /// Verifies text output includes escaped operation attributes.
@@ -73,5 +86,8 @@ fn test_text_reporter_includes_operation_attributes() {
             .expect("text reporter writer mutex must not be poisoned"),
     )
     .expect("text output must be UTF-8");
-    assert!(output.contains("attribute=trace\\nid(value\\r1)"));
+    assert!(
+        output.contains("attribute=trace\\nid(value\\r1)"),
+        "text output must escape operation attribute names and values"
+    );
 }

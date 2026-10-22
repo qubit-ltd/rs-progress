@@ -11,7 +11,25 @@ use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 
-/// Reporter failure that preserves its original error chain.
+use crate::error::internal::MessageError;
+
+/// Reporter failure that preserves the original sink error and its source
+/// chain.
+///
+/// Use [`ReporterError::new`] when a reporter has a concrete error value, or
+/// [`ReporterError::message`] when it only has a stable diagnostic message.
+/// The wrapped error remains available through [`std::error::Error::source`]
+/// and [`ReporterError::source_error`].
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::ReporterError;
+///
+/// let error = ReporterError::message("output stream is closed");
+/// assert_eq!(error.to_string(), "output stream is closed");
+/// assert_eq!(error.source_error().to_string(), "output stream is closed");
+/// ```
 #[derive(Clone, Debug)]
 pub struct ReporterError {
     source: Arc<dyn Error + Send + Sync + 'static>,
@@ -30,11 +48,12 @@ impl ReporterError {
 
     /// Creates a reporter error from a stable message.
     pub fn message(message: &str) -> Self {
-        Self::new(MessageError(message.into()))
+        Self::new(MessageError::new(message.into()))
     }
 
     /// Returns the original reporter error.
     #[must_use]
+    #[inline]
     pub fn source_error(&self) -> &(dyn Error + Send + Sync + 'static) {
         self.source.as_ref()
     }
@@ -53,16 +72,3 @@ impl Error for ReporterError {
         Some(self.source.as_ref())
     }
 }
-
-/// Message-backed error used by [`ReporterError::message`].
-#[derive(Debug)]
-struct MessageError(String);
-
-impl fmt::Display for MessageError {
-    /// Formats the stored message.
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-impl Error for MessageError {}

@@ -15,6 +15,29 @@ use crate::error::CompletionError;
 use crate::error::TerminalError;
 
 /// Failure from checked finish while preserving a reusable progress operation.
+///
+/// An incomplete operation retains its [`Progress`] value so the caller can
+/// correct the metric state and retry, or terminate the operation explicitly.
+/// Terminal delivery failures cannot be recovered because emission may have
+/// partially reached the reporter.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::{Metric, NoopReporter, Progress, RecoverableFinishError};
+///
+/// let progress = Progress::builder(&NoopReporter)
+///     .metric(Metric::new("tasks", "Tasks").total(1))
+///     .start()?;
+/// let error = progress
+///     .finish_recoverable()
+///     .expect_err("unfinished work must prevent completion");
+/// assert!(matches!(error, RecoverableFinishError::Incomplete { .. }));
+/// let progress = error.into_progress()?;
+/// progress.cancel()?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+#[must_use]
 #[allow(clippy::large_enum_variant)]
 pub enum RecoverableFinishError<'reporter> {
     /// Completion validation failed and the operation remains reusable.
@@ -29,7 +52,8 @@ pub enum RecoverableFinishError<'reporter> {
 }
 
 impl<'reporter> RecoverableFinishError<'reporter> {
-    /// Returns the completion error when validation failed.
+    /// Returns the completion validation error, or `None` after terminal
+    /// delivery failed.
     #[must_use]
     pub fn completion_error(&self) -> Option<&CompletionError> {
         match self {
@@ -38,7 +62,13 @@ impl<'reporter> RecoverableFinishError<'reporter> {
         }
     }
 
-    /// Consumes an incomplete finish error and returns the reusable Progress.
+    /// Consumes an incomplete finish error and returns its reusable progress
+    /// operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns the terminal delivery error when emission failed and the
+    /// operation cannot be recovered.
     pub fn into_progress(self) -> Result<Progress<'reporter>, TerminalError> {
         match self {
             Self::Incomplete { progress, .. } => Ok(progress),
@@ -47,6 +77,11 @@ impl<'reporter> RecoverableFinishError<'reporter> {
     }
 
     /// Consumes this error and returns its recoverable or terminal parts.
+    ///
+    /// # Errors
+    ///
+    /// Returns the terminal delivery error when emission failed and no
+    /// reusable progress operation or completion validation error exists.
     pub fn into_parts(self) -> Result<(Progress<'reporter>, CompletionError), TerminalError> {
         match self {
             Self::Incomplete { progress, source } => Ok((progress, source)),

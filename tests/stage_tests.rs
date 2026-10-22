@@ -49,6 +49,9 @@ fn test_stage_deserialization_rejects_invalid_metadata() {
         json!({"id": "copy", "name": "Copy", "position": 0, "total": 1}),
         json!({"id": "copy", "name": "Copy", "position": 2, "total": 1}),
     ] {
-        assert!(from_value::<Stage>(value).is_err());
+        assert!(
+            from_value::<Stage>(value).is_err(),
+            "invalid stage metadata must be rejected"
+        );
     }
 }

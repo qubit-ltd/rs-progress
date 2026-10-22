@@ -22,6 +22,26 @@ pub type ReportFuture<'a> = Pin<Box<dyn Future<Output = Result<(), ReporterError
 /// caller drops it before completion, delivery status is unknown: the sink may
 /// already have accepted the event. Callers should not retry terminal events
 /// automatically because that could duplicate a delivered event.
+///
+/// # Examples
+///
+/// Implement an asynchronous sink by returning a future that completes the
+/// delivery and preserves any sink error in [`ReporterError`].
+///
+/// ```
+/// use qubit_progress::{AsyncReporter, Event, ReportFuture, ReporterError};
+///
+/// struct Sink;
+///
+/// impl AsyncReporter for Sink {
+///     fn report<'a>(&'a self, _event: &'a Event) -> ReportFuture<'a> {
+///         Box::pin(async { Ok(()) })
+///     }
+/// }
+///
+/// let sink = Sink;
+/// assert!(sink.is_enabled());
+/// ```
 pub trait AsyncReporter: Send + Sync {
     /// Returns whether a new operation should emit events.
     ///

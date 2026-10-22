@@ -25,23 +25,38 @@ use crate::validation::validate_attributes;
 use crate::validation::validate_metrics;
 use crate::validation::validate_stage;
 
-/// Selects an asynchronous reporter borrowed for the operation or owned by it.
-pub(crate) enum AsyncReporterHandle<'reporter> {
-    Borrowed(&'reporter dyn AsyncReporter),
-    Owned(Arc<dyn AsyncReporter>),
-}
-
-impl AsyncReporterHandle<'_> {
-    /// Returns the selected reporter.
-    pub(crate) fn as_reporter(&self) -> &dyn AsyncReporter {
-        match self {
-            Self::Borrowed(reporter) => *reporter,
-            Self::Owned(reporter) => reporter.as_ref(),
-        }
-    }
-}
+#[path = "async_progress_builder/async_reporter_handle.rs"]
+mod async_reporter_handle;
+pub(crate) use self::async_reporter_handle::AsyncReporterHandle;
 
 /// Configures an asynchronous progress operation before it starts.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::AsyncProgress;
+/// use qubit_progress::AsyncReporter;
+/// use qubit_progress::Event;
+/// use qubit_progress::ReportFuture;
+/// use std::time::Duration;
+///
+/// struct Sink;
+///
+/// impl AsyncReporter for Sink {
+///     fn report<'a>(&'a self, _event: &'a Event) -> ReportFuture<'a> {
+///         Box::pin(async { Ok(()) })
+///     }
+/// }
+///
+/// async fn start_operation() {
+///     let sink = Sink;
+///     let _progress = AsyncProgress::builder(&sink)
+///         .interval(Duration::from_secs(1))
+///         .start_async()
+///         .await
+///         .expect("valid default metadata starts successfully");
+/// }
+/// ```
 pub struct AsyncProgressBuilder<'reporter> {
     /// Reporter receiving complete events.
     reporter: AsyncReporterHandle<'reporter>,
@@ -95,6 +110,16 @@ impl<'reporter> AsyncProgressBuilder<'reporter> {
     ///
     /// Returns a start error when metadata is invalid, operation IDs are
     /// exhausted, or the reporter rejects the Started event.
+    ///
+    /// # Returns
+    ///
+    /// Returns the started progress operation after the Started event has been
+    /// accepted, or immediately when reporting is disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StartError`] when metadata validation fails, no operation ID
+    /// is available, or the reporter rejects the Started event.
     pub async fn start_async(self) -> Result<crate::async_progress::AsyncProgress<'reporter>, StartError> {
         validate_metrics(&self.metrics)?;
         if let Some(stage) = &self.stage {

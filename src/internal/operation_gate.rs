@@ -8,59 +8,16 @@
 //! Generic atomic operation lifecycle protocol.
 
 use std::marker::PhantomData;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-/// Atomic byte operations required by [`OperationGate`].
-pub trait AtomicU8Like {
-    /// Creates an atomic value with the supplied initial state.
-    fn new(value: u8) -> Self;
-
-    /// Loads the value with acquire ordering.
-    fn load(&self) -> u8;
-
-    /// Performs an acquire-release compare-and-exchange.
-    fn compare_exchange(&self, current: u8, new: u8) -> Result<u8, u8>;
-
-    /// Stores the value with release ordering.
-    fn store(&self, value: u8);
-}
-
-/// Atomic counter operations required by [`OperationGate`].
-pub trait AtomicUsizeLike {
-    /// Creates an atomic counter with the supplied initial value.
-    fn new(value: usize) -> Self;
-
-    /// Loads the counter with acquire ordering.
-    fn load(&self) -> usize;
-
-    /// Adds to the counter with acquire-release ordering.
-    fn fetch_add(&self, value: usize);
-
-    /// Subtracts from the counter with release ordering.
-    fn fetch_sub(&self, value: usize);
-}
-
-/// Scheduling hooks used while waiting for registered updates to leave.
-pub trait YieldLike {
-    /// Gives the processor a hint that the current thread is spinning.
-    fn spin_loop();
-
-    /// Yields the current thread to make progress in a model scheduler.
-    fn yield_now();
-}
-
-/// Lifecycle states published by an [`OperationGate`].
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum GateLifecycle {
-    /// New updates may be admitted.
-    Open = 0,
-    /// New updates are rejected while admitted updates drain.
-    Finishing = 1,
-    /// The operation is permanently closed.
-    Closed = 2,
-}
+pub use super::atomic_u8_like::AtomicU8Like;
+pub use super::atomic_usize_like::AtomicUsizeLike;
+pub use super::gate_lifecycle::GateLifecycle;
+pub use super::std_scheduler::StdScheduler;
+pub use super::yield_like::YieldLike;
 
 /// Atomic lifecycle gate shared by operation and metric handles.
 pub struct OperationGate<A8, ASize, Scheduler> {
@@ -188,22 +145,6 @@ where
     }
 }
 
-/// Standard-library scheduling implementation.
-#[allow(dead_code)]
-pub struct StdScheduler;
-
-impl YieldLike for StdScheduler {
-    /// Uses the standard processor spin hint.
-    fn spin_loop() {
-        std::hint::spin_loop();
-    }
-
-    /// Yields to another runnable operating-system thread.
-    fn yield_now() {
-        std::thread::yield_now();
-    }
-}
-
 impl AtomicU8Like for AtomicU8 {
     /// Creates a standard atomic byte.
     #[inline]
@@ -259,8 +200,6 @@ impl AtomicUsizeLike for AtomicUsize {
 /// Exercises the standard gate implementation from the instrumented library.
 #[doc(hidden)]
 pub fn __coverage_operation_gate() {
-    use std::sync::Arc;
-
     type StandardGate = OperationGate<AtomicU8, AtomicUsize, StdScheduler>;
     let gate: StandardGate = Default::default();
     let default_constructor: fn() -> StandardGate = Default::default;

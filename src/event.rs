@@ -21,45 +21,62 @@ use crate::validation::validate_attributes;
 #[cfg(feature = "serde")]
 use crate::validation::validate_metrics;
 
-/// Lifecycle phase of one immutable progress event.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Phase {
-    /// The unique first event.
-    Started,
-    /// A non-terminal snapshot.
-    Running,
-    /// Successful terminal event.
-    Succeeded,
-    /// Failed terminal event.
-    Failed,
-    /// Cancelled terminal event.
-    Cancelled,
-}
-impl Phase {
-    /// Returns the stable lowercase wire name.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Started => "started",
-            Self::Running => "running",
-            Self::Succeeded => "succeeded",
-            Self::Failed => "failed",
-            Self::Cancelled => "cancelled",
-        }
-    }
-}
+#[cfg(feature = "serde")]
+#[path = "internal/event_wire.rs"]
+mod event_wire;
+#[cfg(feature = "serde")]
+#[path = "internal/event_wire_ref.rs"]
+mod event_wire_ref;
+mod phase;
+
+#[cfg(feature = "serde")]
+use event_wire::EventWire;
+#[cfg(feature = "serde")]
+use event_wire_ref::EventWireRef;
+pub use phase::Phase;
 
 /// Complete immutable snapshot delivered to one reporter call.
+///
+/// Events preserve the operation metadata and metric snapshots as observed at
+/// one attempted delivery. They are created by [`Progress`](crate::Progress)
+/// and exposed to a [`Reporter`](crate::Reporter); callers cannot construct
+/// events directly.
+///
+/// # Examples
+///
+/// ```
+/// use std::sync::{Arc, Mutex};
+///
+/// use qubit_progress::{Event, Progress, ReporterError};
+///
+/// let observed = Arc::new(Mutex::new(None::<Event>));
+/// let sink = Arc::clone(&observed);
+/// let reporter = Arc::new(move |event: &Event| {
+///     *sink.lock().expect("event lock must be available") = Some(event.clone());
+///     Ok::<(), ReporterError>(())
+/// });
+/// let progress = Progress::builder_arc(reporter).start()?;
+/// progress.finish()?;
+/// let event = observed.lock().expect("event lock must be available");
+/// assert_eq!(event.as_ref().expect("finish emits an event").phase(), qubit_progress::Phase::Succeeded);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Event {
+    /// Process-local identifier shared by events from one operation.
     operation_id: u64,
+    /// Monotonically increasing attempted-delivery sequence within the
+    /// operation.
     sequence: u64,
+    /// Lifecycle state represented by this snapshot.
     phase: Phase,
+    /// Stage active when the event was emitted, if one was set.
     stage: Option<Stage>,
+    /// Immutable correlation metadata shared by events from the operation.
     attributes: Arc<OperationAttributes>,
+    /// Metric snapshots in the operation's declaration order.
     metrics: Vec<MetricSnapshot>,
+    /// Monotonic elapsed time since the operation started.
     elapsed: Duration,
 }
 impl Event {
@@ -85,36 +102,42 @@ impl Event {
     }
     /// Returns the process-local operation identifier.
     #[must_use]
+    #[inline]
     pub const fn operation_id(&self) -> u64 {
         self.operation_id
     }
     /// Returns the attempted-delivery sequence.
     #[must_use]
+    #[inline]
     pub const fn sequence(&self) -> u64 {
         self.sequence
     }
     /// Returns the event lifecycle phase.
     #[must_use]
+    #[inline]
     pub const fn phase(&self) -> Phase {
         self.phase
     }
-    /// Returns optional stage metadata.
+    /// Returns the active stage, or `None` when the operation has no stage.
     #[must_use]
+    #[inline]
     pub const fn stage(&self) -> Option<&Stage> {
         self.stage.as_ref()
     }
     /// Returns immutable operation correlation attributes.
     #[must_use]
+    #[inline]
     pub fn attributes(&self) -> &OperationAttributes {
         &self.attributes
     }
-    /// Returns one operation correlation attribute by key.
+    /// Returns an attribute value by key, or `None` when the key is absent.
     #[must_use]
     pub fn attribute(&self, key: &str) -> Option<&str> {
         self.attributes.get(key)
     }
     /// Returns all metric snapshots in declaration order.
     #[must_use]
+    #[inline]
     pub fn metrics(&self) -> &[MetricSnapshot] {
         &self.metrics
     }
@@ -123,8 +146,9 @@ impl Event {
     pub fn metric(&self, metric_id: &str) -> Option<&MetricSnapshot> {
         self.metrics.iter().find(|metric| metric.id() == metric_id)
     }
-    /// Returns elapsed monotonic operation time.
+    /// Returns monotonic time elapsed since the operation started.
     #[must_use]
+    #[inline]
     pub const fn elapsed(&self) -> Duration {
         self.elapsed
     }
@@ -175,48 +199,6 @@ impl<'de> serde::Deserialize<'de> for Event {
             elapsed,
         ))
     }
-}
-
-/// Borrowed event representation used for serialization.
-#[cfg(feature = "serde")]
-#[derive(serde::Serialize)]
-struct EventWireRef<'a> {
-    /// Process-local operation identifier.
-    operation_id: u64,
-    /// Attempted-delivery sequence.
-    sequence: u64,
-    /// Event lifecycle phase.
-    phase: Phase,
-    /// Optional stage metadata.
-    stage: Option<&'a Stage>,
-    /// Stable operation correlation attributes.
-    #[serde(skip_serializing_if = "OperationAttributes::is_empty")]
-    attributes: &'a OperationAttributes,
-    /// Complete metric snapshots.
-    metrics: &'a [MetricSnapshot],
-    /// Canonical elapsed duration.
-    elapsed: String,
-}
-
-/// Owned event representation used before validation during deserialization.
-#[cfg(feature = "serde")]
-#[derive(serde::Deserialize)]
-struct EventWire {
-    /// Process-local operation identifier.
-    operation_id: u64,
-    /// Attempted-delivery sequence.
-    sequence: u64,
-    /// Event lifecycle phase.
-    phase: Phase,
-    /// Optional stage metadata.
-    stage: Option<Stage>,
-    /// Stable operation correlation attributes.
-    #[serde(default)]
-    attributes: OperationAttributes,
-    /// Complete metric snapshots.
-    metrics: Vec<MetricSnapshot>,
-    /// Canonical elapsed duration.
-    elapsed: String,
 }
 
 /// Produces the shortest exact unit representation used by Event JSON.

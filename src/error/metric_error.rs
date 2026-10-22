@@ -13,6 +13,7 @@ use std::fmt;
 use crate::OperationLifecycle;
 
 /// Failure while reading or mutating one stateful metric.
+#[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MetricError {
     /// The enclosing operation is freezing or already closed.

@@ -13,7 +13,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
-use crate::Event;
 use crate::Metric;
 use crate::MetricHandle;
 use crate::MetricSnapshot;
@@ -29,143 +28,48 @@ use crate::error::DeliveryError;
 use crate::error::EmissionError;
 use crate::error::FinishError;
 use crate::error::RecoverableFinishError;
-use crate::error::ReporterError;
 use crate::error::StartError;
 use crate::error::TerminalError;
 use crate::internal::OperationState;
 use crate::internal::build_event;
 use crate::internal::metric_snapshots;
 use crate::internal::validate_finish;
-use crate::validation::validate_attributes;
-use crate::validation::validate_metrics;
 use crate::validation::validate_stage;
+
+mod internal;
+mod progress_builder;
+
+use internal::coverage_terminal_reporter::CoverageTerminalReporter;
+use internal::reporter_handle::ReporterHandle;
+pub use progress_builder::ProgressBuilder;
 
 /// Process-local source of nonzero operation identifiers.
 pub(crate) static NEXT_OPERATION_ID: AtomicU64 = AtomicU64::new(1);
-
-/// Reporter that fails only after the Started event.
-struct CoverageTerminalReporter {
-    /// Number of delivery attempts observed by the reporter.
-    attempts: AtomicU64,
-}
-
-impl Reporter for CoverageTerminalReporter {
-    /// Fails terminal delivery after allowing operation startup.
-    fn report(&self, _event: &Event) -> Result<(), ReporterError> {
-        if self.attempts.fetch_add(1, Ordering::Relaxed) == 0 {
-            Ok(())
-        } else {
-            Err(ReporterError::message("coverage terminal failure"))
-        }
-    }
-}
-
-/// Reporter retained by a progress operation.
-enum ReporterHandle<'reporter> {
-    Borrowed(&'reporter dyn Reporter),
-    Owned(Arc<dyn Reporter>),
-}
-
-impl ReporterHandle<'_> {
-    fn as_reporter(&self) -> &dyn Reporter {
-        match self {
-            Self::Borrowed(reporter) => *reporter,
-            Self::Owned(reporter) => reporter.as_ref(),
-        }
-    }
-}
-
-/// Configures one [`Progress`] operation before it starts.
-pub struct ProgressBuilder<'reporter> {
-    /// Reporter receiving complete events.
-    reporter: ReporterHandle<'reporter>,
-    /// Minimum interval between due-based running reports.
-    interval: Duration,
-    /// Stable operation metrics.
-    metrics: Vec<Metric>,
-    /// Optional initial stage.
-    stage: Option<Stage>,
-    /// Correlation attributes shared by all operation events.
-    attributes: OperationAttributes,
-}
-
-impl<'reporter> ProgressBuilder<'reporter> {
-    /// Sets the minimum interval between due-based running reports.
-    #[must_use]
-    pub const fn interval(mut self, interval: Duration) -> Self {
-        self.interval = interval;
-        self
-    }
-    /// Adds one stable metric to the operation.
-    #[must_use]
-    pub fn metric(mut self, metric: Metric) -> Self {
-        self.metrics.push(metric);
-        self
-    }
-    /// Adds stage metadata to the Started event and subsequent events.
-    #[must_use]
-    pub fn stage(mut self, stage: Stage) -> Self {
-        self.stage = Some(stage);
-        self
-    }
-    /// Adds or replaces one operation correlation attribute.
-    #[must_use]
-    pub fn attribute(mut self, key: &str, value: &str) -> Self {
-        self.attributes.insert(key, value);
-        self
-    }
-    /// Replaces all operation correlation attributes.
-    #[must_use]
-    pub fn attributes(mut self, attributes: OperationAttributes) -> Self {
-        self.attributes = attributes;
-        self
-    }
-    /// Validates configuration, samples enablement and emits Started when
-    /// enabled.
-    pub fn start(self) -> Result<Progress<'reporter>, StartError> {
-        validate_metrics(&self.metrics)?;
-        if let Some(stage) = &self.stage {
-            validate_stage(stage)?;
-        }
-        validate_attributes(&self.attributes)?;
-
-        let enabled = self.reporter.as_reporter().is_enabled();
-        let operation_state = OperationState::new();
-        let operation_id = enabled.then(allocate_operation_id).transpose()?;
-        let mut progress = Progress {
-            reporter: self.reporter,
-            enabled,
-            metrics: self
-                .metrics
-                .into_iter()
-                .map(|metric| MetricHandle::new(metric, Arc::clone(&operation_state)))
-                .collect(),
-            operation_state,
-            stage: self.stage,
-            attributes: Arc::new(self.attributes),
-            interval: self.interval,
-            started_at: Instant::now(),
-            next_due_elapsed: None,
-            operation_id,
-            next_sequence: 0,
-        };
-
-        if enabled {
-            let metrics = metric_snapshots(&progress.metrics);
-            progress
-                .emit(Phase::Started, metrics, Duration::ZERO)
-                .map_err(StartError::from)?;
-            progress.next_due_elapsed = Some(progress.interval);
-            progress.started_at = Instant::now();
-        }
-        Ok(progress)
-    }
-}
 
 /// One started progress operation.
 ///
 /// Terminal methods consume this value, preventing reports after a terminal
 /// phase and preventing duplicate terminal events in safe Rust.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::{Metric, NoopReporter, Progress};
+///
+/// let progress = Progress::builder(&NoopReporter)
+///     .metric(Metric::new("tasks", "Tasks").total(1))
+///     .start()?;
+/// let task = progress.metric("tasks").expect("configured metric must exist");
+/// task.start(1)?;
+/// task.succeed(1)?;
+/// progress.finish()?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
+/// # Type Parameters
+///
+/// * `'reporter` — lifetime of a borrowed reporter. An owned reporter uses
+///   `'static`.
 #[must_use]
 pub struct Progress<'reporter> {
     /// Reporter selected by the builder.
@@ -217,6 +121,7 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Returns enablement sampled when this operation started.
     #[must_use]
+    #[inline]
     pub const fn is_enabled(&self) -> bool {
         self.enabled
     }
@@ -226,10 +131,21 @@ impl<'reporter> Progress<'reporter> {
         self.started_at.elapsed()
     }
     /// Returns a cloneable live metric selected by its stable ID.
+    ///
+    /// # Returns
+    ///
+    /// Returns a handle when a metric has the requested ID, or `None` when no
+    /// configured metric matches.
     pub fn metric(&self, metric_id: &str) -> Option<MetricHandle> {
         self.metrics.iter().find(|metric| metric.id() == metric_id).cloned()
     }
     /// Immediately emits a Running event from current metric state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `EmissionError` containing the attempted event and reporter
+    /// error if event delivery fails. Disabled operations return successfully
+    /// without emitting an event.
     pub fn report(&mut self) -> Result<(), EmissionError> {
         if !self.enabled {
             return Ok(());
@@ -241,6 +157,12 @@ impl<'reporter> Progress<'reporter> {
         result
     }
     /// Emits a Running event only when the configured interval is due.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `EmissionError` containing the attempted event and reporter
+    /// error if a due event cannot be delivered. When the interval is not due
+    /// or reporting is disabled, it returns successfully without emitting.
     pub fn report_if_due(&mut self) -> Result<(), EmissionError> {
         if !self.enabled || !self.is_due() {
             return Ok(());
@@ -248,6 +170,11 @@ impl<'reporter> Progress<'reporter> {
         self.report()
     }
     /// Replaces stage metadata attached to subsequent events.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError` when the stage metadata is invalid; the
+    /// current stage remains unchanged in that case.
     pub fn set_stage(&mut self, stage: Stage) -> Result<(), ConfigurationError> {
         validate_stage(&stage)?;
         self.stage = Some(stage);
@@ -259,11 +186,21 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Consumes this operation and emits a successful terminal event without
     /// checking whether metric work is complete.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TerminalError` containing the attempted event and reporter
+    /// error if terminal delivery fails.
     pub fn finish_unchecked(self) -> Result<Duration, TerminalError> {
         self.terminal(Phase::Succeeded)
     }
     /// Consumes this operation and emits a successful terminal event only when
     /// no metric has active work and every known total has been completed.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FinishError::Incomplete` with the unfinished metric details if
+    /// validation fails, or `FinishError::Terminal` if event delivery fails.
     #[allow(clippy::result_large_err)]
     pub fn finish(mut self) -> Result<Duration, FinishError> {
         let elapsed = self.elapsed();
@@ -282,6 +219,12 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Consumes this operation and emits a successful terminal event while
     /// preserving the operation when completion validation fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns `RecoverableFinishError::Incomplete` with this operation when
+    /// validation fails, or `RecoverableFinishError::Terminal` if delivery
+    /// fails after completion validation.
     #[allow(clippy::result_large_err)]
     pub fn finish_recoverable(mut self) -> Result<Duration, RecoverableFinishError<'reporter>> {
         let elapsed = self.elapsed();
@@ -299,10 +242,20 @@ impl<'reporter> Progress<'reporter> {
             .map_err(|source| RecoverableFinishError::Terminal(TerminalError::new(elapsed, source)))
     }
     /// Consumes this operation and emits a failed terminal event.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TerminalError` containing the attempted event and reporter
+    /// error if terminal delivery fails.
     pub fn fail(self) -> Result<Duration, TerminalError> {
         self.terminal(Phase::Failed)
     }
     /// Consumes this operation and emits a cancelled terminal event.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TerminalError` containing the attempted event and reporter
+    /// error if terminal delivery fails.
     pub fn cancel(self) -> Result<Duration, TerminalError> {
         self.terminal(Phase::Cancelled)
     }
@@ -338,6 +291,8 @@ impl<'reporter> Progress<'reporter> {
         self.interval.is_zero() || self.next_due_elapsed.is_some_and(|deadline| self.elapsed() >= deadline)
     }
     /// Returns the configured interval to the crate-private background loop.
+    #[must_use]
+    #[inline]
     pub(crate) const fn report_interval(&self) -> Duration {
         self.interval
     }

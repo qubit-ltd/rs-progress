@@ -48,7 +48,6 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod async_progress;
-mod async_progress_builder;
 mod auto_reporter;
 mod error;
 mod event;
@@ -58,6 +57,8 @@ mod operation_attributes;
 mod progress;
 pub mod reporter;
 mod stage;
+#[cfg(test)]
+mod tests;
 mod validation;
 
 pub use async_progress::AsyncProgress;

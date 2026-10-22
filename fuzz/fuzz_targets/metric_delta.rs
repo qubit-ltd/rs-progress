@@ -174,12 +174,13 @@ fuzz_target!(|input: &[u8]| {
             let start = 1 + index * COUNTER_BYTES;
             *counter = read_counter(operation.get(start..).unwrap_or_default());
         }
+        let [started, unclassified, succeeded, failed, cancelled] = counters;
         let delta = MetricDelta::new()
-            .started(counters[0])
-            .unclassified(counters[1])
-            .succeeded(counters[2])
-            .failed(counters[3])
-            .cancelled(counters[4]);
+            .started(started)
+            .unclassified(unclassified)
+            .succeeded(succeeded)
+            .failed(failed)
+            .cancelled(cancelled);
         let before = metric.snapshot();
         let expected_success = model.apply(counters, total);
         let result = metric.apply_delta(delta);

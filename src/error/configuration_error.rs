@@ -11,6 +11,7 @@ use std::error::Error;
 use std::fmt;
 
 /// Invalid fixed metadata supplied to a progress operation.
+#[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ConfigurationError {

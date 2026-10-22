@@ -16,6 +16,11 @@ use crate::MetricSnapshot;
 use crate::OperationAttributes;
 use crate::Stage;
 
+#[cfg(feature = "serde")]
+mod internal;
+#[cfg(feature = "serde")]
+use internal::SnapshotValidationError;
+
 /// Validates the fixed metric configuration for one operation.
 pub(crate) fn validate_metrics(metrics: &[Metric]) -> Result<(), ConfigurationError> {
     if metrics.is_empty() {
@@ -104,43 +109,3 @@ pub(crate) fn validate_snapshot_counts(snapshot: &MetricSnapshot) -> Result<(), 
     }
     Ok(())
 }
-
-/// Validation failure for serialized dynamic metric counts.
-#[cfg(feature = "serde")]
-#[derive(Debug)]
-pub(crate) enum SnapshotValidationError {
-    /// Derived classified counts overflowed.
-    CountOverflow { metric_id: String },
-    /// Classified counts exceed completed work.
-    ClassifiedExceedsCompleted { metric_id: String },
-    /// Occupied work exceeds a known total.
-    CountsExceedTotal { metric_id: String },
-    /// A zero total contains dynamic counts.
-    NonZeroCountsForZeroTotal { metric_id: String },
-}
-
-#[cfg(feature = "serde")]
-impl std::fmt::Display for SnapshotValidationError {
-    /// Formats the snapshot validation failure.
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::CountOverflow { metric_id } => {
-                write!(formatter, "counts for metric {metric_id:?} overflowed")
-            }
-            Self::ClassifiedExceedsCompleted { metric_id } => write!(
-                formatter,
-                "classified counts exceed completed work for metric {metric_id:?}"
-            ),
-            Self::CountsExceedTotal { metric_id } => write!(
-                formatter,
-                "completed plus active work exceeds total for metric {metric_id:?}"
-            ),
-            Self::NonZeroCountsForZeroTotal { metric_id } => {
-                write!(formatter, "zero-total metric {metric_id:?} has nonzero counts")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "serde")]
-impl std::error::Error for SnapshotValidationError {}

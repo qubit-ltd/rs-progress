@@ -11,6 +11,7 @@ use crate::internal::OperationState;
 
 /// Keeps one metric update counted until its critical section exits.
 pub(crate) struct UpdateGuard<'state> {
+    /// Operation state whose registered update this guard releases.
     state: &'state OperationState,
 }
 

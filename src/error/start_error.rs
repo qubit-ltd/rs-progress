@@ -15,6 +15,16 @@ use crate::error::DeliveryError;
 use crate::error::EmissionError;
 
 /// Failure before a usable progress operation can be returned.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::error::StartError;
+///
+/// let error = StartError::OperationIdExhausted;
+/// assert_eq!(error.to_string(), "progress operation IDs are exhausted");
+/// ```
+#[must_use]
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum StartError {

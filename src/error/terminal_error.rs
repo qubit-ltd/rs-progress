@@ -13,27 +13,54 @@ use std::time::Duration;
 
 use crate::error::EmissionError;
 
-/// Terminal emission failure paired with elapsed operation time.
+/// Terminal event delivery failure paired with the elapsed operation time.
+///
+/// The error preserves the underlying emission failure and the time measured
+/// when delivery was attempted. It is returned by terminal progress operations
+/// when the reporter rejects the final event.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::{Event, Phase, Progress, ReporterError};
+///
+/// let reporter = |event: &Event| {
+///     if event.phase() == Phase::Failed {
+///         Err(ReporterError::message("output stream is closed"))
+///     } else {
+///         Ok(())
+///     }
+/// };
+/// let progress = Progress::builder(&reporter).start()?;
+/// let error = progress.fail().expect_err("the reporter rejects failed events");
+/// assert_eq!(error.emission_error().to_string(), "output stream is closed");
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+#[must_use]
 #[derive(Clone, Debug)]
 pub struct TerminalError {
+    /// Operation time measured when the final event was attempted.
     elapsed: Duration,
+    /// Failure returned while delivering the final event.
     source: EmissionError,
 }
 
 impl TerminalError {
-    /// Creates a terminal error.
+    /// Pairs the attempted delivery time with its emission failure.
     pub(crate) const fn new(elapsed: Duration, source: EmissionError) -> Self {
         Self { elapsed, source }
     }
 
-    /// Returns elapsed operation time at terminal failure.
+    /// Returns the operation time measured when terminal delivery failed.
     #[must_use]
+    #[inline]
     pub const fn elapsed(&self) -> Duration {
         self.elapsed
     }
 
-    /// Returns the emission failure.
+    /// Borrows the emission failure that caused terminal delivery to fail.
     #[must_use]
+    #[inline]
     pub const fn emission_error(&self) -> &EmissionError {
         &self.source
     }

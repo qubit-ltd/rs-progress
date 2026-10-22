@@ -14,6 +14,36 @@ use crate::Event;
 use crate::error::ReporterError;
 
 /// Failure while delivering one complete Event to a reporter.
+///
+/// This error preserves both the rejected event and the reporter's original
+/// error, so callers can inspect the failed operation and the underlying cause.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::Event;
+/// use qubit_progress::Progress;
+/// use qubit_progress::Reporter;
+/// use qubit_progress::ReporterError;
+/// use qubit_progress::StartError;
+///
+/// struct RejectReporter;
+///
+/// impl Reporter for RejectReporter {
+///     fn report(&self, _event: &Event) -> Result<(), ReporterError> {
+///         Err(ReporterError::message("report rejected"))
+///     }
+/// }
+///
+/// let reporter = RejectReporter;
+/// let error = match Progress::builder(&reporter).start() {
+///     Ok(_) => panic!("the reporter rejects the Started event"),
+///     Err(StartError::Delivery(error)) => error,
+///     Err(other) => panic!("unexpected start error: {other}"),
+/// };
+/// assert_eq!(error.reporter_error().to_string(), "report rejected");
+/// ```
+#[must_use]
 #[derive(Clone, Debug)]
 pub struct DeliveryError {
     event: Box<Event>,

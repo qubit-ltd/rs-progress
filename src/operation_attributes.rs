@@ -11,6 +11,16 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// String key-value attributes shared by every event in one operation.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::OperationAttributes;
+///
+/// let mut attributes = OperationAttributes::new();
+/// attributes.insert("trace_id", "trace-123");
+/// assert_eq!(attributes.get("trace_id"), Some("trace-123"));
+/// ```
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -22,30 +32,34 @@ pub struct OperationAttributes {
 impl OperationAttributes {
     /// Creates an empty attribute set.
     #[must_use]
+    #[inline]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Inserts or replaces one attribute value.
-    pub fn insert(&mut self, key: &str, value: &str) {
-        self.entries.insert(Arc::from(key), Arc::from(value));
-    }
-
     /// Returns one attribute value by key.
     #[must_use]
+    #[inline]
     pub fn get(&self, key: &str) -> Option<&str> {
         self.entries.get(key).map(AsRef::as_ref)
     }
 
     /// Returns all attributes in stable key order.
     #[must_use = "the iterator yields configured attributes"]
+    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> + '_ {
         self.entries.iter().map(|(key, value)| (key.as_ref(), value.as_ref()))
     }
 
     /// Returns whether no attributes are configured.
     #[must_use]
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// Inserts or replaces one attribute value.
+    pub fn insert(&mut self, key: &str, value: &str) {
+        self.entries.insert(Arc::from(key), Arc::from(value));
     }
 }

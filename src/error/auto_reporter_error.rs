@@ -15,6 +15,7 @@ use std::panic;
 use crate::EmissionError;
 
 /// Failure returned by [`crate::AutoReporter::stop`].
+#[must_use]
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum AutoReporterError {
@@ -52,6 +53,7 @@ impl Error for AutoReporterError {
 }
 
 /// An opaque panic payload captured from an automatic reporter worker.
+#[must_use]
 pub struct WorkerPanic {
     /// Original payload retained for callers that need to resume unwinding.
     payload: Box<dyn Any + Send + 'static>,

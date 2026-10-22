@@ -22,6 +22,18 @@ use serde::de::Error;
 use crate::validation::validate_stage;
 
 /// Human-readable sub-stage attached to subsequently emitted events.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::Stage;
+///
+/// let stage = Stage::new("copy", "Copy files").position(2, 3);
+/// assert_eq!(stage.id(), "copy");
+/// assert_eq!(stage.name(), "Copy files");
+/// assert_eq!(stage.position_value(), Some(2));
+/// assert_eq!(stage.total(), Some(3));
+/// ```
 #[cfg_attr(feature = "serde", derive(Serialize))]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Stage {
@@ -81,6 +93,7 @@ impl Stage {
     }
     /// Sets one-based stage position and total number of stages.
     #[must_use]
+    #[inline]
     pub const fn position(mut self, position: u64, total: u64) -> Self {
         self.position = Some(position);
         self.total = Some(total);
@@ -88,21 +101,25 @@ impl Stage {
     }
     /// Returns the stage's stable ID.
     #[must_use]
+    #[inline]
     pub fn id(&self) -> &str {
         &self.id
     }
     /// Returns the stage's display name.
     #[must_use]
+    #[inline]
     pub fn name(&self) -> &str {
         &self.name
     }
     /// Returns the one-based position, if present.
     #[must_use]
+    #[inline]
     pub const fn position_value(&self) -> Option<u64> {
         self.position
     }
     /// Returns the stage count, if present.
     #[must_use]
+    #[inline]
     pub const fn total(&self) -> Option<u64> {
         self.total
     }

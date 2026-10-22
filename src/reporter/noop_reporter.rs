@@ -11,7 +11,16 @@ use crate::Event;
 use crate::Reporter;
 use crate::ReporterError;
 
-/// Reporter that disables an entire operation at start.
+/// Reporter that disables event delivery for an entire operation.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::{NoopReporter, Reporter};
+///
+/// let reporter = NoopReporter;
+/// assert!(!reporter.is_enabled());
+/// ```
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NoopReporter;
 impl Reporter for NoopReporter {

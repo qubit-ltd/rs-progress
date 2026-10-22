@@ -17,6 +17,16 @@ use crate::Reporter;
 use crate::ReporterError;
 
 /// Writes one complete human-readable record for each reported event.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::TextReporter;
+///
+/// let reporter = TextReporter::new(Vec::<u8>::new());
+/// assert!(reporter.into_inner()?.is_empty());
+/// # Ok::<(), std::sync::PoisonError<Vec<u8>>>(())
+/// ```
 pub struct TextReporter<W> {
     /// Writer serialized across concurrent reporter calls.
     writer: Mutex<W>,

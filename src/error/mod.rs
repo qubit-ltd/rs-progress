@@ -13,6 +13,7 @@ mod configuration_error;
 mod delivery_error;
 mod emission_error;
 mod finish_error;
+mod internal;
 mod metric_error;
 mod recoverable_finish_error;
 mod reporter_error;

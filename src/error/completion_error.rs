@@ -11,6 +11,21 @@ use std::error::Error;
 use std::fmt;
 
 /// Metric state that prevents checked successful completion.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::CompletionError;
+///
+/// let error = CompletionError::ActiveWork {
+///     metric_id: "uploads".to_owned(),
+///     active: 2,
+/// };
+/// assert_eq!(
+///     error.to_string(),
+///     "metric \"uploads\" still has 2 active work items at finish"
+/// );
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CompletionError {

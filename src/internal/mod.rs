@@ -7,12 +7,19 @@
 // =============================================================================
 //! Internal lifecycle state shared by progress and metric handles.
 
+mod atomic_u8_like;
+mod atomic_usize_like;
+mod finish_guard;
+mod gate_lifecycle;
 mod operation_gate;
 mod operation_lifecycle;
 mod operation_state;
 mod progress_core;
+mod std_scheduler;
 mod update_guard;
+mod yield_like;
 
+pub(crate) use finish_guard::FinishGuard;
 pub use operation_lifecycle::OperationLifecycle;
 #[doc(hidden)]
 pub use operation_state::__coverage_internal;

@@ -8,6 +8,18 @@
 //! Lifecycle state values for one progress operation.
 
 /// Lifecycle state visible to metric transition errors.
+///
+/// `Open` permits metric transitions, `Finishing` rejects new transitions
+/// while terminal validation runs, and `Closed` marks an immutable operation.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::OperationLifecycle;
+///
+/// assert_eq!(OperationLifecycle::Open, OperationLifecycle::Open);
+/// ```
+#[must_use]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum OperationLifecycle {

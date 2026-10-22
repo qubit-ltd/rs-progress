@@ -38,7 +38,10 @@ impl FinishError {
         }
     }
 
-    /// Returns the completion error when validation failed.
+    /// Returns the completion error when validation failed before terminal
+    /// emission.
+    ///
+    /// Returns `None` when terminal emission was attempted instead.
     #[must_use]
     pub const fn completion_error(&self) -> Option<&CompletionError> {
         match self {

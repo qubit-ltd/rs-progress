@@ -7,6 +7,9 @@
 // =============================================================================
 //! Behavioral coverage for stateful progress metrics.
 
+use std::sync::Arc;
+use std::sync::Barrier;
+
 use qubit_progress::Metric;
 use qubit_progress::MetricDelta;
 use qubit_progress::MetricError;
@@ -251,9 +254,6 @@ fn test_metric_handle_concurrent_updates_preserve_snapshot_invariants() {
 /// Verifies readers observe conservation while writers update one metric.
 #[test]
 fn test_metric_handle_concurrent_snapshots_preserve_conservation() {
-    use std::sync::Arc;
-    use std::sync::Barrier;
-
     const WRITERS: usize = 4;
     const READERS: usize = 4;
     const UPDATES_PER_WRITER: u64 = 25_000;

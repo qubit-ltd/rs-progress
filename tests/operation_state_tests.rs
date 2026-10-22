@@ -7,8 +7,31 @@
 // =============================================================================
 //! Loom models for the production operation freeze protocol.
 
+#[path = "../src/internal/atomic_u8_like.rs"]
+mod atomic_u8_like;
+#[path = "../src/internal/atomic_usize_like.rs"]
+mod atomic_usize_like;
+#[path = "../src/internal/gate_lifecycle.rs"]
+mod gate_lifecycle;
 #[path = "../src/internal/operation_gate.rs"]
 mod operation_gate;
+#[path = "../src/internal/std_scheduler.rs"]
+mod std_scheduler;
+#[path = "../src/internal/yield_like.rs"]
+mod yield_like;
+
+#[cfg(not(coverage))]
+use std::sync::Arc as StdArc;
+#[cfg(not(coverage))]
+use std::sync::Barrier;
+#[cfg(not(coverage))]
+use std::sync::atomic::AtomicU8 as StdAtomicU8;
+#[cfg(not(coverage))]
+use std::sync::atomic::AtomicUsize as StdAtomicUsize;
+#[cfg(not(coverage))]
+use std::thread;
+#[cfg(not(coverage))]
+use std::time::Duration;
 
 #[cfg(not(coverage))]
 use loom::model;
@@ -33,10 +56,7 @@ use operation_gate::YieldLike;
 
 #[test]
 fn test_standard_operation_gate_lifecycle() {
-    use std::sync::atomic::AtomicU8;
-    use std::sync::atomic::AtomicUsize;
-
-    type StandardGate = OperationGate<AtomicU8, AtomicUsize, StdScheduler>;
+    type StandardGate = OperationGate<StdAtomicU8, StdAtomicUsize, StdScheduler>;
 
     let state = StandardGate::new();
     assert_eq!(state.lifecycle(), GateLifecycle::Open);
@@ -56,17 +76,12 @@ fn test_standard_operation_gate_lifecycle() {
 
 #[test]
 fn test_standard_operation_gate_drains_updates_and_rejects_new_work() {
-    use std::sync::Arc;
-    use std::sync::Barrier;
-    use std::thread;
-    use std::time::Duration;
-
-    type StandardGate = OperationGate<std::sync::atomic::AtomicU8, std::sync::atomic::AtomicUsize, StdScheduler>;
-    let state = Arc::new(StandardGate::new());
+    type StandardGate = OperationGate<StdAtomicU8, StdAtomicUsize, StdScheduler>;
+    let state = StdArc::new(StandardGate::new());
     assert_eq!(state.enter_update(), Ok(()));
-    let ready = Arc::new(Barrier::new(2));
-    let finisher_state = Arc::clone(&state);
-    let finisher_ready = Arc::clone(&ready);
+    let ready = StdArc::new(Barrier::new(2));
+    let finisher_state = StdArc::clone(&state);
+    let finisher_ready = StdArc::clone(&ready);
     let finisher = thread::spawn(move || {
         finisher_ready.wait();
         finisher_state.try_begin_finish()

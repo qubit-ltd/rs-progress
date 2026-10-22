@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use crate::MetricError;
+use crate::internal::FinishGuard;
 use crate::internal::OperationLifecycle;
 use crate::internal::UpdateGuard;
 use crate::internal::operation_gate::GateLifecycle;
@@ -19,7 +20,7 @@ use crate::internal::operation_gate::StdScheduler;
 /// Lifecycle and in-flight update counters shared by one operation.
 pub(crate) struct OperationState {
     /// Generic atomic lifecycle protocol used by production and Loom tests.
-    gate: OperationGate<std::sync::atomic::AtomicU8, std::sync::atomic::AtomicUsize, StdScheduler>,
+    pub(super) gate: OperationGate<std::sync::atomic::AtomicU8, std::sync::atomic::AtomicUsize, StdScheduler>,
 }
 
 impl OperationState {
@@ -74,33 +75,7 @@ impl OperationState {
     }
 }
 
-/// Temporary freeze guard used while validating or emitting a terminal event.
-pub(crate) struct FinishGuard<'state> {
-    state: &'state OperationState,
-}
-
-impl FinishGuard<'_> {
-    /// Reopens the operation after completion validation fails.
-    pub(crate) fn reopen(self) {
-        self.state.gate.reopen();
-    }
-
-    /// Permanently closes the operation before terminal emission.
-    pub(crate) fn close(self) {
-        self.state.close();
-    }
-}
-
-impl Drop for FinishGuard<'_> {
-    /// Closes an abandoned freeze guard conservatively.
-    #[inline(never)]
-    fn drop(&mut self) {
-        if self.state.lifecycle() == OperationLifecycle::Finishing {
-            self.state.close();
-        }
-    }
-}
-
+/// Converts the generic operation-gate state into its public lifecycle state.
 #[inline(never)]
 fn operation_lifecycle(state: GateLifecycle) -> OperationLifecycle {
     match state {
