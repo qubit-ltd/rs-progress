@@ -33,6 +33,7 @@ use crate::metric::internal::apply_delta_to_counts;
 /// let tasks = progress.metric("tasks").expect("configured metric must exist");
 /// tasks.start(1)?;
 /// assert_eq!(tasks.snapshot().active(), 1);
+/// tasks.complete(1)?;
 /// progress.finish()?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```

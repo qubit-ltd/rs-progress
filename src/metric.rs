@@ -8,6 +8,7 @@
 //! Metric configuration and immutable metric snapshots.
 
 mod internal;
+#[allow(clippy::module_inception)]
 mod metric;
 mod metric_delta;
 mod metric_handle;

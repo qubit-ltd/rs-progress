@@ -34,13 +34,14 @@ use crate::validation::validate_snapshot_counts;
 ///
 /// let reporter = std::sync::Arc::new(TextReporter::new(Vec::new()));
 /// let progress = Progress::builder_arc(reporter)
-///     .metric(Metric::new("tasks", "Tasks").total(2))
+///     .metric(Metric::new("tasks", "Tasks").total(1))
 ///     .start()?;
 /// let tasks = progress.metric("tasks").expect("configured metric must exist");
 /// tasks.start(1)?;
 /// let snapshot = tasks.snapshot();
 /// assert_eq!(snapshot.active(), 1);
-/// assert_eq!(snapshot.total(), Some(2));
+/// assert_eq!(snapshot.total(), Some(1));
+/// tasks.complete(1)?;
 /// progress.finish()?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```

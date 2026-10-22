@@ -47,7 +47,7 @@ pub use phase::Phase;
 /// ```
 /// use std::sync::{Arc, Mutex};
 ///
-/// use qubit_progress::{Event, Progress, ReporterError};
+/// use qubit_progress::{Event, Metric, Progress, ReporterError};
 ///
 /// let observed = Arc::new(Mutex::new(None::<Event>));
 /// let sink = Arc::clone(&observed);
@@ -55,7 +55,9 @@ pub use phase::Phase;
 ///     *sink.lock().expect("event lock must be available") = Some(event.clone());
 ///     Ok::<(), ReporterError>(())
 /// });
-/// let progress = Progress::builder_arc(reporter).start()?;
+/// let progress = Progress::builder_arc(reporter)
+///     .metric(Metric::new("tasks", "Tasks"))
+///     .start()?;
 /// progress.finish()?;
 /// let event = observed.lock().expect("event lock must be available");
 /// assert_eq!(event.as_ref().expect("finish emits an event").phase(), qubit_progress::Phase::Succeeded);

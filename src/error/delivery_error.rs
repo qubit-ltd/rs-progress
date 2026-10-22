@@ -22,6 +22,7 @@ use crate::error::ReporterError;
 ///
 /// ```
 /// use qubit_progress::Event;
+/// use qubit_progress::Metric;
 /// use qubit_progress::Progress;
 /// use qubit_progress::Reporter;
 /// use qubit_progress::ReporterError;
@@ -36,7 +37,10 @@ use crate::error::ReporterError;
 /// }
 ///
 /// let reporter = RejectReporter;
-/// let error = match Progress::builder(&reporter).start() {
+/// let error = match Progress::builder(&reporter)
+///     .metric(Metric::new("tasks", "Tasks"))
+///     .start()
+/// {
 ///     Ok(_) => panic!("the reporter rejects the Started event"),
 ///     Err(StartError::Delivery(error)) => error,
 ///     Err(other) => panic!("unexpected start error: {other}"),

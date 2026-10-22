@@ -20,6 +20,7 @@ use std::sync::mpsc::sync_channel;
 use std::thread;
 
 // Defines the scoped handle and its lifecycle methods.
+#[allow(clippy::module_inception)]
 mod auto_reporter;
 // Defines the cloneable failure status exposed to workers.
 mod auto_reporter_status;

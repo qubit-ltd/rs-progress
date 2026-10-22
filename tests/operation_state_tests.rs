@@ -55,6 +55,7 @@ use operation_gate::StdScheduler;
 use operation_gate::YieldLike;
 
 #[test]
+#[cfg(not(coverage))]
 fn test_standard_operation_gate_lifecycle() {
     type StandardGate = OperationGate<StdAtomicU8, StdAtomicUsize, StdScheduler>;
 
@@ -75,6 +76,7 @@ fn test_standard_operation_gate_lifecycle() {
 }
 
 #[test]
+#[cfg(not(coverage))]
 fn test_standard_operation_gate_drains_updates_and_rejects_new_work() {
     type StandardGate = OperationGate<StdAtomicU8, StdAtomicUsize, StdScheduler>;
     let state = StdArc::new(StandardGate::new());

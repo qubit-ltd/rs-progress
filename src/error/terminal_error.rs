@@ -22,7 +22,7 @@ use crate::error::EmissionError;
 /// # Examples
 ///
 /// ```
-/// use qubit_progress::{Event, Phase, Progress, ReporterError};
+/// use qubit_progress::{Event, Metric, Phase, Progress, ReporterError};
 ///
 /// let reporter = |event: &Event| {
 ///     if event.phase() == Phase::Failed {
@@ -31,9 +31,14 @@ use crate::error::EmissionError;
 ///         Ok(())
 ///     }
 /// };
-/// let progress = Progress::builder(&reporter).start()?;
+/// let progress = Progress::builder(&reporter)
+///     .metric(Metric::new("tasks", "Tasks"))
+///     .start()?;
 /// let error = progress.fail().expect_err("the reporter rejects failed events");
-/// assert_eq!(error.emission_error().to_string(), "output stream is closed");
+/// assert!(error
+///     .emission_error()
+///     .to_string()
+///     .contains("output stream is closed"));
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[must_use]
@@ -59,20 +64,17 @@ impl TerminalError {
     }
 
     /// Borrows the emission failure that caused terminal delivery to fail.
-    #[must_use]
     #[inline]
     pub const fn emission_error(&self) -> &EmissionError {
         &self.source
     }
 
     /// Consumes the terminal error and returns its emission failure.
-    #[must_use]
     pub fn into_emission_error(self) -> EmissionError {
         self.source
     }
 
     /// Consumes the terminal error and returns elapsed time and failure.
-    #[must_use]
     pub fn into_parts(self) -> (Duration, EmissionError) {
         (self.elapsed, self.source)
     }

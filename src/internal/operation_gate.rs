@@ -53,7 +53,6 @@ where
     /// Panics if an implementation publishes a value outside the three
     /// [`GateLifecycle`] discriminants.
     #[inline]
-    #[must_use]
     pub fn lifecycle(&self) -> GateLifecycle {
         match self.lifecycle.load() {
             value if value == GateLifecycle::Open as u8 => GateLifecycle::Open,

@@ -19,7 +19,7 @@ use crate::error::EmissionError;
 /// # Examples
 ///
 /// ```
-/// use qubit_progress::error::StartError;
+/// use qubit_progress::StartError;
 ///
 /// let error = StartError::OperationIdExhausted;
 /// assert_eq!(error.to_string(), "progress operation IDs are exhausted");

@@ -26,11 +26,13 @@ use crate::WorkerPanic;
 /// # Examples
 ///
 /// ```
-/// use qubit_progress::Progress;
+/// use qubit_progress::{Metric, Progress};
 /// use qubit_progress::TextReporter;
 ///
 /// let reporter = TextReporter::new(Vec::new());
-/// let mut progress = Progress::builder(&reporter).start()?;
+/// let mut progress = Progress::builder(&reporter)
+///     .metric(Metric::new("tasks", "Tasks"))
+///     .start()?;
 /// std::thread::scope(|scope| {
 ///     let auto_reporter = progress.spawn_auto_reporter(scope);
 ///     auto_reporter.stop()?;
