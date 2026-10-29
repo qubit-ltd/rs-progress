@@ -25,6 +25,13 @@ pub use super::yield_like::YieldLike;
 ///
 /// The gate admits updates only while open. Finishing rejects new updates and
 /// waits until admitted updates leave; closing permanently rejects updates.
+/// Its atomic adapters use sequentially consistent operations so the second
+/// open-state check, registration counter, finishing transition, and drain
+/// observation share one total order. This ensures an admitted update is
+/// drained and its writes happen before a successful finish returns: an update
+/// either checks open before the finishing transition and remains counted until
+/// its sequentially consistent decrement, or checks after the transition and
+/// withdraws its registration without being admitted.
 ///
 /// # Type Parameters
 ///
@@ -117,6 +124,12 @@ where
     }
 
     /// Transitions an open gate to finishing and waits for active updates.
+    ///
+    /// The sequentially consistent order ensures that an update either checks
+    /// open before the finishing transition and remains counted until its
+    /// decrement, or checks after the transition and withdraws its registration.
+    /// The decrement follows the update's writes, and this method observes the
+    /// drained counter before returning, publishing those writes to the finisher.
     ///
     /// # Returns
     ///

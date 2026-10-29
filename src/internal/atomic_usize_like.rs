@@ -19,18 +19,18 @@ pub trait AtomicUsizeLike {
     #[must_use]
     fn new(value: usize) -> Self;
 
-    /// Returns the current counter value using acquire ordering.
+    /// Returns the current counter value using sequentially consistent ordering.
     ///
     /// The loaded value must be observed by the caller.
     #[must_use]
     fn load(&self) -> usize;
 
-    /// Adds `value` to the counter using acquire-release ordering.
+    /// Adds `value` to the counter using sequentially consistent ordering.
     ///
     /// The operation updates shared state, so its return value is not needed.
     fn fetch_add(&self, value: usize);
 
-    /// Subtracts `value` from the counter using release ordering.
+    /// Subtracts `value` from the counter using sequentially consistent ordering.
     ///
     /// The operation updates shared state, so its return value is not needed.
     fn fetch_sub(&self, value: usize);
@@ -43,21 +43,21 @@ impl AtomicUsizeLike for AtomicUsize {
         Self::new(value)
     }
 
-    /// Loads the counter with acquire ordering.
+    /// Loads the counter with sequentially consistent ordering.
     #[inline]
     fn load(&self) -> usize {
-        self.load(Ordering::Acquire)
+        self.load(Ordering::SeqCst)
     }
 
-    /// Adds with acquire-release ordering.
+    /// Adds with sequentially consistent ordering.
     #[inline]
     fn fetch_add(&self, value: usize) {
-        self.fetch_add(value, Ordering::AcqRel);
+        self.fetch_add(value, Ordering::SeqCst);
     }
 
-    /// Subtracts with release ordering.
+    /// Subtracts with sequentially consistent ordering.
     #[inline]
     fn fetch_sub(&self, value: usize) {
-        self.fetch_sub(value, Ordering::Release);
+        self.fetch_sub(value, Ordering::SeqCst);
     }
 }

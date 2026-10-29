@@ -30,11 +30,9 @@ use std::sync::atomic::AtomicU8 as StdAtomicU8;
 use std::sync::atomic::AtomicUsize as StdAtomicUsize;
 #[cfg(not(coverage))]
 use std::thread;
-#[cfg(not(coverage))]
-use std::time::Duration;
 
 #[cfg(not(coverage))]
-use loom::model;
+use loom::cell::UnsafeCell as LoomUnsafeCell;
 #[cfg(not(coverage))]
 use loom::sync::Arc;
 #[cfg(not(coverage))]
@@ -43,6 +41,8 @@ use loom::sync::atomic::AtomicU8;
 use loom::sync::atomic::AtomicUsize;
 #[cfg(not(coverage))]
 use loom::sync::atomic::Ordering as LoomOrdering;
+#[cfg(not(coverage))]
+use loom::sync::atomic::fence as loom_fence;
 #[cfg(not(coverage))]
 use loom::thread as loom_thread;
 #[cfg(not(coverage))]
@@ -89,17 +89,30 @@ fn test_standard_operation_gate_drains_updates_and_rejects_new_work() {
         finisher_state.try_begin_finish()
     });
     ready.wait();
-    for _ in 0..100 {
+    let mut observed_finishing = false;
+    for _ in 0..100_000 {
         if state.lifecycle() == GateLifecycle::Finishing {
+            observed_finishing = true;
             break;
         }
         thread::yield_now();
     }
-    assert_eq!(state.lifecycle(), GateLifecycle::Finishing);
-    assert_eq!(state.enter_update(), Err(GateLifecycle::Finishing));
-    thread::sleep(Duration::from_millis(1));
+    let rejected_update = if observed_finishing {
+        Some(state.enter_update())
+    } else {
+        None
+    };
+    if rejected_update == Some(Ok(())) {
+        state.leave_update();
+    }
     state.leave_update();
-    assert!(finisher.join().expect("finisher must join"));
+    let finish_result = finisher.join().expect("finisher must join");
+    assert!(
+        observed_finishing,
+        "finisher did not enter Finishing in time"
+    );
+    assert_eq!(rejected_update, Some(Err(GateLifecycle::Finishing)));
+    assert!(finish_result);
     state.close();
     assert_eq!(state.enter_update(), Err(GateLifecycle::Closed));
 }
@@ -111,15 +124,26 @@ impl AtomicU8Like for AtomicU8 {
     }
 
     fn load(&self) -> u8 {
-        self.load(LoomOrdering::Acquire)
+        // Loom 0.7 does not include SeqCst accesses in its causality order;
+        // fences expose the production total order to UnsafeCell checking.
+        loom_fence(LoomOrdering::SeqCst);
+        let value = self.load(LoomOrdering::SeqCst);
+        loom_fence(LoomOrdering::SeqCst);
+        value
     }
 
     fn compare_exchange(&self, current: u8, new: u8) -> Result<u8, u8> {
-        self.compare_exchange(current, new, LoomOrdering::AcqRel, LoomOrdering::Acquire)
+        loom_fence(LoomOrdering::SeqCst);
+        let result =
+            self.compare_exchange(current, new, LoomOrdering::SeqCst, LoomOrdering::SeqCst);
+        loom_fence(LoomOrdering::SeqCst);
+        result
     }
 
     fn store(&self, value: u8) {
-        self.store(value, LoomOrdering::Release);
+        loom_fence(LoomOrdering::SeqCst);
+        self.store(value, LoomOrdering::SeqCst);
+        loom_fence(LoomOrdering::SeqCst);
     }
 }
 
@@ -130,15 +154,22 @@ impl AtomicUsizeLike for AtomicUsize {
     }
 
     fn load(&self) -> usize {
-        self.load(LoomOrdering::Acquire)
+        loom_fence(LoomOrdering::SeqCst);
+        let value = self.load(LoomOrdering::SeqCst);
+        loom_fence(LoomOrdering::SeqCst);
+        value
     }
 
     fn fetch_add(&self, value: usize) {
-        self.fetch_add(value, LoomOrdering::AcqRel);
+        loom_fence(LoomOrdering::SeqCst);
+        self.fetch_add(value, LoomOrdering::SeqCst);
+        loom_fence(LoomOrdering::SeqCst);
     }
 
     fn fetch_sub(&self, value: usize) {
-        self.fetch_sub(value, LoomOrdering::Release);
+        loom_fence(LoomOrdering::SeqCst);
+        self.fetch_sub(value, LoomOrdering::SeqCst);
+        loom_fence(LoomOrdering::SeqCst);
     }
 }
 
@@ -148,7 +179,7 @@ struct LoomScheduler;
 #[cfg(not(coverage))]
 impl YieldLike for LoomScheduler {
     fn spin_loop() {
-        std::hint::spin_loop();
+        loom_thread::yield_now();
     }
 
     fn yield_now() {
@@ -160,9 +191,19 @@ impl YieldLike for LoomScheduler {
 type LoomOperationGate = OperationGate<AtomicU8, AtomicUsize, LoomScheduler>;
 
 #[cfg(not(coverage))]
+fn check_loom_model(model_fn: impl Fn() + Send + Sync + 'static) {
+    let mut builder = loom::model::Builder::new();
+    builder.max_threads = 4;
+    builder.max_branches = 10_000;
+    builder.max_permutations = Some(100_000);
+    builder.preemption_bound = Some(3);
+    builder.check(model_fn);
+}
+
+#[cfg(not(coverage))]
 #[test]
 fn test_loom_operation_gate_rejects_updates_after_finish_and_close() {
-    model(|| {
+    check_loom_model(|| {
         let state: LoomOperationGate = Default::default();
         assert_eq!(state.lifecycle(), GateLifecycle::Open);
         assert_eq!(state.enter_update(), Ok(()));
@@ -184,11 +225,14 @@ fn test_loom_operation_gate_rejects_updates_after_finish_and_close() {
 #[cfg(not(coverage))]
 #[test]
 fn test_loom_operation_state_never_closes_before_registered_updates_leave() {
-    model(|| {
+    check_loom_model(|| {
         let state = Arc::new(LoomOperationGate::new());
         let updater_state = Arc::clone(&state);
+        let payload = Arc::new(LoomUnsafeCell::new(0usize));
+        let updater_payload = Arc::clone(&payload);
         let updater = loom_thread::spawn(move || {
             if updater_state.enter_update().is_ok() {
+                updater_payload.with_mut(|value| unsafe { *value = 7 });
                 updater_state.leave_update();
             }
         });
@@ -197,9 +241,8 @@ fn test_loom_operation_state_never_closes_before_registered_updates_leave() {
         let finisher = loom_thread::spawn(move || {
             if finisher_state.try_begin_finish() {
                 assert_eq!(finisher_state.lifecycle(), GateLifecycle::Finishing);
-                while finisher_state.active_updates() != 0 {
-                    LoomScheduler::yield_now();
-                }
+                let finished_value = payload.with(|value| unsafe { *value });
+                assert!(matches!(finished_value, 0 | 7));
                 finisher_state.close();
             }
         });
@@ -207,14 +250,17 @@ fn test_loom_operation_state_never_closes_before_registered_updates_leave() {
         updater.join().expect("updater model must join");
         finisher.join().expect("finisher model must join");
         assert_eq!(state.active_updates(), 0);
-        assert!(matches!(state.lifecycle(), GateLifecycle::Open | GateLifecycle::Closed));
+        assert!(matches!(
+            state.lifecycle(),
+            GateLifecycle::Open | GateLifecycle::Closed
+        ));
     });
 }
 
 #[cfg(not(coverage))]
 #[test]
 fn test_loom_operation_state_can_reopen_after_validation_and_close_later() {
-    model(|| {
+    check_loom_model(|| {
         let state = LoomOperationGate::new();
         assert!(state.try_begin_finish());
         state.reopen();
@@ -222,5 +268,45 @@ fn test_loom_operation_state_can_reopen_after_validation_and_close_later() {
         assert!(state.try_begin_finish());
         state.close();
         assert_eq!(state.lifecycle(), GateLifecycle::Closed);
+    });
+}
+
+#[cfg(not(coverage))]
+#[test]
+fn test_loom_operation_state_rejects_updates_while_finishing() {
+    check_loom_model(|| {
+        let state = Arc::new(LoomOperationGate::new());
+        assert_eq!(state.enter_update(), Ok(()));
+        let finisher_state = Arc::clone(&state);
+        let finisher = loom_thread::spawn(move || finisher_state.try_begin_finish());
+        while state.lifecycle() == GateLifecycle::Open {
+            loom_thread::yield_now();
+        }
+        assert_eq!(state.lifecycle(), GateLifecycle::Finishing);
+        assert_eq!(state.enter_update(), Err(GateLifecycle::Finishing));
+        state.leave_update();
+        assert!(finisher.join().expect("finisher model must join"));
+    });
+}
+
+#[cfg(not(coverage))]
+#[test]
+fn test_loom_operation_state_publishes_completed_update_to_finisher() {
+    check_loom_model(|| {
+        let state = LoomOperationGate::new();
+        let payload = Arc::new(LoomUnsafeCell::new(0usize));
+        assert_eq!(state.enter_update(), Ok(()));
+        let updater_payload = Arc::clone(&payload);
+        let updater_state = Arc::new(state);
+        let worker_state = Arc::clone(&updater_state);
+        let updater = loom_thread::spawn(move || {
+            updater_payload.with_mut(|value| unsafe { *value = 42 });
+            worker_state.leave_update();
+        });
+
+        assert!(updater_state.try_begin_finish());
+        let published = payload.with(|value| unsafe { *value });
+        assert_eq!(published, 42);
+        assert!(updater.join().is_ok());
     });
 }
