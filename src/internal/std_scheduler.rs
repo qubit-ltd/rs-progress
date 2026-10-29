@@ -15,11 +15,13 @@ pub struct StdScheduler;
 
 impl YieldLike for StdScheduler {
     /// Uses the standard processor spin hint.
+    #[inline]
     fn spin_loop() {
         std::hint::spin_loop();
     }
 
     /// Yields to another runnable operating-system thread.
+    #[inline]
     fn yield_now() {
         std::thread::yield_now();
     }

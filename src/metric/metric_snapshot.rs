@@ -108,7 +108,6 @@ impl MetricSnapshot {
     /// # Returns
     ///
     /// `Some(total)` when a total was configured, or `None` otherwise.
-    #[must_use]
     #[inline]
     pub const fn total(&self) -> Option<u64> {
         self.total
@@ -185,7 +184,6 @@ impl MetricSnapshot {
     /// # Returns
     ///
     /// `Some(fraction)` for a positive configured total, or `None` otherwise.
-    #[must_use]
     #[inline]
     pub fn completion_fraction(&self) -> Option<f64> {
         self.total
@@ -197,6 +195,19 @@ impl MetricSnapshot {
 #[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for MetricSnapshot {
     /// Deserializes and validates one standalone metric snapshot.
+    ///
+    /// # Parameters
+    ///
+    /// - `deserializer`: Source of the serialized metric snapshot.
+    ///
+    /// # Returns
+    ///
+    /// The snapshot after its metric metadata and counts pass validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns `D::Error` when deserialization fails or the decoded metric
+    /// metadata or counts violate the crate's validation rules.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,

@@ -7,6 +7,9 @@
 // =============================================================================
 //! Validation failure for serialized dynamic metric counts.
 
+use std::error::Error;
+use std::fmt;
+
 /// Validation failure for serialized dynamic metric counts.
 #[derive(Debug)]
 pub(crate) enum SnapshotValidationError {
@@ -32,9 +35,9 @@ pub(crate) enum SnapshotValidationError {
     },
 }
 
-impl std::fmt::Display for SnapshotValidationError {
+impl fmt::Display for SnapshotValidationError {
     /// Formats the snapshot validation failure.
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CountOverflow { metric_id } => {
                 write!(formatter, "counts for metric {metric_id:?} overflowed")
@@ -54,4 +57,4 @@ impl std::fmt::Display for SnapshotValidationError {
     }
 }
 
-impl std::error::Error for SnapshotValidationError {}
+impl Error for SnapshotValidationError {}

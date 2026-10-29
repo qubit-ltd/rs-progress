@@ -8,6 +8,8 @@
 //! Shared operation lifecycle and transition-freezing protocol.
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::AtomicUsize;
 
 use crate::MetricError;
 use crate::internal::FinishGuard;
@@ -20,11 +22,12 @@ use crate::internal::operation_gate::StdScheduler;
 /// Lifecycle and in-flight update counters shared by one operation.
 pub(crate) struct OperationState {
     /// Generic atomic lifecycle protocol used by production and Loom tests.
-    pub(super) gate: OperationGate<std::sync::atomic::AtomicU8, std::sync::atomic::AtomicUsize, StdScheduler>,
+    pub(super) gate: OperationGate<AtomicU8, AtomicUsize, StdScheduler>,
 }
 
 impl OperationState {
     /// Creates a new open operation state.
+    #[must_use]
     pub(crate) fn new() -> Arc<Self> {
         Arc::new(Self {
             gate: OperationGate::new(),

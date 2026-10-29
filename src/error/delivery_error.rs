@@ -65,12 +65,13 @@ impl DeliveryError {
 
     /// Returns the complete Event whose delivery failed.
     #[must_use]
+    #[inline]
     pub const fn event(&self) -> &Event {
         &self.event
     }
 
     /// Returns the original reporter error.
-    #[must_use]
+    #[inline]
     pub const fn reporter_error(&self) -> &ReporterError {
         &self.source
     }
@@ -82,13 +83,11 @@ impl DeliveryError {
     }
 
     /// Consumes the error and returns its reporter error.
-    #[must_use]
     pub fn into_reporter_error(self) -> ReporterError {
         self.source
     }
 
     /// Consumes the error and returns the Event with its reporter error.
-    #[must_use]
     pub fn into_parts(self) -> (Event, ReporterError) {
         (*self.event, self.source)
     }

@@ -83,6 +83,21 @@ pub struct Event {
 }
 impl Event {
     /// Creates an event after the progress operation has validated state.
+    ///
+    /// # Parameters
+    ///
+    /// - `operation_id`: process-local identifier for the operation.
+    /// - `sequence`: attempted-delivery sequence within the operation.
+    /// - `phase`: lifecycle phase represented by the event.
+    /// - `stage`: stage active at delivery, if any.
+    /// - `attributes`: immutable operation correlation metadata.
+    /// - `metrics`: metric snapshots in declaration order.
+    /// - `elapsed`: monotonic time since the operation started.
+    ///
+    /// # Returns
+    ///
+    /// The immutable event snapshot containing the supplied validated state.
+    #[must_use]
     pub(crate) fn new(
         operation_id: u64,
         sequence: u64,
@@ -121,7 +136,11 @@ impl Event {
         self.phase
     }
     /// Returns the active stage, or `None` when the operation has no stage.
-    #[must_use]
+    ///
+    /// # Returns
+    ///
+    /// `Some(stage)` when the event was emitted during a stage, or `None` if
+    /// no stage was active.
     #[inline]
     pub const fn stage(&self) -> Option<&Stage> {
         self.stage.as_ref()
@@ -133,7 +152,14 @@ impl Event {
         &self.attributes
     }
     /// Returns an attribute value by key, or `None` when the key is absent.
-    #[must_use]
+    ///
+    /// # Parameters
+    ///
+    /// - `key`: attribute key to look up.
+    ///
+    /// # Returns
+    ///
+    /// `Some(value)` when the key exists, or `None` when it is absent.
     pub fn attribute(&self, key: &str) -> Option<&str> {
         self.attributes.get(key)
     }
@@ -144,7 +170,15 @@ impl Event {
         &self.metrics
     }
     /// Returns one metric snapshot by stable ID.
-    #[must_use]
+    ///
+    /// # Parameters
+    ///
+    /// - `metric_id`: stable metric ID to look up.
+    ///
+    /// # Returns
+    ///
+    /// `Some(snapshot)` when a metric has the requested ID, or `None` when no
+    /// metric matches.
     pub fn metric(&self, metric_id: &str) -> Option<&MetricSnapshot> {
         self.metrics.iter().find(|metric| metric.id() == metric_id)
     }
@@ -160,6 +194,18 @@ impl Event {
 #[cfg(feature = "serde")]
 impl serde::Serialize for Event {
     /// Serializes one complete event without exposing internal representation.
+    ///
+    /// # Parameters
+    ///
+    /// - `serializer`: destination that encodes the event fields.
+    ///
+    /// # Returns
+    ///
+    /// Returns the serializer's success value after writing the event fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns the serializer's error if any event field cannot be serialized.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -184,6 +230,20 @@ impl serde::Serialize for Event {
 impl<'de> serde::Deserialize<'de> for Event {
     /// Rejects malformed durations and any event that violates public
     /// invariants.
+    ///
+    /// # Parameters
+    ///
+    /// - `deserializer`: source that provides the event's wire representation.
+    ///
+    /// # Returns
+    ///
+    /// Returns the validated event when deserialization succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns the deserializer's error for malformed fields, invalid
+    /// durations, or event data that violates lifecycle and metadata
+    /// invariants.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -204,7 +264,17 @@ impl<'de> serde::Deserialize<'de> for Event {
 }
 
 /// Produces the shortest exact unit representation used by Event JSON.
+///
+/// # Parameters
+///
+/// - `duration`: elapsed time to encode.
+///
+/// # Returns
+///
+/// The shortest integer-unit representation that exactly preserves the
+/// duration.
 #[cfg(feature = "serde")]
+#[must_use]
 fn format_duration(duration: Duration) -> String {
     if duration.is_zero() {
         return "0s".into();
@@ -226,6 +296,19 @@ fn format_duration(duration: Duration) -> String {
 }
 
 /// Parses the strict integer-unit duration grammar used by Event JSON.
+///
+/// # Parameters
+///
+/// - `text`: integer duration followed by a supported unit suffix.
+///
+/// # Returns
+///
+/// Returns the parsed duration when the text follows the supported grammar.
+///
+/// # Errors
+///
+/// Returns an explanation when the unit is unsupported, the amount is not an
+/// unsigned integer, or the resulting duration exceeds the supported range.
 #[cfg(feature = "serde")]
 fn parse_duration(text: &str) -> Result<Duration, String> {
     let (amount, unit) = ["ms", "us", "ns", "h", "m", "s"]
@@ -257,6 +340,20 @@ fn parse_duration(text: &str) -> Result<Duration, String> {
 }
 
 /// Validates fields that are only available after Event JSON deserialization.
+///
+/// # Parameters
+///
+/// - `wire`: owned event fields decoded from the serialized representation.
+/// - `elapsed`: parsed duration to validate against the event phase.
+///
+/// # Returns
+///
+/// Returns `Ok(())` when all event invariants hold.
+///
+/// # Errors
+///
+/// Returns a validation message when the operation ID, metadata, metric
+/// definitions, sequence, elapsed time, or started-event counts are invalid.
 #[cfg(feature = "serde")]
 fn validate_wire_event(wire: &EventWire, elapsed: Duration) -> Result<(), String> {
     if wire.operation_id == 0 {
@@ -280,7 +377,16 @@ fn validate_wire_event(wire: &EventWire, elapsed: Duration) -> Result<(), String
 }
 
 /// Reconstructs stable metric metadata from an immutable metric snapshot.
+///
+/// # Parameters
+///
+/// - `snapshot`: immutable metric state whose definition is reconstructed.
+///
+/// # Returns
+///
+/// The metric definition carrying the snapshot's stable ID, name, and total.
 #[cfg(feature = "serde")]
+#[must_use]
 fn metric_definition(snapshot: &MetricSnapshot) -> Metric {
     let metric = Metric::new(snapshot.id(), snapshot.name());
     match snapshot.total() {
@@ -290,7 +396,17 @@ fn metric_definition(snapshot: &MetricSnapshot) -> Metric {
 }
 
 /// Returns whether one metric snapshot carries any dynamic count.
+///
+/// # Parameters
+///
+/// - `snapshot`: metric state to inspect.
+///
+/// # Returns
+///
+/// `true` when any completed, active, succeeded, failed, or cancelled count is
+/// nonzero.
 #[cfg(feature = "serde")]
+#[must_use]
 const fn has_dynamic_counts(snapshot: &MetricSnapshot) -> bool {
     snapshot.completed() != 0
         || snapshot.active() != 0
@@ -341,6 +457,20 @@ pub fn __coverage_event_serde() {
     coverage_serialize_event(&event, &mut serializer).expect("coverage event must serialize");
 }
 
+/// Serializes an event through the instrumented serde implementation.
+///
+/// # Parameters
+///
+/// - `event`: event to serialize.
+/// - `serializer`: serializer used by the coverage exercise.
+///
+/// # Returns
+///
+/// Returns `Ok(())` when serialization succeeds.
+///
+/// # Errors
+///
+/// Returns the serializer's error when writing the event fails.
 #[cfg(all(feature = "json-lines", coverage))]
 #[inline(never)]
 fn coverage_serialize_event(

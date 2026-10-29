@@ -8,6 +8,10 @@
 //! Log reporter behavior.
 
 #[cfg(feature = "log")]
+use log::Level;
+#[cfg(feature = "log")]
+use log::log_enabled;
+#[cfg(feature = "log")]
 use qubit_progress::LogReporter;
 #[cfg(feature = "log")]
 use qubit_progress::Reporter;
@@ -17,5 +21,5 @@ use qubit_progress::Reporter;
 #[test]
 fn test_log_reporter_samples_info_level_enablement() {
     let reporter = LogReporter;
-    assert_eq!(reporter.is_enabled(), log::log_enabled!(log::Level::Info));
+    assert_eq!(reporter.is_enabled(), log_enabled!(Level::Info));
 }

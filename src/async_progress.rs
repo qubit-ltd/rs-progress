@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::AsyncReporter;
 use crate::MetricHandle;
 use crate::MetricSnapshot;
 use crate::OperationAttributes;
@@ -38,6 +39,11 @@ use self::async_progress_builder::AsyncReporterHandle;
 /// Terminal methods consume the operation. Dropping a pending terminal future
 /// therefore ends the operation locally while leaving remote delivery status
 /// unknown.
+///
+/// # Type Parameters
+///
+/// * `'reporter` - Lifetime of a borrowed reporter; owned reporters use
+///   `'static`.
 ///
 /// # Examples
 ///
@@ -95,11 +101,52 @@ pub struct AsyncProgress<'reporter> {
 }
 
 impl<'reporter> AsyncProgress<'reporter> {
+    /// Creates a builder borrowing one asynchronous reporter.
+    ///
+    /// # Parameters
+    ///
+    /// * `reporter` - Reporter borrowed for the lifetime of the operation.
+    ///
+    /// # Returns
+    ///
+    /// A builder configured to borrow `reporter`.
+    #[inline]
+    pub fn builder(reporter: &'reporter dyn AsyncReporter) -> AsyncProgressBuilder<'reporter> {
+        AsyncProgressBuilder {
+            reporter: AsyncReporterHandle::Borrowed(reporter),
+            interval: Duration::ZERO,
+            metrics: Vec::new(),
+            stage: None,
+            attributes: OperationAttributes::new(),
+        }
+    }
+
+    /// Creates a builder that owns one shared asynchronous reporter.
+    ///
+    /// # Parameters
+    ///
+    /// * `reporter` - Shared reporter moved into the progress operation.
+    ///
+    /// # Returns
+    ///
+    /// A builder that owns the reporter and is not tied to a borrow lifetime.
+    #[inline]
+    pub fn builder_arc(reporter: Arc<dyn AsyncReporter>) -> AsyncProgressBuilder<'static> {
+        AsyncProgressBuilder {
+            reporter: AsyncReporterHandle::Owned(reporter),
+            interval: Duration::ZERO,
+            metrics: Vec::new(),
+            stage: None,
+            attributes: OperationAttributes::new(),
+        }
+    }
+
     /// Returns enablement sampled when this operation started.
     ///
     /// # Returns
     ///
     /// `true` when events are emitted for this operation.
+    #[inline]
     #[must_use]
     pub const fn is_enabled(&self) -> bool {
         self.enabled
@@ -299,11 +346,14 @@ impl<'reporter> AsyncProgress<'reporter> {
     /// # Returns
     ///
     /// `true` when the interval is zero or the next deadline has elapsed.
+    #[inline]
+    #[must_use]
     fn is_due(&self) -> bool {
         self.interval.is_zero() || self.next_due_elapsed.is_some_and(|deadline| self.elapsed() >= deadline)
     }
 
     /// Pushes the next positive-interval deadline after a running attempt.
+    #[inline]
     fn reset_deadline(&mut self) {
         self.next_due_elapsed = self.elapsed().checked_add(self.interval);
     }

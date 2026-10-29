@@ -31,6 +31,10 @@ pub struct OperationAttributes {
 
 impl OperationAttributes {
     /// Creates an empty attribute set.
+    ///
+    /// # Returns
+    ///
+    /// An attribute set with no entries.
     #[must_use]
     #[inline]
     pub fn new() -> Self {
@@ -38,20 +42,34 @@ impl OperationAttributes {
     }
 
     /// Returns one attribute value by key.
-    #[must_use]
+    ///
+    /// # Parameters
+    ///
+    /// - `key`: The attribute key to look up.
+    ///
+    /// # Returns
+    ///
+    /// `Some(value)` when the key exists, or `None` when it does not.
     #[inline]
     pub fn get(&self, key: &str) -> Option<&str> {
         self.entries.get(key).map(AsRef::as_ref)
     }
 
     /// Returns all attributes in stable key order.
-    #[must_use = "the iterator yields configured attributes"]
+    ///
+    /// # Returns
+    ///
+    /// A lazy iterator over key-value pairs in ascending key order.
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> + '_ {
         self.entries.iter().map(|(key, value)| (key.as_ref(), value.as_ref()))
     }
 
     /// Returns whether no attributes are configured.
+    ///
+    /// # Returns
+    ///
+    /// `true` when the set is empty, otherwise `false`.
     #[must_use]
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -59,6 +77,11 @@ impl OperationAttributes {
     }
 
     /// Inserts or replaces one attribute value.
+    ///
+    /// # Parameters
+    ///
+    /// - `key`: The key whose value should be inserted or replaced.
+    /// - `value`: The value to associate with `key`.
     pub fn insert(&mut self, key: &str, value: &str) {
         self.entries.insert(Arc::from(key), Arc::from(value));
     }

@@ -10,14 +10,17 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::SyncSender;
 
-/// Shared control state held by the handle and weakly by worker notifiers.
+/// Coordinates wakeups and shutdown between the reporter handle and worker.
+///
+/// The handle owns this state while notification handles keep only weak
+/// references, so a notifier cannot extend the reporter worker's lifetime.
 pub(in crate::auto_reporter) struct AutoReporterInner {
-    /// Whether state-change notifications drive running reports.
+    /// Whether this reporter runs only when progress notifications arrive.
     pub(in crate::auto_reporter) notification_driven: bool,
-    /// Bounded wake channel sender.
+    /// Bounded channel sender used to wake the worker without blocking callers.
     pub(in crate::auto_reporter) wake_sender: SyncSender<()>,
-    /// Stop request flag.
+    /// Stop request published by the handle and observed by the worker.
     pub(in crate::auto_reporter) stopped: AtomicBool,
-    /// Coalesced notification flag.
+    /// Pending notification marker, merging multiple changes into one report.
     pub(in crate::auto_reporter) pending: AtomicBool,
 }

@@ -30,6 +30,7 @@ use crate::error::internal::MessageError;
 /// assert_eq!(error.to_string(), "output stream is closed");
 /// assert_eq!(error.source_error().to_string(), "output stream is closed");
 /// ```
+#[must_use]
 #[derive(Clone, Debug)]
 pub struct ReporterError {
     source: Arc<dyn Error + Send + Sync + 'static>,
@@ -37,6 +38,18 @@ pub struct ReporterError {
 
 impl ReporterError {
     /// Wraps a concrete reporter failure without discarding its source.
+    ///
+    /// # Type Parameters
+    ///
+    /// `E` is the concrete error type produced by the reporter.
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: the original error, retained as the error source.
+    ///
+    /// # Returns
+    ///
+    /// A reporter error that preserves `source` and its source chain.
     pub fn new<E>(source: E) -> Self
     where
         E: Error + Send + Sync + 'static,
@@ -47,11 +60,25 @@ impl ReporterError {
     }
 
     /// Creates a reporter error from a stable message.
+    ///
+    /// # Parameters
+    ///
+    /// - `message`: a stable diagnostic message describing the reporter
+    ///   failure.
+    ///
+    /// # Returns
+    ///
+    /// A reporter error containing the supplied message.
     pub fn message(message: &str) -> Self {
         Self::new(MessageError::new(message.into()))
     }
 
     /// Returns the original reporter error.
+    ///
+    /// # Returns
+    ///
+    /// A borrowed view of the wrapped error, including its concrete source
+    /// chain.
     #[must_use]
     #[inline]
     pub fn source_error(&self) -> &(dyn Error + Send + Sync + 'static) {
@@ -61,6 +88,10 @@ impl ReporterError {
 
 impl fmt::Display for ReporterError {
     /// Formats the original reporter error.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if formatting succeeds, or the formatter's error otherwise.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.source.fmt(formatter)
     }
@@ -68,6 +99,10 @@ impl fmt::Display for ReporterError {
 
 impl Error for ReporterError {
     /// Returns the original reporter error as the source.
+    ///
+    /// # Returns
+    ///
+    /// `Some` containing the wrapped error.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(self.source.as_ref())
     }

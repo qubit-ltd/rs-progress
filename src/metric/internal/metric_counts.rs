@@ -7,7 +7,11 @@
 // =============================================================================
 use crate::MetricError;
 
-/// Dynamic metric counts for a CAS transaction.
+/// Tracks the dynamic lifecycle counts used to validate a metric update.
+///
+/// The fields partition work into active and terminal states. The terminal
+/// counts are kept separately so an update can preserve both the total and
+/// outcome-specific counts without storing a redundant completed value.
 #[derive(Clone, Copy)]
 pub struct MetricCounts {
     /// Work that has started but is not terminal.
@@ -26,6 +30,11 @@ impl MetricCounts {
     /// Returns the derived public completed count.
     ///
     /// Every transition conserves the total count, which cannot exceed `u64`.
+    ///
+    /// # Returns
+    ///
+    /// `Some` contains the sum of all terminal states when it fits in `u64`;
+    /// `None` indicates that adding the terminal counts overflowed.
     pub fn completed(self) -> Option<u64> {
         self.completed_unclassified
             .checked_add(self.succeeded)?
@@ -37,6 +46,11 @@ impl MetricCounts {
     ///
     /// Returns `None` if either the completed count or the occupied count
     /// overflows `u64`.
+    ///
+    /// # Returns
+    ///
+    /// `Some` contains the total active and terminal work when it fits in
+    /// `u64`; `None` indicates that either addition overflowed.
     pub fn occupied(self) -> Option<u64> {
         self.completed()?.checked_add(self.active)
     }
@@ -48,6 +62,12 @@ impl MetricCounts {
     /// Returns [`MetricError::CountOverflow`] if the aggregate count overflows,
     /// or [`MetricError::TotalExceeded`] if a configured total is smaller than
     /// the occupied count.
+    ///
+    /// # Parameters
+    ///
+    /// - `metric_id`: Identifier attached to any validation error.
+    /// - `total`: Optional configured upper bound for active and completed
+    ///   work.
     pub fn validate(self, metric_id: &str, total: Option<u64>) -> Result<(), MetricError> {
         let occupied = self.occupied().ok_or_else(|| MetricError::CountOverflow {
             metric_id: metric_id.into(),

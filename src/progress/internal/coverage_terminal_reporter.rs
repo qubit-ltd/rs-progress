@@ -14,14 +14,23 @@ use crate::Event;
 use crate::Reporter;
 use crate::ReporterError;
 
-/// Reporter that fails only after the Started event.
+/// Test reporter that allows the first event and rejects every later delivery.
+///
+/// This helper drives the terminal-delivery error path in the coverage entry
+/// point without changing the behavior of production reporters.
 pub(crate) struct CoverageTerminalReporter {
-    /// Number of delivery attempts observed by the reporter.
+    /// Number of calls to [`Reporter::report`] observed so far.
+    ///
+    /// The first call is accepted; each subsequent call returns a stable
+    /// coverage-only failure.
     pub(crate) attempts: AtomicU64,
 }
 
 impl Reporter for CoverageTerminalReporter {
-    /// Fails terminal delivery after allowing operation startup.
+    /// Accepts the first event and reports a failure for later events.
+    ///
+    /// The atomic counter is relaxed because it only selects which call fails;
+    /// it does not publish or synchronize any other data.
     fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         if self.attempts.fetch_add(1, Ordering::Relaxed) == 0 {
             Ok(())

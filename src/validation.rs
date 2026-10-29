@@ -21,7 +21,20 @@ mod internal;
 #[cfg(feature = "serde")]
 use internal::SnapshotValidationError;
 
-/// Validates the fixed metric configuration for one operation.
+/// Validates that an operation has unique metric IDs and nonblank IDs/names.
+///
+/// # Parameters
+///
+/// - `metrics`: Metric definitions in their configured order.
+///
+/// # Returns
+///
+/// `Ok(())` when every metric is valid.
+///
+/// # Errors
+///
+/// Returns the first configuration error for an empty list, blank ID or name,
+/// or duplicate ID.
 pub(crate) fn validate_metrics(metrics: &[Metric]) -> Result<(), ConfigurationError> {
     if metrics.is_empty() {
         return Err(ConfigurationError::NoMetrics);
@@ -45,7 +58,20 @@ pub(crate) fn validate_metrics(metrics: &[Metric]) -> Result<(), ConfigurationEr
     Ok(())
 }
 
-/// Validates optional stage metadata.
+/// Validates stage identifiers and optional one-based sequence metadata.
+///
+/// # Parameters
+///
+/// - `stage`: Stage metadata to validate.
+///
+/// # Returns
+///
+/// `Ok(())` when identifiers are nonblank and position metadata is valid.
+///
+/// # Errors
+///
+/// Returns a configuration error for blank identifiers, incomplete position
+/// metadata, or a position outside `1..=total`.
 pub(crate) fn validate_stage(stage: &Stage) -> Result<(), ConfigurationError> {
     if stage.id.trim().is_empty() {
         return Err(ConfigurationError::EmptyStageId);
@@ -61,7 +87,19 @@ pub(crate) fn validate_stage(stage: &Stage) -> Result<(), ConfigurationError> {
     }
 }
 
-/// Validates operation correlation attribute keys.
+/// Ensures operation correlation attributes use nonblank keys.
+///
+/// # Parameters
+///
+/// - `attributes`: Attributes attached to the operation.
+///
+/// # Returns
+///
+/// `Ok(())` when every key contains a non-whitespace character.
+///
+/// # Errors
+///
+/// Returns [`ConfigurationError::EmptyAttributeKey`] for the first blank key.
 pub(crate) fn validate_attributes(attributes: &OperationAttributes) -> Result<(), ConfigurationError> {
     if let Some((key, _)) = attributes.iter().find(|(key, _)| key.trim().is_empty()) {
         return Err(ConfigurationError::EmptyAttributeKey { key: key.to_owned() });
@@ -69,7 +107,20 @@ pub(crate) fn validate_attributes(attributes: &OperationAttributes) -> Result<()
     Ok(())
 }
 
-/// Validates one metric's dynamic counts against its configured total.
+/// Checks snapshot count consistency before accepting serialized data.
+///
+/// # Parameters
+///
+/// - `snapshot`: Dynamic metric counts to validate.
+///
+/// # Returns
+///
+/// `Ok(())` when classified counts fit within completed work and all counts
+/// fit within the configured total.
+///
+/// # Errors
+///
+/// Returns a snapshot validation error for overflow or inconsistent counts.
 #[cfg(feature = "serde")]
 pub(crate) fn validate_snapshot_counts(snapshot: &MetricSnapshot) -> Result<(), SnapshotValidationError> {
     let classified = snapshot

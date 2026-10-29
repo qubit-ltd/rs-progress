@@ -47,12 +47,28 @@ pub trait AsyncReporter: Send + Sync {
     ///
     /// [`crate::AsyncProgressBuilder::start_async`] samples this once per
     /// operation.
+    ///
+    /// # Returns
+    ///
+    /// `true` when the operation should emit events; otherwise, `false`.
+    #[must_use]
     fn is_enabled(&self) -> bool {
         true
     }
 
     /// Delivers one complete event.
     ///
-    /// The returned error preserves the sink's original error source.
+    /// # Parameters
+    ///
+    /// * `event` - Complete immutable progress data to deliver.
+    ///
+    /// # Returns
+    ///
+    /// A future that resolves when delivery completes. Dropping it early leaves
+    /// the delivery status unknown.
+    ///
+    /// # Errors
+    ///
+    /// Returns the sink's failure while preserving its original error source.
     fn report<'a>(&'a self, event: &'a Event) -> ReportFuture<'a>;
 }

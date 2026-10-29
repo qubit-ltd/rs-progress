@@ -13,7 +13,9 @@ use crate::reporter::AsyncReporter;
 
 /// Selects an asynchronous reporter borrowed for the operation or owned by it.
 pub(crate) enum AsyncReporterHandle<'reporter> {
+    /// Borrows a reporter whose lifetime covers the progress operation.
     Borrowed(&'reporter dyn AsyncReporter),
+    /// Shares ownership of a reporter for the progress operation.
     Owned(Arc<dyn AsyncReporter>),
 }
 

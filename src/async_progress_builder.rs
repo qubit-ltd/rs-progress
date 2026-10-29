@@ -16,20 +16,25 @@ use crate::MetricHandle;
 use crate::OperationAttributes;
 use crate::Phase;
 use crate::Stage;
+use crate::async_progress::AsyncProgress;
 use crate::error::StartError;
 use crate::internal::OperationState;
 use crate::internal::metric_snapshots;
 use crate::progress::allocate_operation_id;
-use crate::reporter::AsyncReporter;
 use crate::validation::validate_attributes;
 use crate::validation::validate_metrics;
 use crate::validation::validate_stage;
 
-#[path = "async_progress_builder/async_reporter_handle.rs"]
+#[path = "async_progress_builder/internal/async_reporter_handle.rs"]
 mod async_reporter_handle;
 pub(crate) use self::async_reporter_handle::AsyncReporterHandle;
 
 /// Configures an asynchronous progress operation before it starts.
+///
+/// # Type Parameters
+///
+/// * `'reporter` - Lifetime of a borrowed reporter; owned reporters use
+///   `'static`.
 ///
 /// # Examples
 ///
@@ -57,50 +62,91 @@ pub(crate) use self::async_reporter_handle::AsyncReporterHandle;
 ///         .expect("valid default metadata starts successfully");
 /// }
 /// ```
+#[must_use]
 pub struct AsyncProgressBuilder<'reporter> {
     /// Reporter receiving complete events.
-    reporter: AsyncReporterHandle<'reporter>,
+    pub(super) reporter: AsyncReporterHandle<'reporter>,
     /// Minimum interval between due-based running reports.
-    interval: Duration,
+    pub(super) interval: Duration,
     /// Stable operation metrics.
-    metrics: Vec<Metric>,
+    pub(super) metrics: Vec<Metric>,
     /// Optional initial stage.
-    stage: Option<Stage>,
+    pub(super) stage: Option<Stage>,
     /// Correlation attributes shared by all operation events.
-    attributes: OperationAttributes,
+    pub(super) attributes: OperationAttributes,
 }
 
 impl<'reporter> AsyncProgressBuilder<'reporter> {
     /// Sets the minimum interval between due-based running reports.
-    #[must_use]
+    ///
+    /// # Parameters
+    ///
+    /// * `interval` - Minimum spacing used when deciding whether a running
+    ///   report is due.
+    ///
+    /// # Returns
+    ///
+    /// The builder with the new interval.
+    #[inline]
     pub const fn interval(mut self, interval: Duration) -> Self {
         self.interval = interval;
         self
     }
 
     /// Adds one stable metric to the operation.
-    #[must_use]
+    ///
+    /// # Parameters
+    ///
+    /// * `metric` - Metric definition to attach to each operation event.
+    ///
+    /// # Returns
+    ///
+    /// The builder with the metric appended.
     pub fn metric(mut self, metric: Metric) -> Self {
         self.metrics.push(metric);
         self
     }
 
     /// Adds stage metadata to the Started event and subsequent events.
-    #[must_use]
+    ///
+    /// # Parameters
+    ///
+    /// * `stage` - Initial stage metadata.
+    ///
+    /// # Returns
+    ///
+    /// The builder with the initial stage configured.
+    #[inline]
     pub fn stage(mut self, stage: Stage) -> Self {
         self.stage = Some(stage);
         self
     }
 
     /// Adds or replaces one operation correlation attribute.
-    #[must_use]
+    ///
+    /// # Parameters
+    ///
+    /// * `key` - Attribute key.
+    /// * `value` - Attribute value.
+    ///
+    /// # Returns
+    ///
+    /// The builder with this attribute inserted or replaced.
     pub fn attribute(mut self, key: &str, value: &str) -> Self {
         self.attributes.insert(key, value);
         self
     }
 
     /// Replaces all operation correlation attributes.
-    #[must_use]
+    ///
+    /// # Parameters
+    ///
+    /// * `attributes` - Complete replacement set of operation attributes.
+    ///
+    /// # Returns
+    ///
+    /// The builder with the supplied attributes.
+    #[inline]
     pub fn attributes(mut self, attributes: OperationAttributes) -> Self {
         self.attributes = attributes;
         self
@@ -120,7 +166,7 @@ impl<'reporter> AsyncProgressBuilder<'reporter> {
     ///
     /// Returns [`StartError`] when metadata validation fails, no operation ID
     /// is available, or the reporter rejects the Started event.
-    pub async fn start_async(self) -> Result<crate::async_progress::AsyncProgress<'reporter>, StartError> {
+    pub async fn start_async(self) -> Result<AsyncProgress<'reporter>, StartError> {
         validate_metrics(&self.metrics)?;
         if let Some(stage) = &self.stage {
             validate_stage(stage)?;
@@ -130,7 +176,7 @@ impl<'reporter> AsyncProgressBuilder<'reporter> {
         let enabled = self.reporter.as_reporter().is_enabled();
         let operation_state = OperationState::new();
         let operation_id = enabled.then(allocate_operation_id).transpose()?;
-        let mut progress = crate::async_progress::AsyncProgress {
+        let mut progress = AsyncProgress {
             reporter: self.reporter,
             enabled,
             metrics: self
@@ -154,31 +200,5 @@ impl<'reporter> AsyncProgressBuilder<'reporter> {
             progress.started_at = Instant::now();
         }
         Ok(progress)
-    }
-}
-
-impl<'reporter> crate::async_progress::AsyncProgress<'reporter> {
-    /// Creates a builder borrowing one asynchronous reporter.
-    #[must_use]
-    pub fn builder(reporter: &'reporter dyn AsyncReporter) -> AsyncProgressBuilder<'reporter> {
-        AsyncProgressBuilder {
-            reporter: AsyncReporterHandle::Borrowed(reporter),
-            interval: Duration::ZERO,
-            metrics: Vec::new(),
-            stage: None,
-            attributes: OperationAttributes::new(),
-        }
-    }
-
-    /// Creates a builder that owns one shared asynchronous reporter.
-    #[must_use]
-    pub fn builder_arc(reporter: Arc<dyn AsyncReporter>) -> AsyncProgressBuilder<'static> {
-        AsyncProgressBuilder {
-            reporter: AsyncReporterHandle::Owned(reporter),
-            interval: Duration::ZERO,
-            metrics: Vec::new(),
-            stage: None,
-            attributes: OperationAttributes::new(),
-        }
     }
 }

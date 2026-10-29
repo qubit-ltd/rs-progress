@@ -10,6 +10,7 @@
 use std::error::Error;
 use std::panic::AssertUnwindSafe;
 use std::panic::catch_unwind;
+use std::panic::panic_any;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
@@ -316,7 +317,7 @@ impl Reporter for NonStringPanickingReporter {
         if self.reports.fetch_add(1, Ordering::Relaxed) == 0 {
             Ok(())
         } else {
-            std::panic::panic_any(7_u8);
+            panic_any(7_u8);
         }
     }
 }

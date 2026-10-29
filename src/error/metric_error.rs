@@ -13,6 +13,23 @@ use std::fmt;
 use crate::OperationLifecycle;
 
 /// Failure while reading or mutating one stateful metric.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::Metric;
+/// use qubit_progress::MetricError;
+/// use qubit_progress::NoopReporter;
+/// use qubit_progress::Progress;
+///
+/// let reporter = NoopReporter;
+/// let progress = Progress::builder(&reporter)
+///     .metric(Metric::new("tasks", "Tasks").total(0))
+///     .start()?;
+/// let tasks = progress.metric("tasks").expect("configured metric must exist");
+/// assert!(matches!(tasks.start(1), Err(MetricError::TotalExceeded { .. })));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MetricError {
@@ -50,6 +67,11 @@ pub enum MetricError {
 
 impl fmt::Display for MetricError {
     /// Formats the metric transition failure.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` when the formatter accepts the message, or an error
+    /// when formatting cannot be completed.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::OperationNotOpen { metric_id, state } => write!(

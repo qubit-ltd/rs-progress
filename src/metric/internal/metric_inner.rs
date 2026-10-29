@@ -36,6 +36,11 @@ pub struct MetricInner {
 
 impl MetricInner {
     /// Builds one live metric inner state with zeroed counters.
+    ///
+    /// # Parameters
+    ///
+    /// - `metric`: The fixed definition used to validate future updates.
+    #[must_use]
     pub fn new(metric: Metric) -> Self {
         Self {
             metric,
@@ -48,11 +53,49 @@ impl MetricInner {
         }
     }
 
+    /// Reads a consistent copy of all counters.
+    ///
+    /// If an update overlaps the read, this method retries until it observes
+    /// the same even gate version before and after reading. Under sustained
+    /// contention, the method may wait for an update to finish.
+    ///
+    /// # Returns
+    ///
+    /// A consistent copy of the current counters.
+    #[must_use]
+    pub fn snapshot_counts(&self) -> MetricCounts {
+        let mut attempts = 0;
+        loop {
+            let start = self.gate.load();
+            if start & 1 != 0 {
+                wait_for_contention(attempts);
+                attempts += 1;
+                continue;
+            }
+
+            let counts = self.read_counts();
+            if start == self.gate.load() {
+                return counts;
+            }
+
+            wait_for_contention(attempts);
+            attempts += 1;
+        }
+    }
+
     /// Runs one validated update while exclusively holding the gate.
     ///
     /// The closure receives a local copy of the counters. Its changes are
     /// committed only when it returns `Ok`, so a validation error leaves the
     /// stored counters unchanged. The gate is released on return or unwind.
+    ///
+    /// # Parameters
+    ///
+    /// - `update`: Validates and modifies a local copy of the counters.
+    ///
+    /// # Returns
+    ///
+    /// The value returned by `update` when the update succeeds.
     ///
     /// # Errors
     ///
@@ -108,30 +151,5 @@ impl MetricInner {
         self.succeeded.store(counts.succeeded, Ordering::Release);
         self.failed.store(counts.failed, Ordering::Release);
         self.cancelled.store(counts.cancelled, Ordering::Release);
-    }
-
-    /// Reads a consistent copy of all counters.
-    ///
-    /// If an update overlaps the read, this method retries until it observes
-    /// the same even gate version before and after reading. Under sustained
-    /// contention, the method may wait for an update to finish.
-    pub fn snapshot_counts(&self) -> MetricCounts {
-        let mut attempts = 0;
-        loop {
-            let start = self.gate.load();
-            if start & 1 != 0 {
-                wait_for_contention(attempts);
-                attempts += 1;
-                continue;
-            }
-
-            let counts = self.read_counts();
-            if start == self.gate.load() {
-                return counts;
-            }
-
-            wait_for_contention(attempts);
-            attempts += 1;
-        }
     }
 }

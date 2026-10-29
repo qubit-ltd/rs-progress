@@ -15,6 +15,23 @@ use crate::error::CompletionError;
 use crate::error::TerminalError;
 
 /// Failure from checked finish after the operation has been consumed.
+///
+/// `Progress::finish` returns this error when completion validation or terminal
+/// event delivery fails.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::FinishError;
+///
+/// fn inspect_finish_error(error: &FinishError) {
+///     assert!(error.elapsed() >= std::time::Duration::ZERO);
+///     if let Some(completion_error) = error.completion_error() {
+///         eprintln!("completion failed: {completion_error}");
+///     }
+/// }
+/// ```
+#[must_use]
 #[derive(Debug)]
 pub enum FinishError {
     /// Completion validation failed before terminal emission.
@@ -30,7 +47,12 @@ pub enum FinishError {
 
 impl FinishError {
     /// Returns elapsed operation time sampled by the finish attempt.
+    ///
+    /// # Returns
+    ///
+    /// The elapsed operation time recorded by the finish attempt.
     #[must_use]
+    #[inline]
     pub const fn elapsed(&self) -> Duration {
         match self {
             Self::Incomplete { elapsed, .. } => *elapsed,
@@ -42,7 +64,13 @@ impl FinishError {
     /// emission.
     ///
     /// Returns `None` when terminal emission was attempted instead.
+    ///
+    /// # Returns
+    ///
+    /// `Some` contains the completion validation error; `None` means terminal
+    /// emission was attempted.
     #[must_use]
+    #[inline]
     pub const fn completion_error(&self) -> Option<&CompletionError> {
         match self {
             Self::Incomplete { source, .. } => Some(source),
@@ -53,6 +81,10 @@ impl FinishError {
 
 impl fmt::Display for FinishError {
     /// Formats the completion or terminal failure.
+    ///
+    /// # Returns
+    ///
+    /// The formatter result, including any formatting error.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Incomplete { source, .. } => source.fmt(formatter),
@@ -63,6 +95,10 @@ impl fmt::Display for FinishError {
 
 impl Error for FinishError {
     /// Returns the nested completion or terminal error.
+    ///
+    /// # Returns
+    ///
+    /// Always returns the nested error that caused finish to fail.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Incomplete { source, .. } => Some(source),

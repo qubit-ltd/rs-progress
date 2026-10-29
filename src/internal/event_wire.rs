@@ -7,13 +7,15 @@
 // =============================================================================
 //! Owned event representation used to validate deserialized event data.
 
+use serde::Deserialize;
+
 use crate::MetricSnapshot;
 use crate::OperationAttributes;
 use crate::Stage;
 use crate::event::Phase;
 
 /// Owned event representation used before validation during deserialization.
-#[derive(serde::Deserialize)]
+#[derive(Deserialize)]
 pub(super) struct EventWire {
     /// Process-local operation identifier.
     pub(super) operation_id: u64,

@@ -54,7 +54,13 @@ pub enum RecoverableFinishError<'reporter> {
 impl<'reporter> RecoverableFinishError<'reporter> {
     /// Returns the completion validation error, or `None` after terminal
     /// delivery failed.
+    ///
+    /// # Returns
+    ///
+    /// `Some` contains the completion validation error; `None` means terminal
+    /// delivery was attempted.
     #[must_use]
+    #[inline]
     pub fn completion_error(&self) -> Option<&CompletionError> {
         match self {
             Self::Incomplete { source, .. } => Some(source),
@@ -69,6 +75,10 @@ impl<'reporter> RecoverableFinishError<'reporter> {
     ///
     /// Returns the terminal delivery error when emission failed and the
     /// operation cannot be recovered.
+    ///
+    /// # Returns
+    ///
+    /// The reusable progress operation after successful validation.
     pub fn into_progress(self) -> Result<Progress<'reporter>, TerminalError> {
         match self {
             Self::Incomplete { progress, .. } => Ok(progress),
@@ -82,6 +92,10 @@ impl<'reporter> RecoverableFinishError<'reporter> {
     ///
     /// Returns the terminal delivery error when emission failed and no
     /// reusable progress operation or completion validation error exists.
+    ///
+    /// # Returns
+    ///
+    /// The reusable progress operation and completion validation error.
     pub fn into_parts(self) -> Result<(Progress<'reporter>, CompletionError), TerminalError> {
         match self {
             Self::Incomplete { progress, source } => Ok((progress, source)),
@@ -92,6 +106,10 @@ impl<'reporter> RecoverableFinishError<'reporter> {
 
 impl fmt::Debug for RecoverableFinishError<'_> {
     /// Formats the error without requiring the reporter to implement Debug.
+    ///
+    /// # Returns
+    ///
+    /// The formatter result, including any formatting error.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Incomplete { source, .. } => formatter
@@ -108,6 +126,10 @@ impl fmt::Debug for RecoverableFinishError<'_> {
 
 impl fmt::Display for RecoverableFinishError<'_> {
     /// Formats the completion or terminal failure.
+    ///
+    /// # Returns
+    ///
+    /// The formatter result, including any formatting error.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Incomplete { source, .. } => source.fmt(formatter),
@@ -118,6 +140,10 @@ impl fmt::Display for RecoverableFinishError<'_> {
 
 impl Error for RecoverableFinishError<'_> {
     /// Returns the nested completion or terminal error.
+    ///
+    /// # Returns
+    ///
+    /// The nested completion or terminal error.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Incomplete { source, .. } => Some(source),

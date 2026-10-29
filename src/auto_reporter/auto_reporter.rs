@@ -12,16 +12,22 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread::ScopedJoinHandle;
 
-use super::AutoReporterInner;
 use super::AutoReporterStatus;
 use super::ProgressNotifier;
-use super::wake;
+use super::internal::AutoReporterInner;
+use super::internal::wake;
 use crate::AutoReporterError;
 use crate::EmissionError;
 use crate::Progress;
 use crate::WorkerPanic;
 
 /// Handle controlling one scoped automatic reporter.
+///
+/// # Type Parameters
+///
+/// - `'scope` is the lifetime of the scoped worker thread.
+/// - `'reporter` is the lifetime of the reporter borrowed by the progress
+///   operation.
 ///
 /// # Examples
 ///
@@ -54,6 +60,11 @@ pub struct AutoReporter<'scope, 'reporter> {
 
 impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     /// Returns a cloneable worker notification handle.
+    ///
+    /// # Returns
+    ///
+    /// A notifier that can wake a notification-driven reporter. For other
+    /// reporters, its notification operation is a no-op.
     #[must_use]
     #[inline]
     pub fn notifier(&self) -> ProgressNotifier {
@@ -66,6 +77,10 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     }
 
     /// Returns a cloneable status view for workers.
+    ///
+    /// # Returns
+    ///
+    /// A status handle that observes whether the worker has failed.
     #[must_use]
     #[inline]
     pub fn status(&self) -> AutoReporterStatus {
@@ -77,6 +92,11 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
     /// A reporter or snapshot error is returned as
     /// [`AutoReporterError::Emission`]. A worker panic is captured as
     /// [`AutoReporterError::Panicked`] after the worker has been joined.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the worker completed successfully, or the emission or
+    /// worker panic failure captured from it.
     ///
     /// # Errors
     ///

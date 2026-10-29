@@ -17,7 +17,11 @@
 /// ```
 /// use qubit_progress::OperationLifecycle;
 ///
-/// assert_eq!(OperationLifecycle::Open, OperationLifecycle::Open);
+/// let can_accept_updates = match OperationLifecycle::Finishing {
+///     OperationLifecycle::Open => true,
+///     OperationLifecycle::Finishing | OperationLifecycle::Closed => false,
+/// };
+/// assert!(!can_accept_updates);
 /// ```
 #[must_use]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

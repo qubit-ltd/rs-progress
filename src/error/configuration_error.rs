@@ -11,6 +11,24 @@ use std::error::Error;
 use std::fmt;
 
 /// Invalid fixed metadata supplied to a progress operation.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::{ConfigurationError, Metric, NoopReporter, Progress, StartError};
+///
+/// let result = Progress::builder(&NoopReporter)
+///     .metric(Metric::new("", "Tasks").total(1))
+///     .start();
+/// match result {
+///     Err(StartError::InvalidConfiguration(error)) => {
+///         assert_eq!(error, ConfigurationError::EmptyMetricId { index: 0 });
+///         assert_eq!(error.to_string(), "metric at index 0 has an empty ID");
+///     }
+///     Err(error) => panic!("unexpected start error: {error}"),
+///     Ok(_) => panic!("invalid metric configuration was accepted"),
+/// }
+/// ```
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]

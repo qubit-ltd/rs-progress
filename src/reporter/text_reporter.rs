@@ -18,6 +18,10 @@ use crate::ReporterError;
 
 /// Writes one complete human-readable record for each reported event.
 ///
+/// # Type Parameters
+///
+/// - `W`: The owned writer receiving the formatted event records.
+///
 /// # Examples
 ///
 /// ```
@@ -34,7 +38,17 @@ pub struct TextReporter<W> {
 
 impl<W> TextReporter<W> {
     /// Creates a text reporter that owns `writer`.
+    ///
+    /// # Parameters
+    ///
+    /// - `writer`: The destination for complete newline-terminated event
+    ///   records.
+    ///
+    /// # Returns
+    ///
+    /// A reporter that serializes writes to the owned destination.
     #[must_use]
+    #[inline]
     pub const fn new(writer: W) -> Self {
         Self {
             writer: Mutex::new(writer),
@@ -45,6 +59,16 @@ impl<W> TextReporter<W> {
     ///
     /// Returns the contained writer in the error when a reporting thread
     /// panicked while holding the mutex.
+    ///
+    /// # Returns
+    ///
+    /// The writer when the mutex was not poisoned.
+    ///
+    /// # Errors
+    ///
+    /// Returns the writer inside [`PoisonError`] if a reporting thread
+    /// panicked while holding the mutex.
+    #[inline]
     pub fn into_inner(self) -> Result<W, PoisonError<W>> {
         self.writer.into_inner()
     }
@@ -55,6 +79,15 @@ where
     W: Write + Send,
 {
     /// Formats and writes one complete event line under the writer lock.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` after the complete line is written.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ReporterError`] if the writer is poisoned or rejects the
+    /// complete line.
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
         let mut line = format_event(event);
         line.push('\n');

@@ -19,6 +19,7 @@ use criterion::Criterion;
 use criterion::Throughput;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use qubit_progress::Event;
 use qubit_progress::Metric;
 use qubit_progress::NoopReporter;
 use qubit_progress::Progress;
@@ -43,7 +44,7 @@ fn bench_disabled_report(criterion: &mut Criterion) {
 
 /// Benchmarks an enabled running report with one fully configured metric.
 fn bench_enabled_report(criterion: &mut Criterion) {
-    let reporter = |event: &qubit_progress::Event| {
+    let reporter = |event: &Event| {
         black_box(event);
         Ok::<(), ReporterError>(())
     };
@@ -63,7 +64,7 @@ fn bench_enabled_report(criterion: &mut Criterion) {
 
 /// Benchmarks the positive-interval path that skips an undued report closure.
 fn bench_not_due_report(criterion: &mut Criterion) {
-    let reporter = |event: &qubit_progress::Event| {
+    let reporter = |event: &Event| {
         black_box(event);
         Ok::<(), ReporterError>(())
     };
@@ -81,7 +82,7 @@ fn bench_not_due_report(criterion: &mut Criterion) {
 
 /// Benchmarks creation and terminal delivery of a complete multi-metric event.
 fn bench_multi_metric_terminal(criterion: &mut Criterion) {
-    let reporter = |event: &qubit_progress::Event| {
+    let reporter = |event: &Event| {
         black_box(event);
         Ok::<(), ReporterError>(())
     };
@@ -139,7 +140,7 @@ fn bench_disabled_auto_reporter_status(criterion: &mut Criterion) {
 
 /// Benchmarks notification calls for a heartbeat-driven automatic reporter.
 fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
-    let reporter = |event: &qubit_progress::Event| {
+    let reporter = |event: &Event| {
         black_box(event);
         Ok::<(), ReporterError>(())
     };
@@ -161,7 +162,7 @@ fn bench_heartbeat_auto_reporter_notification(criterion: &mut Criterion) {
 
 /// Measures the lifecycle cost of one enabled automatic reporter thread.
 fn bench_enabled_auto_reporter_spawn_stop(criterion: &mut Criterion) {
-    let reporter = |event: &qubit_progress::Event| {
+    let reporter = |event: &Event| {
         black_box(event);
         Ok::<(), ReporterError>(())
     };
@@ -185,7 +186,7 @@ fn bench_enabled_auto_reporter_spawn_stop(criterion: &mut Criterion) {
 /// Measures worker fan-in through one automatic reporter and one shared metric.
 fn bench_auto_reporter_worker_fan_in(criterion: &mut Criterion) {
     const UPDATES_PER_WORKER: u64 = 256;
-    let reporter = |event: &qubit_progress::Event| {
+    let reporter = |event: &Event| {
         black_box(event);
         Ok::<(), ReporterError>(())
     };

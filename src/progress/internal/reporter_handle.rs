@@ -12,6 +12,11 @@ use std::sync::Arc;
 use crate::Reporter;
 
 /// Reporter retained by a progress operation.
+///
+/// # Type Parameters
+///
+/// * `'reporter` — lifetime of a borrowed reporter. An owned reporter uses
+///   `'static`.
 pub(crate) enum ReporterHandle<'reporter> {
     /// Reporter borrowed for the operation lifetime.
     Borrowed(&'reporter dyn Reporter),

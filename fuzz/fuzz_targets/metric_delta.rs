@@ -44,55 +44,41 @@ struct ModelCounts {
 }
 
 impl ModelCounts {
+    /// Returns the total completed count represented by the model.
+    #[must_use]
+    #[inline]
+    const fn completed(self) -> u64 {
+        self.unclassified
+            .saturating_add(self.succeeded)
+            .saturating_add(self.failed)
+            .saturating_add(self.cancelled)
+    }
+
     /// Applies a delta if all metric invariants accept it.
+    #[must_use]
     fn apply(&mut self, delta: [u64; COUNTER_COUNT], total: Option<u64>) -> bool {
         let [started, unclassified, succeeded, failed, cancelled] = delta;
-        let terminal = unclassified
-            .checked_add(succeeded)
-            .and_then(|value| value.checked_add(failed))
-            .and_then(|value| value.checked_add(cancelled));
-        let Some(terminal) = terminal else {
-            return false;
-        };
-
-        let Some(available_active) = self.active.checked_add(started) else {
-            return false;
-        };
+        let terminal = u128::from(unclassified) + u128::from(succeeded) + u128::from(failed) + u128::from(cancelled);
+        let available_active = u128::from(self.active) + u128::from(started);
         if terminal > available_active {
             return false;
         }
         let active = available_active - terminal;
-        let Some(next_unclassified) = self.unclassified.checked_add(unclassified) else {
-            return false;
-        };
-        let Some(next_succeeded) = self.succeeded.checked_add(succeeded) else {
-            return false;
-        };
-        let Some(next_failed) = self.failed.checked_add(failed) else {
-            return false;
-        };
-        let Some(next_cancelled) = self.cancelled.checked_add(cancelled) else {
-            return false;
-        };
-        let Some(completed) = next_unclassified
-            .checked_add(next_succeeded)
-            .and_then(|value| value.checked_add(next_failed))
-            .and_then(|value| value.checked_add(next_cancelled))
-        else {
-            return false;
-        };
-        let Some(occupied) = completed.checked_add(active) else {
-            return false;
-        };
-        if total.is_some_and(|limit| occupied > limit) {
+        let next_unclassified = u128::from(self.unclassified) + u128::from(unclassified);
+        let next_succeeded = u128::from(self.succeeded) + u128::from(succeeded);
+        let next_failed = u128::from(self.failed) + u128::from(failed);
+        let next_cancelled = u128::from(self.cancelled) + u128::from(cancelled);
+        let completed = next_unclassified + next_succeeded + next_failed + next_cancelled;
+        let occupied = completed + active;
+        if occupied > u128::from(u64::MAX) || total.is_some_and(|limit| occupied > u128::from(limit)) {
             return false;
         }
 
-        self.active = active;
-        self.unclassified = next_unclassified;
-        self.succeeded = next_succeeded;
-        self.failed = next_failed;
-        self.cancelled = next_cancelled;
+        self.active = active as u64;
+        self.unclassified = next_unclassified as u64;
+        self.succeeded = next_succeeded as u64;
+        self.failed = next_failed as u64;
+        self.cancelled = next_cancelled as u64;
         true
     }
 
@@ -105,17 +91,11 @@ impl ModelCounts {
         assert_eq!(snapshot.cancelled(), self.cancelled);
         assert_eq!(snapshot.completed(), self.completed());
     }
-
-    /// Returns the total completed count represented by the model.
-    const fn completed(self) -> u64 {
-        self.unclassified
-            .saturating_add(self.succeeded)
-            .saturating_add(self.failed)
-            .saturating_add(self.cancelled)
-    }
 }
 
 /// Reads one little-endian counter from a possibly short fuzz operation.
+#[must_use]
+#[inline]
 fn read_u64(bytes: &[u8]) -> u64 {
     let mut value = 0;
     for (index, byte) in bytes.iter().copied().take(COUNTER_BYTES).enumerate() {
@@ -125,6 +105,8 @@ fn read_u64(bytes: &[u8]) -> u64 {
 }
 
 /// Maps fuzz bytes to ordinary and boundary counter values.
+#[must_use]
+#[inline]
 fn read_counter(bytes: &[u8]) -> u64 {
     match bytes.first().copied().unwrap_or_default() % 8 {
         0 => 0,
@@ -136,6 +118,7 @@ fn read_counter(bytes: &[u8]) -> u64 {
 }
 
 /// Builds the configured metric and its live handle for one fuzz run.
+#[must_use = "the progress and metric handle must be used"]
 fn create_metric(total: Option<u64>) -> (Progress<'static>, MetricHandle) {
     let metric = match total {
         Some(total) => Metric::new("items", "Items").total(total),
@@ -187,7 +170,11 @@ fuzz_target!(|input: &[u8]| {
         assert_eq!(
             result.is_ok(),
             expected_success,
-            "delta result mismatch: operation={operation:?}, counters={counters:?}, total={total:?}, model={model:?}, result={result:?}",
+            concat!(
+                "delta result mismatch: operation={operation:?}, ",
+                "counters={counters:?}, total={total:?}, model={model:?}, ",
+                "result={result:?}",
+            ),
         );
         let after = metric.snapshot();
         model.assert_matches(&after);

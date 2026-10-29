@@ -11,7 +11,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 
 pub use super::atomic_u8_like::AtomicU8Like;
 pub use super::atomic_usize_like::AtomicUsizeLike;
@@ -19,7 +18,17 @@ pub use super::gate_lifecycle::GateLifecycle;
 pub use super::std_scheduler::StdScheduler;
 pub use super::yield_like::YieldLike;
 
-/// Atomic lifecycle gate shared by operation and metric handles.
+/// Coordinates lifecycle transitions with updates that are already in flight.
+///
+/// The gate admits updates only while open. Finishing rejects new updates and
+/// waits until admitted updates leave; closing permanently rejects updates.
+///
+/// # Type Parameters
+///
+/// - `A8` stores the lifecycle discriminant with atomic ordering.
+/// - `ASize` tracks the number of admitted updates.
+/// - `Scheduler` supplies the spin and yield operations used while draining.
+#[must_use]
 pub struct OperationGate<A8, ASize, Scheduler> {
     /// Published lifecycle state.
     lifecycle: A8,
@@ -37,7 +46,6 @@ where
 {
     /// Creates an open gate with no registered updates.
     #[inline]
-    #[must_use]
     pub fn new() -> Self {
         Self {
             lifecycle: A8::new(GateLifecycle::Open as u8),
@@ -47,6 +55,10 @@ where
     }
 
     /// Returns the currently published lifecycle state.
+    ///
+    /// # Returns
+    ///
+    /// The lifecycle state most recently published by the gate.
     ///
     /// # Panics
     ///
@@ -91,6 +103,10 @@ where
     }
 
     /// Returns the number of updates currently registered with the gate.
+    ///
+    /// # Returns
+    ///
+    /// The number of updates that have entered and not yet left.
     #[inline]
     #[must_use]
     pub fn active_updates(&self) -> usize {
@@ -98,6 +114,11 @@ where
     }
 
     /// Transitions an open gate to finishing and waits for active updates.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this call changed the gate from open to finishing and all
+    /// active updates drained; `false` if the gate was not open.
     #[must_use]
     pub fn try_begin_finish(&self) -> bool {
         if self
@@ -141,58 +162,6 @@ where
     /// Creates an open gate with no registered updates.
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl AtomicU8Like for AtomicU8 {
-    /// Creates a standard atomic byte.
-    #[inline]
-    fn new(value: u8) -> Self {
-        Self::new(value)
-    }
-
-    /// Loads the byte with acquire ordering.
-    #[inline]
-    fn load(&self) -> u8 {
-        self.load(Ordering::Acquire)
-    }
-
-    /// Compares and exchanges with acquire-release ordering.
-    #[inline]
-    fn compare_exchange(&self, current: u8, new: u8) -> Result<u8, u8> {
-        self.compare_exchange(current, new, Ordering::AcqRel, Ordering::Acquire)
-    }
-
-    /// Stores the byte with release ordering.
-    #[inline]
-    fn store(&self, value: u8) {
-        self.store(value, Ordering::Release);
-    }
-}
-
-impl AtomicUsizeLike for AtomicUsize {
-    /// Creates a standard atomic counter.
-    #[inline]
-    fn new(value: usize) -> Self {
-        Self::new(value)
-    }
-
-    /// Loads the counter with acquire ordering.
-    #[inline]
-    fn load(&self) -> usize {
-        self.load(Ordering::Acquire)
-    }
-
-    /// Adds with acquire-release ordering.
-    #[inline]
-    fn fetch_add(&self, value: usize) {
-        self.fetch_add(value, Ordering::AcqRel);
-    }
-
-    /// Subtracts with release ordering.
-    #[inline]
-    fn fetch_sub(&self, value: usize) {
-        self.fetch_sub(value, Ordering::Release);
     }
 }
 

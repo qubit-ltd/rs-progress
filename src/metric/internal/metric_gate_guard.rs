@@ -22,6 +22,7 @@ impl<'gate> MetricGateGuard<'gate> {
 }
 
 impl Drop for MetricGateGuard<'_> {
+    /// Releases the gate by publishing the next even version.
     fn drop(&mut self) {
         self.gate.store(self.next_version);
     }

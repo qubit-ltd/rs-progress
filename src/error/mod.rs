@@ -19,9 +19,9 @@ mod recoverable_finish_error;
 mod reporter_error;
 mod start_error;
 mod terminal_error;
+mod worker_panic;
 
 pub use auto_reporter_error::AutoReporterError;
-pub use auto_reporter_error::WorkerPanic;
 pub use completion_error::CompletionError;
 pub use configuration_error::ConfigurationError;
 pub use delivery_error::DeliveryError;
@@ -32,3 +32,4 @@ pub use recoverable_finish_error::RecoverableFinishError;
 pub use reporter_error::ReporterError;
 pub use start_error::StartError;
 pub use terminal_error::TerminalError;
+pub use worker_panic::WorkerPanic;

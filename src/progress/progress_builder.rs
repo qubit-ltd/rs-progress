@@ -63,6 +63,7 @@ pub struct ProgressBuilder<'reporter> {
 impl<'reporter> ProgressBuilder<'reporter> {
     /// Sets the minimum interval between due-based running reports.
     #[must_use]
+    #[inline]
     pub const fn interval(mut self, interval: Duration) -> Self {
         self.interval = interval;
         self
@@ -75,6 +76,7 @@ impl<'reporter> ProgressBuilder<'reporter> {
     }
     /// Adds stage metadata to the Started event and subsequent events.
     #[must_use]
+    #[inline]
     pub fn stage(mut self, stage: Stage) -> Self {
         self.stage = Some(stage);
         self

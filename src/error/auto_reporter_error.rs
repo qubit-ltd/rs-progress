@@ -7,14 +7,29 @@
 // =============================================================================
 //! Errors returned when a scoped automatic reporter stops.
 
-use std::any::Any;
 use std::error::Error;
 use std::fmt;
-use std::panic;
 
+use super::worker_panic::WorkerPanic;
 use crate::EmissionError;
 
 /// Failure returned by [`crate::AutoReporter::stop`].
+///
+/// Pass the error returned by `stop` to a handler to inspect its failure kind.
+///
+/// # Examples
+///
+/// ```
+/// use qubit_progress::AutoReporterError;
+///
+/// fn inspect_stop_error(error: AutoReporterError) {
+///     match error {
+///         AutoReporterError::Emission(error) => eprintln!("{error}"),
+///         AutoReporterError::Panicked(error) => eprintln!("{error}"),
+///         _ => {}
+///     }
+/// }
+/// ```
 #[must_use]
 #[derive(Debug)]
 #[non_exhaustive]
@@ -44,6 +59,11 @@ impl fmt::Display for AutoReporterError {
 
 impl Error for AutoReporterError {
     /// Returns the nested emission failure when present.
+    ///
+    /// # Returns
+    ///
+    /// `Some(error)` when this error wraps an emission failure; `None` when it
+    /// wraps a worker panic.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Emission(error) => Some(error),
@@ -51,60 +71,3 @@ impl Error for AutoReporterError {
         }
     }
 }
-
-/// An opaque panic payload captured from an automatic reporter worker.
-#[must_use]
-pub struct WorkerPanic {
-    /// Original payload retained for callers that need to resume unwinding.
-    payload: Box<dyn Any + Send + 'static>,
-}
-
-impl WorkerPanic {
-    /// Creates a structured panic from an unwound worker payload.
-    pub(crate) fn new(payload: Box<dyn Any + Send + 'static>) -> Self {
-        Self { payload }
-    }
-
-    /// Returns a borrowed message for standard string panic payloads.
-    #[must_use]
-    pub fn message(&self) -> Option<&str> {
-        self.payload
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| self.payload.downcast_ref::<&'static str>().copied())
-    }
-
-    /// Consumes the error and returns the original panic payload.
-    #[must_use]
-    pub fn into_payload(self) -> Box<dyn Any + Send + 'static> {
-        self.payload
-    }
-
-    /// Resumes unwinding with the original panic payload.
-    pub fn resume_unwind(self) -> ! {
-        panic::resume_unwind(self.into_payload())
-    }
-}
-
-impl fmt::Debug for WorkerPanic {
-    /// Formats the payload without requiring the payload itself to implement
-    /// `Debug`.
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("WorkerPanic")
-            .field("message", &self.message())
-            .finish()
-    }
-}
-
-impl fmt::Display for WorkerPanic {
-    /// Formats the panic and includes its standard string message when known.
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.message() {
-            Some(message) => write!(formatter, "background reporter worker panicked: {message}"),
-            None => formatter.write_str("background reporter worker panicked"),
-        }
-    }
-}
-
-impl Error for WorkerPanic {}

@@ -50,6 +50,7 @@ impl AutoReporterStatus {
     /// Returns whether the automatic reporter terminated with an error or
     /// panic.
     #[must_use]
+    #[inline]
     pub fn is_failed(&self) -> bool {
         self.failed.load(Ordering::Acquire)
     }

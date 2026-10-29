@@ -7,13 +7,15 @@
 // =============================================================================
 //! Borrowed event representation used to serialize event data.
 
+use serde::Serialize;
+
 use crate::MetricSnapshot;
 use crate::OperationAttributes;
 use crate::Stage;
 use crate::event::Phase;
 
 /// Borrowed event representation used for serialization.
-#[derive(serde::Serialize)]
+#[derive(Serialize)]
 pub(super) struct EventWireRef<'a> {
     /// Process-local operation identifier.
     pub(super) operation_id: u64,

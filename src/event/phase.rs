@@ -37,6 +37,11 @@ pub enum Phase {
 
 impl Phase {
     /// Returns the stable lowercase wire name.
+    ///
+    /// # Returns
+    ///
+    /// The phase's canonical lowercase representation used in serialized
+    /// events.
     #[must_use]
     #[inline]
     pub const fn as_str(self) -> &'static str {

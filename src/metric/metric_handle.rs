@@ -76,6 +76,19 @@ impl MetricHandle {
         self.inner.metric.name()
     }
 
+    /// Returns one internally consistent immutable metric snapshot.
+    ///
+    /// This read remains available after the owning operation closes.
+    ///
+    /// # Returns
+    ///
+    /// A snapshot containing metadata and counts from one consistent state.
+    #[must_use]
+    pub fn snapshot(&self) -> MetricSnapshot {
+        let counts = self.inner.snapshot_counts();
+        MetricSnapshot::from_counts(&self.inner.metric, counts)
+    }
+
     /// Moves work from the not-started state to the active state.
     ///
     /// # Parameters
@@ -198,18 +211,5 @@ impl MetricHandle {
             *counts = next;
             Ok(())
         })
-    }
-
-    /// Returns one internally consistent immutable metric snapshot.
-    ///
-    /// This read remains available after the owning operation closes.
-    ///
-    /// # Returns
-    ///
-    /// A snapshot containing metadata and counts from one consistent state.
-    #[must_use]
-    pub fn snapshot(&self) -> MetricSnapshot {
-        let counts = self.inner.snapshot_counts();
-        MetricSnapshot::from_counts(&self.inner.metric, counts)
     }
 }

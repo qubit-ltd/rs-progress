@@ -14,6 +14,7 @@
 ///
 /// let _delta = MetricDelta::new().started(3).succeeded(1);
 /// ```
+#[must_use]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MetricDelta {
     /// Work moving from not-started to active.
@@ -34,7 +35,6 @@ impl MetricDelta {
     /// # Returns
     ///
     /// A delta whose lifecycle counts are all zero.
-    #[must_use]
     #[inline]
     pub const fn new() -> Self {
         Self {
@@ -55,7 +55,6 @@ impl MetricDelta {
     /// # Returns
     ///
     /// The delta with the starting count replaced by `count`.
-    #[must_use]
     #[inline]
     pub const fn started(mut self, count: u64) -> Self {
         self.started = count;
@@ -71,7 +70,6 @@ impl MetricDelta {
     /// # Returns
     ///
     /// The delta with the unclassified completion count replaced by `count`.
-    #[must_use]
     #[inline]
     pub const fn unclassified(mut self, count: u64) -> Self {
         self.unclassified = count;
@@ -87,7 +85,6 @@ impl MetricDelta {
     /// # Returns
     ///
     /// The delta with the success count replaced by `count`.
-    #[must_use]
     #[inline]
     pub const fn succeeded(mut self, count: u64) -> Self {
         self.succeeded = count;
@@ -103,7 +100,6 @@ impl MetricDelta {
     /// # Returns
     ///
     /// The delta with the failure count replaced by `count`.
-    #[must_use]
     #[inline]
     pub const fn failed(mut self, count: u64) -> Self {
         self.failed = count;
@@ -119,7 +115,6 @@ impl MetricDelta {
     /// # Returns
     ///
     /// The delta with the cancellation count replaced by `count`.
-    #[must_use]
     #[inline]
     pub const fn cancelled(mut self, count: u64) -> Self {
         self.cancelled = count;

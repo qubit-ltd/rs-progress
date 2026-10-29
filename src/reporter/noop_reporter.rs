@@ -25,10 +25,12 @@ use crate::ReporterError;
 pub struct NoopReporter;
 impl Reporter for NoopReporter {
     /// Disables operations that use this reporter.
+    #[inline]
     fn is_enabled(&self) -> bool {
         false
     }
     /// Accepts events defensively when called outside [`crate::Progress`].
+    #[inline]
     fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         Ok(())
     }

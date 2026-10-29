@@ -21,11 +21,33 @@ use crate::error::CompletionError;
 use crate::error::EmissionError;
 
 /// Copies all metrics into one independently consistent event snapshot.
+///
+/// # Parameters
+///
+/// - `metrics`: Handles whose current states are copied in slice order.
+///
+/// # Returns
+///
+/// One immutable snapshot for each supplied metric.
+#[must_use]
 pub(crate) fn metric_snapshots(metrics: &[MetricHandle]) -> Vec<MetricSnapshot> {
     metrics.iter().map(MetricHandle::snapshot).collect()
 }
 
 /// Validates that no work remains and every known total has been completed.
+///
+/// # Parameters
+///
+/// - `metrics`: Handles whose current states must satisfy the finish contract.
+///
+/// # Returns
+///
+/// `Ok(())` when every metric is inactive and every configured total is met.
+///
+/// # Errors
+///
+/// Returns the first [`CompletionError`] when active work remains or a known
+/// total has not been completed.
 pub(crate) fn validate_finish(metrics: &[MetricHandle]) -> Result<(), CompletionError> {
     for metric in metrics {
         let snapshot = metric.snapshot();
@@ -49,6 +71,27 @@ pub(crate) fn validate_finish(metrics: &[MetricHandle]) -> Result<(), Completion
 }
 
 /// Builds one immutable event while reserving its delivery sequence.
+///
+/// # Parameters
+///
+/// - `operation_id`: Process-local operation ID, if it was successfully
+///   reserved.
+/// - `next_sequence`: Mutable next sequence number; advanced only after both
+///   identifiers are valid.
+/// - `phase`: Lifecycle phase represented by the event.
+/// - `stage`: Optional stage active for the event.
+/// - `attributes`: Shared immutable operation metadata.
+/// - `metrics`: Metric snapshots included in the event.
+/// - `elapsed`: Monotonic elapsed time since operation start.
+///
+/// # Returns
+///
+/// An immutable event with the reserved sequence number.
+///
+/// # Errors
+///
+/// Returns [`EmissionError::SequenceExhausted`] when the operation ID is
+/// absent or the sequence cannot be incremented.
 pub(crate) fn build_event(
     operation_id: Option<u64>,
     next_sequence: &mut u64,

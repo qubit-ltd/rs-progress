@@ -10,8 +10,8 @@
 use std::sync::Weak;
 use std::sync::atomic::Ordering;
 
-use super::AutoReporterInner;
-use super::wake;
+use super::internal::AutoReporterInner;
+use super::internal::wake;
 
 /// Notification handle that coalesces state changes without claiming delivery.
 ///

@@ -98,6 +98,14 @@ pub struct Progress<'reporter> {
 
 impl<'reporter> Progress<'reporter> {
     /// Creates a builder borrowing one reporter.
+    ///
+    /// # Parameters
+    ///
+    /// - `reporter`: Reporter borrowed for the operation's lifetime.
+    ///
+    /// # Returns
+    ///
+    /// A builder configured to borrow `reporter`.
     #[must_use]
     pub fn builder(reporter: &'reporter dyn Reporter) -> ProgressBuilder<'reporter> {
         ProgressBuilder {
@@ -109,6 +117,14 @@ impl<'reporter> Progress<'reporter> {
         }
     }
     /// Creates a builder that owns one shared reporter.
+    ///
+    /// # Parameters
+    ///
+    /// - `reporter`: Shared reporter owned by the operation.
+    ///
+    /// # Returns
+    ///
+    /// A builder configured to own `reporter`.
     #[must_use]
     pub fn builder_arc(reporter: Arc<dyn Reporter>) -> ProgressBuilder<'static> {
         ProgressBuilder {
@@ -120,17 +136,30 @@ impl<'reporter> Progress<'reporter> {
         }
     }
     /// Returns enablement sampled when this operation started.
+    ///
+    /// # Returns
+    ///
+    /// `true` when reporting was enabled at startup.
     #[must_use]
     #[inline]
     pub const fn is_enabled(&self) -> bool {
         self.enabled
     }
     /// Returns monotonic elapsed time since `start()`.
+    ///
+    /// # Returns
+    ///
+    /// Elapsed time measured from the operation's start instant.
     #[must_use]
+    #[inline]
     pub fn elapsed(&self) -> Duration {
         self.started_at.elapsed()
     }
     /// Returns a cloneable live metric selected by its stable ID.
+    ///
+    /// # Parameters
+    ///
+    /// - `metric_id`: Stable ID to find among the configured metrics.
     ///
     /// # Returns
     ///
@@ -140,6 +169,10 @@ impl<'reporter> Progress<'reporter> {
         self.metrics.iter().find(|metric| metric.id() == metric_id).cloned()
     }
     /// Immediately emits a Running event from current metric state.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` after the attempt succeeds or when reporting is disabled.
     ///
     /// # Errors
     ///
@@ -158,6 +191,11 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Emits a Running event only when the configured interval is due.
     ///
+    /// # Returns
+    ///
+    /// `Ok(())` when no report is due, reporting is disabled, or delivery
+    /// succeeds.
+    ///
     /// # Errors
     ///
     /// Returns an `EmissionError` containing the attempted event and reporter
@@ -171,6 +209,14 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Replaces stage metadata attached to subsequent events.
     ///
+    /// # Parameters
+    ///
+    /// - `stage`: Validated stage metadata to attach to later events.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` after the stage is installed.
+    ///
     /// # Errors
     ///
     /// Returns `ConfigurationError` when the stage metadata is invalid; the
@@ -181,11 +227,20 @@ impl<'reporter> Progress<'reporter> {
         Ok(())
     }
     /// Removes stage metadata from subsequent events.
+    ///
+    /// # Returns
+    ///
+    /// `()` after clearing the current stage.
+    #[inline]
     pub fn clear_stage(&mut self) {
         self.stage = None;
     }
     /// Consumes this operation and emits a successful terminal event without
     /// checking whether metric work is complete.
+    ///
+    /// # Returns
+    ///
+    /// Elapsed operation time after successful completion.
     ///
     /// # Errors
     ///
@@ -196,6 +251,10 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Consumes this operation and emits a successful terminal event only when
     /// no metric has active work and every known total has been completed.
+    ///
+    /// # Returns
+    ///
+    /// Elapsed operation time after validation and successful completion.
     ///
     /// # Errors
     ///
@@ -220,6 +279,10 @@ impl<'reporter> Progress<'reporter> {
     /// Consumes this operation and emits a successful terminal event while
     /// preserving the operation when completion validation fails.
     ///
+    /// # Returns
+    ///
+    /// Elapsed operation time after successful completion.
+    ///
     /// # Errors
     ///
     /// Returns `RecoverableFinishError::Incomplete` with this operation when
@@ -243,6 +306,10 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Consumes this operation and emits a failed terminal event.
     ///
+    /// # Returns
+    ///
+    /// Elapsed operation time after the failed-phase event is delivered.
+    ///
     /// # Errors
     ///
     /// Returns a `TerminalError` containing the attempted event and reporter
@@ -251,6 +318,10 @@ impl<'reporter> Progress<'reporter> {
         self.terminal(Phase::Failed)
     }
     /// Consumes this operation and emits a cancelled terminal event.
+    ///
+    /// # Returns
+    ///
+    /// Elapsed operation time after the cancelled-phase event is delivered.
     ///
     /// # Errors
     ///
@@ -261,6 +332,19 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Spawns a scoped automatic Running reporter that exclusively borrows this
     /// operation.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `'scope`: Lifetime shared by the scope and this operation's borrow.
+    /// - `'env`: Lifetime of data borrowed by threads spawned in the scope.
+    ///
+    /// # Parameters
+    ///
+    /// - `scope`: Thread scope that bounds the spawned reporter's lifetime.
+    ///
+    /// # Returns
+    ///
+    /// A handle that joins the scoped reporting worker when dropped.
     pub fn spawn_auto_reporter<'scope, 'env>(
         &'scope mut self,
         scope: &'scope std::thread::Scope<'scope, 'env>,
@@ -287,6 +371,8 @@ impl<'reporter> Progress<'reporter> {
         }
     }
     /// Tests whether a due-based running report can run now.
+    #[must_use]
+    #[inline]
     fn is_due(&self) -> bool {
         self.interval.is_zero() || self.next_due_elapsed.is_some_and(|deadline| self.elapsed() >= deadline)
     }
@@ -297,6 +383,8 @@ impl<'reporter> Progress<'reporter> {
         self.interval
     }
     /// Returns how long the background loop should wait for the next deadline.
+    #[must_use]
+    #[inline]
     pub(crate) fn time_until_due(&self) -> Duration {
         self.next_due_elapsed
             .map(|deadline| deadline.saturating_sub(self.elapsed()))

@@ -57,6 +57,10 @@ impl TerminalError {
     }
 
     /// Returns the operation time measured when terminal delivery failed.
+    ///
+    /// # Returns
+    ///
+    /// The elapsed time recorded when delivery was attempted.
     #[must_use]
     #[inline]
     pub const fn elapsed(&self) -> Duration {
@@ -64,17 +68,30 @@ impl TerminalError {
     }
 
     /// Borrows the emission failure that caused terminal delivery to fail.
+    ///
+    /// # Returns
+    ///
+    /// The underlying emission failure.
+    #[must_use = "inspect the emission failure that caused terminal delivery to fail"]
     #[inline]
     pub const fn emission_error(&self) -> &EmissionError {
         &self.source
     }
 
     /// Consumes the terminal error and returns its emission failure.
+    ///
+    /// # Returns
+    ///
+    /// The underlying emission failure, detached from the elapsed time.
     pub fn into_emission_error(self) -> EmissionError {
         self.source
     }
 
     /// Consumes the terminal error and returns elapsed time and failure.
+    ///
+    /// # Returns
+    ///
+    /// The elapsed time followed by the underlying emission failure.
     pub fn into_parts(self) -> (Duration, EmissionError) {
         (self.elapsed, self.source)
     }
@@ -93,6 +110,11 @@ impl fmt::Display for TerminalError {
 
 impl Error for TerminalError {
     /// Returns the emission failure.
+    ///
+    /// # Returns
+    ///
+    /// `Some` containing the emission failure that caused terminal delivery to
+    /// fail; this implementation never returns `None`.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.source)
     }
