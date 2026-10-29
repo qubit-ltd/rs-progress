@@ -16,6 +16,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::sync_channel;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -48,6 +49,39 @@ impl Reporter for SignalingReporter {
     /// Records one phase through the bounded test channel.
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
         self.sender
+            .send(event.phase())
+            .map_err(|error| ReporterError::message(&error.to_string()))
+    }
+}
+
+/// Blocks the first background Running callback until the test releases it.
+struct BlockingRunningReporter {
+    /// Signals that the first Running callback has entered.
+    entered: SyncSender<()>,
+    /// Releases the first Running callback.
+    release: Mutex<Receiver<()>>,
+    /// Exposes each reported phase to the test.
+    phases: SyncSender<Phase>,
+    /// Tracks whether the callback has already blocked once.
+    running_reports: AtomicUsize,
+}
+
+impl Reporter for BlockingRunningReporter {
+    /// Blocks the first Running callback, then records all phases.
+    fn report(&self, event: &Event) -> Result<(), ReporterError> {
+        if event.phase() == Phase::Running
+            && self.running_reports.fetch_add(1, Ordering::Relaxed) == 0
+        {
+            self.entered
+                .send(())
+                .map_err(|error| ReporterError::message(&error.to_string()))?;
+            self.release
+                .lock()
+                .expect("release receiver mutex must not be poisoned")
+                .recv()
+                .map_err(|error| ReporterError::message(&error.to_string()))?;
+        }
+        self.phases
             .send(event.phase())
             .map_err(|error| ReporterError::message(&error.to_string()))
     }
@@ -113,8 +147,6 @@ fn test_auto_reporter_reports_positive_interval_heartbeat() {
 
     thread::scope(|scope| {
         let auto = progress.spawn_auto_reporter(scope);
-        let notifier = auto.notifier();
-        notifier.notify();
         assert_eq!(
             phases
                 .recv_timeout(Duration::from_secs(1))
@@ -123,9 +155,88 @@ fn test_auto_reporter_reports_positive_interval_heartbeat() {
         );
         assert!(!auto.status().is_failed());
         auto.stop().expect("heartbeat reporter must stop cleanly");
-        notifier.notify();
     });
     progress.finish().expect("terminal event must report");
+}
+
+/// Verifies positive-interval notifications do not bypass the interval.
+#[test]
+fn test_auto_reporter_ignores_notifications_before_maximum_interval() {
+    let (reporter, phases) = SignalingReporter::new();
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::MAX)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress run must start");
+    assert_eq!(
+        phases.recv_timeout(Duration::from_secs(1)).expect("Started event must arrive"),
+        Phase::Started,
+    );
+
+    thread::scope(|scope| {
+        let auto = progress.spawn_auto_reporter(scope);
+        let notifier = auto.notifier();
+        for _ in 0..8 {
+            notifier.notify();
+        }
+        auto.stop().expect("reporter must stop cleanly");
+    });
+    assert_eq!(phases.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty));
+    progress.finish().expect("terminal event must report");
+}
+
+/// Verifies notifications during a Running callback coalesce to one pending report.
+#[test]
+fn test_auto_reporter_coalesces_notifications_while_reporting() {
+    let (entered_tx, entered_rx) = sync_channel(1);
+    let (release_tx, release_rx) = sync_channel(1);
+    let (phases_tx, phases_rx) = sync_channel(8);
+    let reporter = BlockingRunningReporter {
+        entered: entered_tx,
+        release: Mutex::new(release_rx),
+        phases: phases_tx,
+        running_reports: AtomicUsize::new(0),
+    };
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::ZERO)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("Started event must succeed");
+    assert_eq!(
+        phases_rx.recv_timeout(Duration::from_secs(1)).expect("Started event must arrive"),
+        Phase::Started,
+    );
+
+    thread::scope(|scope| {
+        let auto = progress.spawn_auto_reporter(scope);
+        let notifier = auto.notifier();
+        notifier.notify();
+        let entered = entered_rx.recv_timeout(Duration::from_secs(1));
+        if entered.is_err() {
+            let _ = release_tx.send(());
+            panic!("first Running callback must enter");
+        }
+        for _ in 0..8 {
+            notifier.notify();
+        }
+        let released = release_tx.send(());
+        if released.is_err() {
+            panic!("blocked Running callback must still be waiting");
+        }
+        let first = phases_rx.recv_timeout(Duration::from_secs(1));
+        if first != Ok(Phase::Running) {
+            let _ = auto.stop();
+            panic!("first Running report must arrive");
+        }
+        let second = phases_rx.recv_timeout(Duration::from_secs(1));
+        if second != Ok(Phase::Running) {
+            let _ = auto.stop();
+            panic!("one coalesced Running report must arrive");
+        }
+        auto.stop().expect("auto reporter must stop cleanly");
+    });
+    assert_eq!(phases_rx.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty));
+    progress.cancel().expect("terminal event must report");
 }
 
 /// Reporter that rejects the first background Running report.

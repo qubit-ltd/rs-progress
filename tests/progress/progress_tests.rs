@@ -290,6 +290,46 @@ fn test_progress_accepts_maximum_interval_without_absolute_deadline() {
     progress.cancel().expect("terminal event must remain available");
 }
 
+/// Verifies a zero interval reports at every explicit due-report boundary.
+#[test]
+fn test_progress_zero_interval_reports_each_time_due() {
+    let reporter = RecordingReporter::default();
+    let mut progress = Progress::builder(&reporter)
+        .interval(Duration::ZERO)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress run must start");
+
+    progress.report_if_due().expect("first running report must succeed");
+    progress.report_if_due().expect("second running report must succeed");
+
+    let events = reporter.events();
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[1].phase(), Phase::Running);
+    assert_eq!(events[2].phase(), Phase::Running);
+    progress.cancel().expect("terminal event must remain available");
+}
+
+/// Verifies a positive interval report after its configured interval elapsed.
+#[test]
+fn test_progress_positive_interval_reports_after_interval_elapsed() {
+    let reporter = RecordingReporter::default();
+    let interval = Duration::from_millis(5);
+    let mut progress = Progress::builder(&reporter)
+        .interval(interval)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start()
+        .expect("progress run must start");
+
+    while progress.elapsed() < interval {
+        std::thread::yield_now();
+    }
+    progress.report_if_due().expect("due report must succeed");
+    assert_eq!(reporter.events().len(), 2);
+    assert_eq!(reporter.events()[1].phase(), Phase::Running);
+    progress.cancel().expect("terminal event must remain available");
+}
+
 /// Reporter whose sampled enablement is disabled and whose calls are counted.
 struct DisabledReporter {
     /// Counts attempted deliveries.
@@ -395,26 +435,22 @@ fn test_progress_returns_none_for_unknown_metric() {
     assert!(progress.metric("unknown").is_none());
 }
 
-/// Verifies stage replacement, clearing, and positive-interval scheduling.
+/// Verifies stage replacement and clearing with explicit manual reports.
 #[test]
-fn test_progress_updates_stage_and_respects_due_interval() {
+fn test_progress_updates_stage_with_manual_reports() {
     let reporter = RecordingReporter::default();
     let mut progress = Progress::builder(&reporter)
-        .interval(Duration::from_millis(5))
         .stage(Stage::new("copy", "Copy").position(1, 2))
         .metric(Metric::new("tasks", "Tasks"))
         .start()
         .expect("progress must start");
     assert!(progress.is_enabled());
-    assert!(progress.elapsed() < Duration::from_secs(1));
-    progress.report_if_due().expect("early report must be skipped");
     progress
         .set_stage(Stage::new("verify", "Verify").position(2, 2))
         .expect("replacement stage must be valid");
-    std::thread::sleep(Duration::from_millis(6));
-    progress.report_if_due().expect("due report must succeed");
+    progress.report().expect("replacement stage must be reported");
     progress.clear_stage();
-    progress.report().expect("manual report must succeed");
+    progress.report().expect("cleared stage must be reported");
     progress.cancel().expect("cancelled event must succeed");
 
     let events = reporter.events();
