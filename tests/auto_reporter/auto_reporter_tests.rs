@@ -11,12 +11,12 @@ use std::error::Error;
 use std::panic::AssertUnwindSafe;
 use std::panic::catch_unwind;
 use std::panic::panic_any;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::sync_channel;
-use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -69,9 +69,7 @@ struct BlockingRunningReporter {
 impl Reporter for BlockingRunningReporter {
     /// Blocks the first Running callback, then records all phases.
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
-        if event.phase() == Phase::Running
-            && self.running_reports.fetch_add(1, Ordering::Relaxed) == 0
-        {
+        if event.phase() == Phase::Running && self.running_reports.fetch_add(1, Ordering::Relaxed) == 0 {
             self.entered
                 .send(())
                 .map_err(|error| ReporterError::message(&error.to_string()))?;
@@ -169,7 +167,9 @@ fn test_auto_reporter_ignores_notifications_before_maximum_interval() {
         .start()
         .expect("progress run must start");
     assert_eq!(
-        phases.recv_timeout(Duration::from_secs(1)).expect("Started event must arrive"),
+        phases
+            .recv_timeout(Duration::from_secs(1))
+            .expect("Started event must arrive"),
         Phase::Started,
     );
 
@@ -185,7 +185,8 @@ fn test_auto_reporter_ignores_notifications_before_maximum_interval() {
     progress.finish().expect("terminal event must report");
 }
 
-/// Verifies notifications during a Running callback coalesce to one pending report.
+/// Verifies notifications during a Running callback coalesce to one pending
+/// report.
 #[test]
 fn test_auto_reporter_coalesces_notifications_while_reporting() {
     let (entered_tx, entered_rx) = sync_channel(1);
@@ -203,7 +204,9 @@ fn test_auto_reporter_coalesces_notifications_while_reporting() {
         .start()
         .expect("Started event must succeed");
     assert_eq!(
-        phases_rx.recv_timeout(Duration::from_secs(1)).expect("Started event must arrive"),
+        phases_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("Started event must arrive"),
         Phase::Started,
     );
 

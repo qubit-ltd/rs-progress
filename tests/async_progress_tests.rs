@@ -89,7 +89,11 @@ struct TerminalReporter {
 
 impl TerminalReporter {
     fn new(phase: Phase, behavior: TerminalBehavior) -> Self {
-        Self { phase, behavior, events: Mutex::new(Vec::new()) }
+        Self {
+            phase,
+            behavior,
+            events: Mutex::new(Vec::new()),
+        }
     }
 
     fn events(&self) -> Vec<Event> {
@@ -259,7 +263,8 @@ macro_rules! assert_pending_terminal_closes_handle {
             AsyncProgress::builder(&reporter)
                 .metric(Metric::new("tasks", "Tasks").total(1))
                 .start_async(),
-        ).expect("progress must start");
+        )
+        .expect("progress must start");
         let handle = progress.metric("tasks").expect("metric must exist");
         handle.start(1).expect("work must start");
         handle.succeed(1).expect("work must finish");
@@ -270,7 +275,10 @@ macro_rules! assert_pending_terminal_closes_handle {
 
         assert!(matches!(handle.start(1), Err(MetricError::OperationNotOpen { .. })));
         let events = reporter.events();
-        assert_eq!(events.iter().map(Event::phase).collect::<Vec<_>>(), [Phase::Started, $phase]);
+        assert_eq!(
+            events.iter().map(Event::phase).collect::<Vec<_>>(),
+            [Phase::Started, $phase]
+        );
         assert_eq!(events.iter().map(Event::sequence).collect::<Vec<_>>(), [0, 1]);
     }};
 }
@@ -290,7 +298,8 @@ macro_rules! assert_unpolled_terminal_drop_is_local_only {
             AsyncProgress::builder(&reporter)
                 .metric(Metric::new("tasks", "Tasks"))
                 .start_async(),
-        ).expect("progress must start");
+        )
+        .expect("progress must start");
         let handle = progress.metric("tasks").expect("metric must exist");
         let terminal = progress.$method();
         drop(terminal);
@@ -318,7 +327,8 @@ macro_rules! assert_terminal_rejection_is_preserved {
                 .metric(Metric::new("tasks", "Tasks"))
                 .attribute("request", "terminal-test")
                 .start_async(),
-        ).expect("progress must start");
+        )
+        .expect("progress must start");
         let handle = progress.metric("tasks").expect("metric must exist");
         let result = block_on(progress.finish_async());
         let FinishError::Terminal(error) = result.expect_err("terminal report must fail") else {
@@ -338,7 +348,10 @@ macro_rules! assert_terminal_rejection_is_preserved {
         assert_eq!(event.elapsed(), elapsed);
         assert!(matches!(handle.start(1), Err(MetricError::OperationNotOpen { .. })));
         let events = reporter.events();
-        assert_eq!(events.iter().map(Event::phase).collect::<Vec<_>>(), [Phase::Started, $phase]);
+        assert_eq!(
+            events.iter().map(Event::phase).collect::<Vec<_>>(),
+            [Phase::Started, $phase]
+        );
         assert_eq!(events[1].operation_id(), events[0].operation_id());
         assert_eq!(events[1].sequence(), 1);
     }};
@@ -349,7 +362,8 @@ macro_rules! assert_terminal_rejection_is_preserved {
                 .metric(Metric::new("tasks", "Tasks"))
                 .attribute("request", "terminal-test")
                 .start_async(),
-        ).expect("progress must start");
+        )
+        .expect("progress must start");
         let handle = progress.metric("tasks").expect("metric must exist");
         let error = block_on(progress.$method()).expect_err("terminal report must fail");
         let elapsed = error.elapsed();
@@ -364,7 +378,10 @@ macro_rules! assert_terminal_rejection_is_preserved {
         assert_eq!(event.elapsed(), elapsed);
         assert!(matches!(handle.start(1), Err(MetricError::OperationNotOpen { .. })));
         let events = reporter.events();
-        assert_eq!(events.iter().map(Event::phase).collect::<Vec<_>>(), [Phase::Started, $phase]);
+        assert_eq!(
+            events.iter().map(Event::phase).collect::<Vec<_>>(),
+            [Phase::Started, $phase]
+        );
         assert_eq!(events[1].operation_id(), events[0].operation_id());
         assert_eq!(events[1].sequence(), 1);
     }};
@@ -385,13 +402,23 @@ fn test_finish_async_active_work_is_incomplete_and_consumes_operation() {
         AsyncProgress::builder(&reporter)
             .metric(Metric::new("tasks", "Tasks"))
             .start_async(),
-    ).expect("progress must start");
+    )
+    .expect("progress must start");
     let handle = progress.metric("tasks").expect("metric must exist");
     handle.start(2).expect("work must start");
     let error = block_on(progress.finish_async()).expect_err("active work must prevent success");
-    assert!(matches!(error, FinishError::Incomplete { source: CompletionError::ActiveWork { active: 2, .. }, .. }));
+    assert!(matches!(
+        error,
+        FinishError::Incomplete {
+            source: CompletionError::ActiveWork { active: 2, .. },
+            ..
+        }
+    ));
     assert!(matches!(handle.start(1), Err(MetricError::OperationNotOpen { .. })));
-    assert_eq!(reporter.events().iter().map(Event::phase).collect::<Vec<_>>(), [Phase::Started]);
+    assert_eq!(
+        reporter.events().iter().map(Event::phase).collect::<Vec<_>>(),
+        [Phase::Started]
+    );
 }
 
 #[test]
@@ -401,24 +428,41 @@ fn test_finish_async_incomplete_total_without_active_work_consumes_operation() {
         AsyncProgress::builder(&reporter)
             .metric(Metric::new("tasks", "Tasks").total(2))
             .start_async(),
-    ).expect("progress must start");
+    )
+    .expect("progress must start");
     let handle = progress.metric("tasks").expect("metric must exist");
     handle.start(1).expect("work must start");
     handle.complete(1).expect("work must complete");
     let error = block_on(progress.finish_async()).expect_err("unfinished total must prevent success");
-    assert!(matches!(error, FinishError::Incomplete { source: CompletionError::IncompleteTotal { completed: 1, total: 2, .. }, .. }));
+    assert!(matches!(
+        error,
+        FinishError::Incomplete {
+            source: CompletionError::IncompleteTotal {
+                completed: 1,
+                total: 2,
+                ..
+            },
+            ..
+        }
+    ));
     assert!(matches!(handle.start(1), Err(MetricError::OperationNotOpen { .. })));
-    assert_eq!(reporter.events().iter().map(Event::phase).collect::<Vec<_>>(), [Phase::Started]);
+    assert_eq!(
+        reporter.events().iter().map(Event::phase).collect::<Vec<_>>(),
+        [Phase::Started]
+    );
 }
 
 #[test]
 fn test_disabled_async_reporter_skips_events_but_keeps_metric_lifecycle() {
-    let reporter = DisabledReporter { calls: AtomicUsize::new(0) };
+    let reporter = DisabledReporter {
+        calls: AtomicUsize::new(0),
+    };
     let progress = block_on(
         AsyncProgress::builder(&reporter)
             .metric(Metric::new("tasks", "Tasks").total(1))
             .start_async(),
-    ).expect("disabled progress must start");
+    )
+    .expect("disabled progress must start");
     assert!(!progress.is_enabled());
     let handle = progress.metric("tasks").expect("configured metrics are available");
     handle.start(1).expect("disabled metrics remain mutable");
@@ -432,6 +476,9 @@ fn test_disabled_async_reporter_skips_events_but_keeps_metric_lifecycle() {
         Ok(_) => panic!("disabled reporter must not bypass metric validation"),
         Err(error) => error,
     };
-    assert!(matches!(error, StartError::InvalidConfiguration(qubit_progress::ConfigurationError::NoMetrics)));
+    assert!(matches!(
+        error,
+        StartError::InvalidConfiguration(qubit_progress::ConfigurationError::NoMetrics)
+    ));
     assert_eq!(reporter.calls.load(Ordering::Relaxed), 0);
 }

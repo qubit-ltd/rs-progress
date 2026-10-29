@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Internal lifecycle state shared by progress and metric handles.
+// qubit-style: allow coverage-cfg
 
 mod atomic_u8_like;
 mod atomic_usize_like;

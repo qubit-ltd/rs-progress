@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Generic atomic operation lifecycle protocol.
+// qubit-style: allow coverage-cfg
 
 use std::marker::PhantomData;
 #[cfg(coverage)]
@@ -127,9 +128,10 @@ where
     ///
     /// The sequentially consistent order ensures that an update either checks
     /// open before the finishing transition and remains counted until its
-    /// decrement, or checks after the transition and withdraws its registration.
-    /// The decrement follows the update's writes, and this method observes the
-    /// drained counter before returning, publishing those writes to the finisher.
+    /// decrement, or checks after the transition and withdraws its
+    /// registration. The decrement follows the update's writes, and this
+    /// method observes the drained counter before returning, publishing
+    /// those writes to the finisher.
     ///
     /// # Returns
     ///

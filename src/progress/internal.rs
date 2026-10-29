@@ -6,8 +6,9 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Private implementation types for progress operations.
+// qubit-style: allow coverage-cfg
 
-pub(crate) mod operation_id;
 #[cfg(coverage)]
 pub(crate) mod coverage_terminal_reporter;
+pub(crate) mod operation_id;
 pub(crate) mod reporter_handle;

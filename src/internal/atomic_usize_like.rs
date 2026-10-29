@@ -19,7 +19,8 @@ pub trait AtomicUsizeLike {
     #[must_use]
     fn new(value: usize) -> Self;
 
-    /// Returns the current counter value using sequentially consistent ordering.
+    /// Returns the current counter value using sequentially consistent
+    /// ordering.
     ///
     /// The loaded value must be observed by the caller.
     #[must_use]
@@ -30,7 +31,8 @@ pub trait AtomicUsizeLike {
     /// The operation updates shared state, so its return value is not needed.
     fn fetch_add(&self, value: usize);
 
-    /// Subtracts `value` from the counter using sequentially consistent ordering.
+    /// Subtracts `value` from the counter using sequentially consistent
+    /// ordering.
     ///
     /// The operation updates shared state, so its return value is not needed.
     fn fetch_sub(&self, value: usize);

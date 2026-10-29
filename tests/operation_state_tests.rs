@@ -107,10 +107,7 @@ fn test_standard_operation_gate_drains_updates_and_rejects_new_work() {
     }
     state.leave_update();
     let finish_result = finisher.join().expect("finisher must join");
-    assert!(
-        observed_finishing,
-        "finisher did not enter Finishing in time"
-    );
+    assert!(observed_finishing, "finisher did not enter Finishing in time");
     assert_eq!(rejected_update, Some(Err(GateLifecycle::Finishing)));
     assert!(finish_result);
     state.close();
@@ -134,8 +131,7 @@ impl AtomicU8Like for AtomicU8 {
 
     fn compare_exchange(&self, current: u8, new: u8) -> Result<u8, u8> {
         loom_fence(LoomOrdering::SeqCst);
-        let result =
-            self.compare_exchange(current, new, LoomOrdering::SeqCst, LoomOrdering::SeqCst);
+        let result = self.compare_exchange(current, new, LoomOrdering::SeqCst, LoomOrdering::SeqCst);
         loom_fence(LoomOrdering::SeqCst);
         result
     }
@@ -250,10 +246,7 @@ fn test_loom_operation_state_never_closes_before_registered_updates_leave() {
         updater.join().expect("updater model must join");
         finisher.join().expect("finisher model must join");
         assert_eq!(state.active_updates(), 0);
-        assert!(matches!(
-            state.lifecycle(),
-            GateLifecycle::Open | GateLifecycle::Closed
-        ));
+        assert!(matches!(state.lifecycle(), GateLifecycle::Open | GateLifecycle::Closed));
     });
 }
 
