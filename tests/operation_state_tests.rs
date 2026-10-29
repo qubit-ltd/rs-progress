@@ -30,6 +30,10 @@ use std::sync::atomic::AtomicU8 as StdAtomicU8;
 use std::sync::atomic::AtomicUsize as StdAtomicUsize;
 #[cfg(not(coverage))]
 use std::thread;
+#[cfg(not(coverage))]
+use std::time::Duration;
+#[cfg(not(coverage))]
+use std::time::Instant;
 
 #[cfg(not(coverage))]
 use loom::cell::UnsafeCell as LoomUnsafeCell;
@@ -89,26 +93,24 @@ fn test_standard_operation_gate_drains_updates_and_rejects_new_work() {
         finisher_state.try_begin_finish()
     });
     ready.wait();
-    let mut observed_finishing = false;
-    for _ in 0..100_000 {
-        if state.lifecycle() == GateLifecycle::Finishing {
-            observed_finishing = true;
-            break;
-        }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while state.lifecycle() == GateLifecycle::Open && Instant::now() < deadline {
         thread::yield_now();
     }
-    let rejected_update = if observed_finishing {
-        Some(state.enter_update())
-    } else {
-        None
-    };
-    if rejected_update == Some(Ok(())) {
+    let observed_finishing = state.lifecycle() == GateLifecycle::Finishing;
+    if !observed_finishing {
+        state.leave_update();
+        let _ = finisher.join().expect("finisher must join after timeout");
+        panic!("finisher did not enter Finishing in time");
+    }
+    let rejected_update = state.enter_update();
+    if rejected_update == Ok(()) {
         state.leave_update();
     }
     state.leave_update();
     let finish_result = finisher.join().expect("finisher must join");
-    assert!(observed_finishing, "finisher did not enter Finishing in time");
-    assert_eq!(rejected_update, Some(Err(GateLifecycle::Finishing)));
+    assert!(observed_finishing, "finisher did not enter Finishing");
+    assert_eq!(rejected_update, Err(GateLifecycle::Finishing));
     assert!(finish_result);
     state.close();
     assert_eq!(state.enter_update(), Err(GateLifecycle::Closed));
