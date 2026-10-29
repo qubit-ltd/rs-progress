@@ -51,6 +51,7 @@ use self::async_progress_builder::AsyncReporterHandle;
 /// use qubit_progress::AsyncProgress;
 /// use qubit_progress::AsyncReporter;
 /// use qubit_progress::Event;
+/// use qubit_progress::Metric;
 /// use qubit_progress::ReportFuture;
 ///
 /// struct Sink;
@@ -64,15 +65,20 @@ use self::async_progress_builder::AsyncReporterHandle;
 /// async fn report_once() {
 ///     let sink = Sink;
 ///     let mut progress = AsyncProgress::builder(&sink)
+///         .metric(Metric::new("tasks", "Tasks"))
 ///         .start_async()
 ///         .await
-///         .expect("starting with valid defaults succeeds");
+///         .expect("the configured metric is valid");
 ///     progress.report_async().await.expect("the sink accepts events");
 ///     progress
 ///         .finish_unchecked_async()
 ///         .await
 ///         .expect("the sink accepts terminal events");
 /// }
+///
+/// # let mut future = std::pin::pin!(report_once());
+/// # let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+/// # assert!(matches!(std::future::Future::poll(future.as_mut(), &mut context), std::task::Poll::Ready(())));
 /// ```
 #[must_use]
 pub struct AsyncProgress<'reporter> {

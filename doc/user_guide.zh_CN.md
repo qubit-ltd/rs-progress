@@ -44,7 +44,7 @@ let files = progress.metric("files").expect("configured metric must exist");
 files.start(6)?;
 files.succeed(3)?;
 files.fail(1)?;
-files.complete(1)?;
+files.complete(2)?;
 progress.report()?;
 
 files.start(4)?;
@@ -78,6 +78,8 @@ progress.finish()?;
 投递失败都返回本次 finish 的耗时。需要修复指标后重试时使用 `finish_recoverable()`，其
 `RecoverableFinishError::Incomplete` 才会带回仍可使用的 `Progress`。只有 terminal
 错误表示已经尝试终态投递且操作不可恢复。
+指南中的第一个示例将十个文件计入成功、失败和未分类完成；`finish()` 检查完成总数，
+并不要求所有文件都成功。
 
 ## 指标生命周期与校验
 

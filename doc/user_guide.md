@@ -43,7 +43,7 @@ let files = progress.metric("files").expect("configured metric must exist");
 files.start(6)?;
 files.succeed(3)?;
 files.fail(1)?;
-files.complete(1)?;
+files.complete(2)?;
 progress.report()?;
 
 files.start(4)?;
@@ -78,6 +78,9 @@ for either incomplete validation or terminal delivery failure. Use
 `finish_recoverable()` when a caller needs repair-and-retry behavior; its
 `RecoverableFinishError::Incomplete` contains the reusable operation.
 `FinishError::Terminal` means terminal delivery was attempted and is permanent.
+The guide's first example completes ten files across successful, failed, and
+unclassified work; `finish()` checks the total completed count, not that every
+file succeeded.
 
 ## Metric lifecycle and validation
 

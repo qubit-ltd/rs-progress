@@ -68,8 +68,9 @@ impl<'reporter> RecoverableFinishError<'reporter> {
         }
     }
 
-    /// Consumes an incomplete finish error and returns its reusable progress
-    /// operation.
+    /// Consumes an incomplete validation error and returns the operation so
+    /// the caller can repair its metrics and retry or choose another terminal
+    /// action.
     ///
     /// # Errors
     ///
@@ -78,7 +79,7 @@ impl<'reporter> RecoverableFinishError<'reporter> {
     ///
     /// # Returns
     ///
-    /// The reusable progress operation after successful validation.
+    /// The reusable progress operation after incomplete validation.
     pub fn into_progress(self) -> Result<Progress<'reporter>, TerminalError> {
         match self {
             Self::Incomplete { progress, .. } => Ok(progress),

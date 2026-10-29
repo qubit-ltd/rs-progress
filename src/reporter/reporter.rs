@@ -15,7 +15,9 @@ use crate::ReporterError;
 /// Implementations must be safe to share across threads. A call to
 /// [`report`](Self::report) runs synchronously on the caller's thread, so slow
 /// sinks can delay progress updates. Return a [`ReporterError`] when delivery
-/// fails; the progress operation retains that error for its terminal result.
+/// fails; each reporting call returns its error directly, and errors are not
+/// accumulated for a later terminal result. Automatic reporting exposes worker
+/// failures through `AutoReporter::stop`.
 ///
 /// # Examples
 ///
