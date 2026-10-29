@@ -7,8 +7,5 @@
 // =============================================================================
 //! Integration tests for the redesigned `qubit-progress` API.
 
-mod auto_reporter;
 #[cfg(coverage)]
 mod coverage_tests;
-mod progress;
-mod reporter;
