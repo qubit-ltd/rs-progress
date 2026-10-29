@@ -84,6 +84,7 @@ pub use event::__coverage_event_serde;
 pub use event::Event;
 pub use event::Phase;
 #[doc(hidden)]
+#[cfg(coverage)]
 pub use internal::__coverage_internal;
 pub use internal::OperationLifecycle;
 pub use metric::Metric;
@@ -92,6 +93,7 @@ pub use metric::MetricHandle;
 pub use metric::MetricSnapshot;
 pub use operation_attributes::OperationAttributes;
 #[doc(hidden)]
+#[cfg(coverage)]
 pub use progress::__coverage_progress_edges;
 pub use progress::Progress;
 pub use progress::ProgressBuilder;

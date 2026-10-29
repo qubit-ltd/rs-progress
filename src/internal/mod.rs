@@ -22,6 +22,7 @@ mod yield_like;
 pub(crate) use finish_guard::FinishGuard;
 pub use operation_lifecycle::OperationLifecycle;
 #[doc(hidden)]
+#[cfg(coverage)]
 pub use operation_state::__coverage_internal;
 pub(crate) use operation_state::OperationState;
 pub(crate) use progress_core::build_event;

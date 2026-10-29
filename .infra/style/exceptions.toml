@@ -69,3 +69,8 @@ reason = "Builder, operation, and temporary snapshot form one lifecycle API."
 rule = "test-redirect"
 path = "tests/operation_state_tests.rs"
 reason = "Concrete Loom tests import the production operation gate so model checking exercises the same protocol implementation."
+
+[[exceptions]]
+rule = "coverage-cfg"
+path = "src/progress/internal.rs"
+reason = "Compile the terminal reporter helper only in coverage builds."

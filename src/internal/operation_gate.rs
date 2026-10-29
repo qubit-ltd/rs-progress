@@ -8,8 +8,11 @@
 //! Generic atomic operation lifecycle protocol.
 
 use std::marker::PhantomData;
+#[cfg(coverage)]
 use std::sync::Arc;
+#[cfg(coverage)]
 use std::sync::atomic::AtomicU8;
+#[cfg(coverage)]
 use std::sync::atomic::AtomicUsize;
 
 pub use super::atomic_u8_like::AtomicU8Like;
@@ -165,8 +168,9 @@ where
     }
 }
 
-/// Exercises the standard gate implementation from the instrumented library.
+/// Exercises the standard gate implementation in coverage builds.
 #[doc(hidden)]
+#[cfg(coverage)]
 pub fn __coverage_operation_gate() {
     type StandardGate = OperationGate<AtomicU8, AtomicUsize, StdScheduler>;
     let gate: StandardGate = Default::default();

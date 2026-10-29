@@ -7,5 +7,7 @@
 // =============================================================================
 //! Private implementation types for progress operations.
 
+pub(crate) mod operation_id;
+#[cfg(coverage)]
 pub(crate) mod coverage_terminal_reporter;
 pub(crate) mod reporter_handle;

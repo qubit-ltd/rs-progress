@@ -9,13 +9,14 @@
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
+#[cfg(coverage)]
 use crate::Metric;
 use crate::MetricHandle;
 use crate::MetricSnapshot;
+#[cfg(coverage)]
 use crate::NoopReporter;
 use crate::OperationAttributes;
 use crate::Phase;
@@ -39,7 +40,11 @@ use crate::validation::validate_stage;
 mod internal;
 mod progress_builder;
 
+#[cfg(coverage)]
 use internal::coverage_terminal_reporter::CoverageTerminalReporter;
+pub(crate) use internal::operation_id::allocate_operation_id_from;
+#[cfg(coverage)]
+use internal::operation_id::allocate_operation_id_from as allocate_operation_id_from_coverage;
 use internal::reporter_handle::ReporterHandle;
 pub use progress_builder::ProgressBuilder;
 
@@ -420,27 +425,17 @@ impl Drop for Progress<'_> {
 /// Allocates a nonzero operation ID without wrapping or reuse.
 #[inline(never)]
 pub(crate) fn allocate_operation_id() -> Result<u64, StartError> {
-    loop {
-        let current = NEXT_OPERATION_ID.load(Ordering::Relaxed);
-        if current == 0 {
-            return Err(StartError::OperationIdExhausted);
-        }
-        let next = current.checked_add(1).unwrap_or(0);
-        if NEXT_OPERATION_ID
-            .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-        {
-            return Ok(current);
-        }
-    }
+    allocate_operation_id_from(&NEXT_OPERATION_ID)
 }
 
-/// Exercises progress-only edge paths from the instrumented library build.
+/// Exercises progress-only edge paths in coverage builds.
 #[doc(hidden)]
+#[cfg(coverage)]
 pub fn __coverage_progress_edges() {
-    let previous = NEXT_OPERATION_ID.swap(0, Ordering::Relaxed);
-    assert!(matches!(allocate_operation_id(), Err(StartError::OperationIdExhausted)));
-    NEXT_OPERATION_ID.store(previous.max(1), Ordering::Relaxed);
+    assert!(matches!(
+        allocate_operation_id_from_coverage(&AtomicU64::new(0)),
+        Err(StartError::OperationIdExhausted)
+    ));
 
     let progress = Progress::builder(&NoopReporter)
         .metric(Metric::new("coverage", "Coverage"))
