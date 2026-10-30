@@ -110,6 +110,5 @@ pub(crate) fn __coverage_operation_state() {
 #[doc(hidden)]
 #[cfg(coverage)]
 pub fn __coverage_internal() {
-    super::operation_gate::__coverage_operation_gate();
     __coverage_operation_state();
 }

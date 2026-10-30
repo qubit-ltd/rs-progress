@@ -12,11 +12,6 @@ reason = "Gate internal lifecycle coverage helpers behind cfg(coverage)."
 
 [[exceptions]]
 rule = "coverage-cfg"
-path = "src/internal/operation_gate.rs"
-reason = "Exercise scheduler and concurrent gate branches deterministically in coverage builds."
-
-[[exceptions]]
-rule = "coverage-cfg"
 path = "src/internal/operation_state.rs"
 reason = "Exercise the abandoned finishing guard path in coverage builds."
 
@@ -64,11 +59,6 @@ reason = "Metric configuration, counts, and snapshots are one metric model."
 rule = "public-type-layout"
 path = "src/progress.rs"
 reason = "Builder, operation, and temporary snapshot form one lifecycle API."
-
-[[exceptions]]
-rule = "test-redirect"
-path = "tests/operation_state_tests.rs"
-reason = "Concrete Loom tests import the production operation gate so model checking exercises the same protocol implementation."
 
 [[exceptions]]
 rule = "coverage-cfg"

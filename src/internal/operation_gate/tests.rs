@@ -7,32 +7,12 @@
 // =============================================================================
 //! Loom models for the production operation freeze protocol.
 
-#[path = "../src/internal/atomic_u8_like.rs"]
-mod atomic_u8_like;
-#[path = "../src/internal/atomic_usize_like.rs"]
-mod atomic_usize_like;
-#[path = "../src/internal/gate_lifecycle.rs"]
-mod gate_lifecycle;
-#[path = "../src/internal/operation_gate.rs"]
-mod operation_gate;
-#[path = "../src/internal/std_scheduler.rs"]
-mod std_scheduler;
-#[path = "../src/internal/yield_like.rs"]
-mod yield_like;
-
-#[cfg(not(coverage))]
 use std::sync::Arc as StdArc;
-#[cfg(not(coverage))]
 use std::sync::Barrier;
-#[cfg(not(coverage))]
 use std::sync::atomic::AtomicU8 as StdAtomicU8;
-#[cfg(not(coverage))]
 use std::sync::atomic::AtomicUsize as StdAtomicUsize;
-#[cfg(not(coverage))]
 use std::thread;
-#[cfg(not(coverage))]
 use std::time::Duration;
-#[cfg(not(coverage))]
 use std::time::Instant;
 
 #[cfg(not(coverage))]
@@ -49,17 +29,16 @@ use loom::sync::atomic::Ordering as LoomOrdering;
 use loom::sync::atomic::fence as loom_fence;
 #[cfg(not(coverage))]
 use loom::thread as loom_thread;
-#[cfg(not(coverage))]
-use operation_gate::AtomicU8Like;
-#[cfg(not(coverage))]
-use operation_gate::AtomicUsizeLike;
-use operation_gate::GateLifecycle;
-use operation_gate::OperationGate;
-use operation_gate::StdScheduler;
-use operation_gate::YieldLike;
 
-#[test]
 #[cfg(not(coverage))]
+use super::AtomicU8Like;
+#[cfg(not(coverage))]
+use super::AtomicUsizeLike;
+use super::GateLifecycle;
+use super::OperationGate;
+use super::StdScheduler;
+use super::YieldLike;
+#[test]
 fn test_standard_operation_gate_lifecycle() {
     type StandardGate = OperationGate<StdAtomicU8, StdAtomicUsize, StdScheduler>;
 
@@ -80,7 +59,6 @@ fn test_standard_operation_gate_lifecycle() {
 }
 
 #[test]
-#[cfg(not(coverage))]
 fn test_standard_operation_gate_drains_updates_and_rejects_new_work() {
     type StandardGate = OperationGate<StdAtomicU8, StdAtomicUsize, StdScheduler>;
     let state = StdArc::new(StandardGate::new());
