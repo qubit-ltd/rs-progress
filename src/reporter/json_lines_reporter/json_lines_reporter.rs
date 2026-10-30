@@ -17,6 +17,8 @@ use crate::ReporterError;
 
 /// Writes one complete event as one JSON line.
 ///
+/// Available with the `json-lines` feature.
+///
 /// A successful report means the complete newline-terminated record was
 /// accepted by the [`Write`] interface; it does not flush the writer. A write
 /// error may leave a prefix of the record in the destination, without rollback

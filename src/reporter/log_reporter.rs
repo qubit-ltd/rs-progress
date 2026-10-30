@@ -17,6 +17,8 @@ use crate::ReporterError;
 
 /// Reports each complete event through the `log` facade at info level.
 ///
+/// Available with the `log` feature.
+///
 /// # Examples
 ///
 /// ```

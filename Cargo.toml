@@ -24,6 +24,9 @@ include = [
     "/benches/**",
 ]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [workspace]
 exclude = ["fuzz"]
 
