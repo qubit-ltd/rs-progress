@@ -508,20 +508,12 @@ fn test_auto_reporter_drop_swallows_worker_panic_after_joining() {
         .start()
         .expect("Started event must succeed");
 
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        thread::scope(|scope| {
-            let auto = progress.spawn_auto_reporter(scope);
-            let status = auto.status();
-            auto.notifier().notify();
-            for _ in 0..100 {
-                if status.is_failed() {
-                    break;
-                }
-                thread::sleep(Duration::from_millis(1));
-            }
-            assert!(status.is_failed(), "worker panic must be observed before Drop");
-        });
-    }));
-
-    assert!(result.is_ok(), "Drop must not propagate worker panic");
+    thread::scope(|scope| {
+        let auto = progress.spawn_auto_reporter(scope);
+        let status = auto.status();
+        auto.notifier().notify();
+        wait_for_auto_reporter_failure(&status);
+        let result = catch_unwind(AssertUnwindSafe(|| drop(auto)));
+        assert!(result.is_ok(), "Drop must not propagate worker panic");
+    });
 }
