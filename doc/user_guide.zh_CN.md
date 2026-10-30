@@ -346,8 +346,18 @@ async fn run_batch(reporter: &dyn AsyncReporter, fail_work: bool) -> Result<(), 
 }
 ```
 
-若调用方取消正在等待的上报 Future，投递结果未知。运行中事件会在等待投递前消耗序号，
-终态操作在 Future 被轮询后即被消费。除非上报器自身提供去重，否则不要自动重试终态事件。
+取消仍在等待投递的上报 Future 后，远端是否已接收事件无法确定。
+Running 上报在等待投递前消耗序号。调用消费 self 的异步终态方法时，操作所有权
+立即移入返回的 Future；只有轮询并执行到终态逻辑，才会采样耗时、冻结指标、
+按需校验，并在启用上报且校验通过时尝试投递。直接丢弃未经轮询的终态 Future
+会关闭本地操作及指标句柄，不会发送终态事件。除非上报器提供去重能力，
+不要自动重试终态事件。
+
+启动还有独立的取消边界。丢弃未经轮询的 `start_async()` Future 不会调用上报器。
+若在 Started 投递仍 pending 时取消，内部操作会被丢弃，调用方既拿不到
+AsyncProgress，也不会收到 StartError 或 DeliveryError；库不会重试或补发终态。
+此时远端可能已经接收 Started。重新启动会创建具有新身份的操作，不是原事件重放。
+需要核对远端状态的应用应结合自己的关联标识和恢复策略处理这一不确定结果。
 
 [examples/async_reporting.rs](../examples/async_reporting.rs) 提供了完整的独立示例：它实现
 只记录内存事件的 `RecordingSink`，并依次 await 启动、到期上报和成功结束。运行命令为：

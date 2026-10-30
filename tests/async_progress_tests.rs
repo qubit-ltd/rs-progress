@@ -159,6 +159,49 @@ fn block_on<F: Future>(future: F) -> F::Output {
 }
 
 #[test]
+fn test_unpolled_start_future_drop_does_not_attempt_delivery() {
+    let reporter = TerminalReporter::new(Phase::Started, TerminalBehavior::Pending);
+    let start = AsyncProgress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks"))
+        .start_async();
+    drop(start);
+    assert!(reporter.events().is_empty());
+}
+
+#[test]
+fn test_cancelled_started_future_does_not_retry_or_emit_terminal() {
+    // The existing phase-configurable helper also models a pending Started.
+    let reporter = TerminalReporter::new(Phase::Started, TerminalBehavior::Pending);
+    let mut start = Box::pin(
+        AsyncProgress::builder(&reporter)
+            .metric(Metric::new("tasks", "Tasks"))
+            .start_async(),
+    );
+    assert!(poll_once(start.as_mut()).is_pending());
+    drop(start);
+
+    let first_events = reporter.events();
+    assert_eq!(first_events.len(), 1);
+    assert_eq!(first_events[0].phase(), Phase::Started);
+    assert_eq!(first_events[0].sequence(), 0);
+    let first_id = first_events[0].operation_id();
+
+    let mut restarted = Box::pin(
+        AsyncProgress::builder(&reporter)
+            .metric(Metric::new("tasks", "Tasks"))
+            .start_async(),
+    );
+    assert!(poll_once(restarted.as_mut()).is_pending());
+    drop(restarted);
+
+    let events = reporter.events();
+    assert_eq!(events.len(), 2);
+    assert!(events.iter().all(|event| event.phase() == Phase::Started));
+    assert!(events.iter().all(|event| event.sequence() == 0));
+    assert_ne!(events[1].operation_id(), first_id);
+}
+
+#[test]
 fn test_async_lifecycle_emits_started_running_and_succeeded_in_sequence() {
     let reporter = RecordingReporter::default();
     let mut progress = block_on(

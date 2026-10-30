@@ -377,9 +377,20 @@ async fn run_batch(reporter: &dyn AsyncReporter, fail_work: bool) -> Result<(), 
 ```
 
 If a caller cancels an in-flight report future, delivery status is unknown.
-Running reports consume their sequence before awaiting delivery, and terminal
-operations are consumed when their future is polled. Do not retry a terminal
-event automatically unless the reporter provides its own deduplication.
+Running reports consume their sequence before awaiting delivery. Calling a
+consuming async terminal method moves the operation into its future immediately;
+polling drives elapsed-time sampling, metric freezing, validation where required,
+and delivery when enabled. Dropping an unpolled terminal future closes the local
+operation and its metric handles without sending a terminal event. Do not retry
+a terminal event automatically unless the reporter provides deduplication.
+
+Startup has a separate cancellation boundary. Dropping an unpolled
+`start_async()` future does not invoke the reporter. Cancelling it while Started
+delivery is pending drops the internal operation: no `AsyncProgress`, `StartError`,
+or `DeliveryError` is returned, no retry occurs, and no terminal event is generated.
+The sink may already have accepted Started. Starting again creates a new
+operation identity, not a replay of the original event. Applications that require
+remote reconciliation must use their own correlation and recovery policy.
 
 The complete standalone example at [examples/async_reporting.rs](../examples/async_reporting.rs)
 implements an in-memory `RecordingSink`, then awaits startup, due reporting,

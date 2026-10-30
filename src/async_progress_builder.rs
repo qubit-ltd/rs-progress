@@ -172,6 +172,16 @@ impl<'reporter> AsyncProgressBuilder<'reporter> {
     ///
     /// Returns [`StartError`] when metadata validation fails, no operation ID
     /// is available, or the reporter rejects the Started event.
+    ///
+    /// # Cancellation
+    ///
+    /// Calling this method moves the builder into the returned future. Dropping
+    /// it without polling does not invoke the reporter. If it is cancelled
+    /// while Started delivery is pending, the caller receives no progress
+    /// operation or delivery error, and remote acceptance remains unknown.
+    /// The internal operation is dropped without retrying or emitting a
+    /// terminal event. Starting again creates a new operation rather than
+    /// replaying the original Started event.
     pub async fn start_async(self) -> Result<AsyncProgress<'reporter>, StartError> {
         validate_metrics(&self.metrics)?;
         if let Some(stage) = &self.stage {
