@@ -277,3 +277,39 @@ fn test_metric_snapshot_deserialization_rejects_invalid_invariants() {
         assert!(from_value::<MetricSnapshot>(value).is_err());
     }
 }
+
+/// Verifies snapshot and running-event JSON entry points enforce count
+/// boundaries.
+#[cfg(feature = "serde")]
+#[test]
+fn test_metric_count_overflow_boundaries_across_json_entry_points() {
+    let cases = [
+        (None, u64::MAX, 1, false),
+        (None, u64::MAX, 0, true),
+        (None, u64::MAX - 1, 1, true),
+        (Some(u64::MAX), u64::MAX, 1, false),
+        (Some(0), 0, 1, false),
+    ];
+
+    for (total, completed, active, expected_valid) in cases {
+        let metric = json!({
+            "id": "tasks", "name": "Tasks", "total": total,
+            "completed": completed, "active": active,
+            "succeeded": 0, "failed": 0, "cancelled": 0
+        });
+        assert_eq!(
+            from_value::<MetricSnapshot>(metric.clone()).is_ok(),
+            expected_valid,
+            "unexpected snapshot result for {metric}"
+        );
+        let event = json!({
+            "operation_id": 1, "sequence": 1, "phase": "running", "stage": null,
+            "metrics": [metric], "elapsed": "1ns"
+        });
+        assert_eq!(
+            from_value::<Event>(event.clone()).is_ok(),
+            expected_valid,
+            "unexpected running event result for {event}"
+        );
+    }
+}

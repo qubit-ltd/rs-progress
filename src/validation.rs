@@ -115,8 +115,9 @@ pub(crate) fn validate_attributes(attributes: &OperationAttributes) -> Result<()
 ///
 /// # Returns
 ///
-/// `Ok(())` when classified counts fit within completed work and all counts
-/// fit within the configured total.
+/// `Ok(())` when classified counts fit within completed work, the occupied
+/// count does not overflow, and all counts fit within the configured total.
+/// The occupied-count overflow check applies even when no total is configured.
 ///
 /// # Errors
 ///
@@ -135,28 +136,31 @@ pub(crate) fn validate_snapshot_counts(snapshot: &MetricSnapshot) -> Result<(), 
             metric_id: snapshot.id().into(),
         });
     }
-    if let Some(total) = snapshot.total() {
-        if total == 0
-            && (snapshot.completed() != 0
-                || snapshot.active() != 0
-                || snapshot.succeeded() != 0
-                || snapshot.failed() != 0
-                || snapshot.cancelled() != 0)
-        {
-            return Err(SnapshotValidationError::NonZeroCountsForZeroTotal {
+    if let Some(total) = snapshot.total()
+        && total == 0
+        && (snapshot.completed() != 0
+            || snapshot.active() != 0
+            || snapshot.succeeded() != 0
+            || snapshot.failed() != 0
+            || snapshot.cancelled() != 0)
+    {
+        return Err(SnapshotValidationError::NonZeroCountsForZeroTotal {
+            metric_id: snapshot.id().into(),
+        });
+    }
+    let occupied =
+        snapshot
+            .completed()
+            .checked_add(snapshot.active())
+            .ok_or_else(|| SnapshotValidationError::CountOverflow {
                 metric_id: snapshot.id().into(),
-            });
-        }
-        let occupied = snapshot.completed().checked_add(snapshot.active()).ok_or_else(|| {
-            SnapshotValidationError::CountOverflow {
-                metric_id: snapshot.id().into(),
-            }
-        })?;
-        if occupied > total {
-            return Err(SnapshotValidationError::CountsExceedTotal {
-                metric_id: snapshot.id().into(),
-            });
-        }
+            })?;
+    if let Some(total) = snapshot.total()
+        && occupied > total
+    {
+        return Err(SnapshotValidationError::CountsExceedTotal {
+            metric_id: snapshot.id().into(),
+        });
     }
     Ok(())
 }
