@@ -150,12 +150,7 @@ fn format_event(event: &Event) -> String {
         );
     }
     for (key, value) in event.attributes().iter() {
-        let _ = write!(
-            line,
-            " attribute={}({})",
-            key.escape_debug(),
-            value.escape_debug(),
-        );
+        let _ = write!(line, " attribute={}({})", key.escape_debug(), value.escape_debug(),);
     }
     for metric in event.metrics() {
         let _ = write!(

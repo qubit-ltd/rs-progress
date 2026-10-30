@@ -32,10 +32,7 @@ struct RecordingSink(Mutex<Vec<Event>>);
 impl AsyncReporter for RecordingSink {
     fn report<'a>(&'a self, event: &'a Event) -> ReportFuture<'a> {
         Box::pin(async move {
-            self.0
-                .lock()
-                .expect("recording lock must work")
-                .push(event.clone());
+            self.0.lock().expect("recording lock must work").push(event.clone());
             Ok(())
         })
     }
@@ -73,9 +70,7 @@ async fn run_batch(reporter: &dyn AsyncReporter, fail_work: bool) -> Result<(), 
         .metric(Metric::new("items", "Items").total(1))
         .start_async()
         .await?;
-    let items = progress
-        .metric("items")
-        .expect("configured metric must exist");
+    let items = progress.metric("items").expect("configured metric must exist");
     items.start(1)?;
 
     if fail_work {
@@ -100,10 +95,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     {
         let events = sink.0.lock().expect("recording lock must work");
         let phases: Vec<_> = events.iter().map(Event::phase).collect();
-        assert_eq!(
-            phases,
-            vec![Phase::Started, Phase::Running, Phase::Succeeded]
-        );
+        assert_eq!(phases, vec![Phase::Started, Phase::Running, Phase::Succeeded]);
         assert_eq!(events[2].metrics()[0].succeeded(), 1);
     }
     assert!(block_on(run_batch(&sink, true)).is_err());

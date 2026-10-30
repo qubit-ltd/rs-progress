@@ -17,6 +17,11 @@ reason = "Exercise the abandoned finishing guard path in coverage builds."
 
 [[exceptions]]
 rule = "coverage-cfg"
+path = "src/internal/operation_gate/tests.rs"
+reason = "Keep Loom adapters and models out of coverage instrumentation builds."
+
+[[exceptions]]
+rule = "coverage-cfg"
 path = "src/lib.rs"
 reason = "Re-export coverage-only lifecycle and progress hooks for external coverage tests."
 

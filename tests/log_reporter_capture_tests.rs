@@ -80,9 +80,6 @@ fn test_log_reporter_emits_lifecycle_and_respects_disabled_info() {
         .start()
         .expect("disabled operation must start");
     progress.finish().expect("disabled operation must finish");
-    assert_eq!(
-        LOGGER.records.lock().expect("capture lock must work").len(),
-        3
-    );
+    assert_eq!(LOGGER.records.lock().expect("capture lock must work").len(), 3);
     log::set_max_level(LevelFilter::Off);
 }

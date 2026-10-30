@@ -6,6 +6,7 @@
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
 //! Loom models for the production operation freeze protocol.
+// qubit-style: allow coverage-cfg
 
 use std::sync::Arc as StdArc;
 use std::sync::Barrier;
