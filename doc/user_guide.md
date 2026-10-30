@@ -310,7 +310,7 @@ progress.finish()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-For a zero interval, `notify()` coalesces repeated calls into at most one pending report. For a positive interval, the worker emits heartbeats at the minimum interval and `notify()` is a no-op, avoiding synchronization work for worker threads. `notify()` is harmless after `stop()`. Always call `stop()` and handle its result before calling a terminal method. While the `AutoReporter` exists, the exclusive borrow prevents manual reporting, stage changes, and termination.
+For a zero interval, `notify()` coalesces repeated calls into at most one pending report. For a positive interval, the worker emits heartbeats at the minimum interval and `notify()` is a no-op, avoiding synchronization work for worker threads. `notify()` is harmless after `stop()`. Always call `stop()` and handle its result before leaving the scope. `Progress` remains exclusively borrowed for the entire `thread::scope`; `stop()` joins the worker but does not end that borrow early. Wait until the scope returns before reporting manually, changing stages, or consuming the operation. Use an inner scope if the surrounding work must continue afterward.
 
 The automatic driver uses one scoped `std::thread` per enabled `Progress`
 operation and does not provide an automatic driver for `AsyncProgress`. With an

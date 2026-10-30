@@ -85,7 +85,7 @@ matching terminal event before returning; see
 
 ## Worker-thread use: automatically report shared copy state
 
-For parallel or worker-driven work, let `Progress` own one scoped background reporter thread for the whole operation. Every worker updates a cloneable metric handle and shares the cloneable `ProgressNotifier`; the reporter thread coalesces notifications and delivers events. Call `stop()` before the terminal event: the scoped exclusive borrow prevents manual reporting or termination while the background reporter is active.
+For parallel or worker-driven work, let `Progress` own one scoped background reporter thread for the whole operation. Every worker updates a cloneable metric handle and shares the cloneable `ProgressNotifier`; the reporter thread coalesces notifications and delivers events. `Progress` remains exclusively borrowed until `thread::scope` returns; `stop()` joins the worker but does not end that borrow early. Report manually or finish the operation after the scope, or use an inner scope when the surrounding work must continue afterward.
 
 ```rust
 use std::{thread, time::Duration};

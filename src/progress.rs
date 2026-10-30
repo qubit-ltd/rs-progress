@@ -432,9 +432,11 @@ impl<'reporter> Progress<'reporter> {
     ///
     /// A handle that joins the scoped reporting worker when dropped.
     ///
-    /// Calling this method exclusively borrows the operation for the handle's
-    /// lifetime. Keep the handle alive until `stop()` has completed before
-    /// using or consuming the operation again.
+    /// Calling this method exclusively borrows the operation for the entire
+    /// thread scope. `stop()` joins the worker but does not end that borrow
+    /// early. Wait until `std::thread::scope` returns before reporting
+    /// manually, changing stages, or consuming the operation. Use an inner
+    /// scope if the surrounding work must continue afterward.
     ///
     /// ```compile_fail,E0499
     /// use qubit_progress::Metric;
@@ -448,6 +450,19 @@ impl<'reporter> Progress<'reporter> {
     ///     let auto = progress.spawn_auto_reporter(scope);
     ///     progress.report().expect("overlapping mutable borrow");
     ///     auto.stop().expect("worker shutdown");
+    /// });
+    /// ```
+    ///
+    /// ```compile_fail,E0499
+    /// use qubit_progress::{Metric, NoopReporter, Progress};
+    ///
+    /// let mut progress = Progress::builder(&NoopReporter)
+    ///     .metric(Metric::new("tasks", "Tasks"))
+    ///     .start().expect("valid configuration");
+    /// std::thread::scope(|scope| {
+    ///     let auto = progress.spawn_auto_reporter(scope);
+    ///     auto.stop().expect("worker shutdown");
+    ///     progress.report().expect("scope still holds the mutable borrow");
     /// });
     /// ```
     ///
@@ -478,6 +493,7 @@ impl<'reporter> Progress<'reporter> {
     ///     let auto = progress.spawn_auto_reporter(scope);
     ///     auto.stop().expect("worker shutdown");
     /// });
+    /// progress.report().expect("scope has ended");
     /// progress.finish().expect("complete operation");
     /// ```
     ///
