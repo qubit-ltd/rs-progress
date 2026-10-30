@@ -1,7 +1,7 @@
 {
   "config_sources": {
     "rs-infra-ci": "sha256:2cc68b5ab050769382d7e9af468cb60b2261fb8e387d0ced9974c8d068964271",
-    "rs-infra-dependency": "sha256:010058a2c0271cddef091cf6411d2d19cc39c2a77ea6f4f526b401469c5bc460",
+    "rs-infra-dependency": "sha256:c27912fbb157885d337bc7763ab7af4e51200a01014a3036e53ffb76ef0b58ce",
     "rs-infra-style": "sha256:f5ebba934dfcd04bb4b7a3847f27b8a73dcab28afbfe7cb2a9c2e884ebc4564c",
     "rs-infra-tools": "sha256:b52fdcc1a8382533f3f5f56d0f458fca1e30baa853f6acb394d913ec32972166"
   },
@@ -76,15 +76,19 @@
     },
     ".infra/dependency/policy/baselines/v2026.10.26.txt": {
       "executable": false,
-      "sha256": "fa05065a9b8e999f2a99de280fca9839e6e1fde5436b101ff0eb4520dcccda4e"
+      "sha256": "950e25b86bf2fa395cca7e635fca4418fc7e4f0757c7c9b56a0365c980414ea0"
     },
     ".infra/dependency/policy/baselines/v2026.10.27.txt": {
       "executable": false,
       "sha256": "cc229dc5b06d4040d54bf61c2a49b6822804c490e4e642ccd52233beed62b6da"
     },
+    ".infra/dependency/policy/baselines/v2026.10.29.txt": {
+      "executable": false,
+      "sha256": "950e25b86bf2fa395cca7e635fca4418fc7e4f0757c7c9b56a0365c980414ea0"
+    },
     ".infra/dependency/policy/current.toml": {
       "executable": false,
-      "sha256": "b71e552b287ae37d7143a235481468d99d76829bc0793c3bf1788d48b38d6fa6"
+      "sha256": "96365a19ef22846986e1e44dc60539e78d314e2e01c02758f66796762a99faf7"
     },
     ".infra/pages/pages.json": {
       "executable": false,
