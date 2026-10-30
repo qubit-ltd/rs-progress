@@ -5,23 +5,23 @@
 //
 //    Licensed under the Apache License, Version 2.0.
 // =============================================================================
-use qubit_fast_cas::CasCell;
+use crate::metric::internal::metric_atomic_word::MetricAtomicWord;
 
 /// RAII wrapper that always releases a locked gate.
-pub struct MetricGateGuard<'gate> {
-    gate: &'gate CasCell,
+pub(in crate::metric) struct MetricGateGuard<'gate, G: MetricAtomicWord> {
+    gate: &'gate G,
     next_version: u64,
 }
 
-impl<'gate> MetricGateGuard<'gate> {
+impl<'gate, G: MetricAtomicWord> MetricGateGuard<'gate, G> {
     /// Creates a guard that releases the gate at `next_version` on drop.
     #[inline]
-    pub fn new(gate: &'gate CasCell, next_version: u64) -> Self {
+    pub fn new(gate: &'gate G, next_version: u64) -> Self {
         Self { gate, next_version }
     }
 }
 
-impl Drop for MetricGateGuard<'_> {
+impl<G: MetricAtomicWord> Drop for MetricGateGuard<'_, G> {
     /// Releases the gate by publishing the next even version.
     fn drop(&mut self) {
         self.gate.store(self.next_version);
