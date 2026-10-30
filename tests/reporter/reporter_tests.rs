@@ -8,6 +8,7 @@
 //! Reporter output and event serialization tests.
 
 use std::io;
+use std::io::BufWriter;
 use std::io::Write;
 use std::panic::AssertUnwindSafe;
 use std::panic::catch_unwind;
@@ -139,6 +140,62 @@ struct WriteCallRecorder {
     writes: Vec<Vec<u8>>,
 }
 
+/// Writer that accepts at most a few bytes per call and records flushes.
+#[derive(Default)]
+struct ShortWriter {
+    bytes: Vec<u8>,
+    flushes: usize,
+    fail_flush: bool,
+}
+
+impl Write for ShortWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        let count = buffer.len().min(3);
+        self.bytes.extend_from_slice(&buffer[..count]);
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.flushes += 1;
+        if self.fail_flush {
+            Err(io::Error::other("flush unavailable"))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// Writes a fixed prefix, then rejects subsequent writes.
+#[derive(Default)]
+struct PrefixThenFailWriter {
+    bytes: Vec<u8>,
+    fail_next_write: bool,
+    prefix_written: bool,
+}
+
+impl Write for PrefixThenFailWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        if self.prefix_written && self.fail_next_write {
+            self.fail_next_write = false;
+            return Err(io::Error::other("write failed after prefix"));
+        }
+        if !self.prefix_written {
+            let count = buffer.len().min(5);
+            self.bytes.extend_from_slice(&buffer[..count]);
+            self.prefix_written = true;
+            self.fail_next_write = true;
+            Ok(count)
+        } else {
+            self.bytes.extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Writer that panics while a reporter holds its mutex.
 struct PanickingWriter;
 
@@ -176,6 +233,43 @@ fn create_started_event() -> Event {
         .expect("event collection mutex must not be poisoned")
         .pop()
         .expect("Started event must be captured")
+}
+
+/// Captures Started, explicitly reported Running, and Cancelled events.
+fn create_cancelled_lifecycle_events() -> Vec<Event> {
+    let events = Mutex::new(Vec::new());
+    {
+        let capture = |event: &Event| {
+            events
+                .lock()
+                .expect("event collection mutex must not be poisoned")
+                .push(event.clone());
+            Ok(())
+        };
+        let mut progress = Progress::builder(&capture)
+            .metric(Metric::new("tasks", "Tasks").total(1))
+            .start()
+            .expect("capture must accept the Started event");
+        let tasks = progress.metric("tasks").expect("configured metric must exist");
+        tasks.start(1).expect("work must start");
+        progress.report().expect("capture must accept the Running event");
+        progress.cancel().expect("capture must accept the Cancelled event");
+    }
+    events
+        .into_inner()
+        .expect("event collection mutex must not be poisoned")
+}
+
+/// Reports Started, Running, and Cancelled through a public Progress handle.
+fn report_cancelled_lifecycle(reporter: &impl Reporter) {
+    let mut progress = Progress::builder(reporter)
+        .metric(Metric::new("tasks", "Tasks").total(1))
+        .start()
+        .expect("reporter must accept the Started event");
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
+    tasks.start(1).expect("work must start");
+    progress.report().expect("reporter must accept the Running event");
+    progress.cancel().expect("reporter must accept the Cancelled event");
 }
 
 /// Verifies each generic line reporter implementation is directly executable.
@@ -267,6 +361,79 @@ fn test_text_reporter_writes_complete_line_in_one_write() {
     assert!(writer.writes[0].ends_with(b"\n"));
 }
 
+/// Verifies short writes are completed and flush remains caller-controlled.
+#[test]
+fn test_text_reporter_short_writes_and_explicit_flush() {
+    let reporter = TextReporter::new(ShortWriter::default());
+    report_cancelled_lifecycle(&reporter);
+    let mut writer = reporter.into_inner().expect("writer mutex must be healthy");
+    let output = String::from_utf8(writer.bytes.clone()).expect("text records must be UTF-8");
+    let lines: Vec<_> = output.lines().collect();
+    assert_eq!(lines.len(), 3, "each lifecycle event must remain a line");
+    assert!(lines[0].contains("phase=started"));
+    assert!(lines[1].contains("phase=running"));
+    assert!(lines[2].contains("phase=cancelled"));
+    assert_eq!(writer.flushes, 0, "report and into_inner must not flush");
+    writer.flush().expect("explicit flush must succeed");
+    assert_eq!(writer.flushes, 1);
+
+    let mut writer = BufWriter::new(ShortWriter {
+        fail_flush: true,
+        ..ShortWriter::default()
+    });
+    writer.write_all(b"buffered").expect("buffered write must succeed");
+    assert!(
+        writer
+            .flush()
+            .expect_err("flush error must be observable")
+            .to_string()
+            .contains("flush unavailable")
+    );
+}
+
+/// Verifies a partial write failure is visible and later calls do not repair
+/// it.
+#[test]
+fn test_text_reporter_partial_write_failure_does_not_repair_boundary() {
+    let mut events = create_cancelled_lifecycle_events().into_iter();
+    let started = events.next().expect("Started event must exist");
+    let cancelled = events.last().expect("Cancelled event must exist");
+    let reporter = TextReporter::new(PrefixThenFailWriter::default());
+    assert!(reporter.report(&started).is_err());
+    reporter
+        .report(&cancelled)
+        .expect("one-shot writer failure must recover");
+    let writer = reporter.into_inner().expect("writer mutex must be healthy");
+    assert!(writer.bytes.starts_with(b"opera"), "failed write leaves its prefix");
+    assert!(
+        writer
+            .bytes
+            .windows(b"phase=cancelled".len())
+            .any(|window| window == b"phase=cancelled")
+    );
+    assert!(
+        writer.bytes[5..].starts_with(b"operation="),
+        "Cancelled record follows the prefix immediately"
+    );
+    assert!(
+        !writer.bytes[5..].starts_with(b"\n"),
+        "later record is not prefixed with a repaired newline"
+    );
+}
+
+/// Verifies into_inner does not flush buffered records and flush errors
+/// surface.
+#[test]
+fn test_text_reporter_bufwriter_flush_contract() {
+    let reporter = TextReporter::new(BufWriter::with_capacity(4096, Vec::new()));
+    report_cancelled_lifecycle(&reporter);
+    let mut writer = reporter.into_inner().expect("writer mutex must be healthy");
+    assert!(writer.get_ref().is_empty(), "into_inner must not flush");
+    writer.flush().expect("explicit flush must succeed");
+    let bytes = writer.into_inner().expect("buffered writer must not fail");
+    assert_eq!(bytes.iter().filter(|byte| **byte == b'\n').count(), 3);
+}
+
 /// Verifies JSON Lines writes one complete newline-delimited record at once.
 #[cfg(feature = "json-lines")]
 #[test]
@@ -283,6 +450,95 @@ fn test_json_lines_reporter_writes_complete_line_in_one_write() {
         .expect("JSON Lines reporter mutex must not be poisoned");
     assert_eq!(writer.writes.len(), 1);
     assert!(writer.writes[0].ends_with(b"\n"));
+}
+
+/// Verifies JSON Lines short writes complete a record without implicit flush.
+#[cfg(feature = "json-lines")]
+#[test]
+fn test_json_lines_reporter_short_writes_and_explicit_flush() {
+    use qubit_progress::JsonLinesReporter;
+
+    let reporter = JsonLinesReporter::new(ShortWriter::default());
+    report_cancelled_lifecycle(&reporter);
+    let mut writer = reporter.into_inner().expect("writer mutex must be healthy");
+    let output = String::from_utf8(writer.bytes.clone()).expect("JSON Lines output must be UTF-8");
+    let lines: Vec<_> = output.lines().collect();
+    assert_eq!(lines.len(), 3, "each lifecycle event must remain a line");
+    let phases: Vec<_> = lines
+        .iter()
+        .map(|line| {
+            serde_json::from_str::<Event>(line)
+                .expect("each line must be a complete event")
+                .phase()
+                .as_str()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(phases, ["started", "running", "cancelled"]);
+    assert_eq!(writer.flushes, 0, "report and into_inner must not flush");
+    writer.flush().expect("explicit flush must succeed");
+    assert_eq!(writer.flushes, 1);
+
+    let mut writer = BufWriter::new(ShortWriter {
+        fail_flush: true,
+        ..ShortWriter::default()
+    });
+    writer.write_all(b"buffered").expect("buffered write must succeed");
+    assert!(
+        writer
+            .flush()
+            .expect_err("flush error must be observable")
+            .to_string()
+            .contains("flush unavailable")
+    );
+}
+
+/// Verifies a JSON Lines partial write failure does not repair later
+/// boundaries.
+#[cfg(feature = "json-lines")]
+#[test]
+fn test_json_lines_reporter_partial_write_failure_does_not_repair_boundary() {
+    use qubit_progress::JsonLinesReporter;
+
+    let mut events = create_cancelled_lifecycle_events().into_iter();
+    let started = events.next().expect("Started event must exist");
+    let cancelled = events.last().expect("Cancelled event must exist");
+    let reporter = JsonLinesReporter::new(PrefixThenFailWriter::default());
+    assert!(reporter.report(&started).is_err());
+    reporter
+        .report(&cancelled)
+        .expect("one-shot writer failure must recover");
+    let writer = reporter.into_inner().expect("writer mutex must be healthy");
+    assert!(writer.bytes.starts_with(b"{"), "failed write leaves its prefix");
+    assert!(
+        writer
+            .bytes
+            .windows(b"\"phase\":\"cancelled\"".len())
+            .any(|window| window == b"\"phase\":\"cancelled\"")
+    );
+    assert!(
+        writer.bytes[5..].starts_with(b"{"),
+        "Cancelled record follows the prefix immediately"
+    );
+    assert!(
+        !writer.bytes[5..].starts_with(b"\n"),
+        "later record is not prefixed with a repaired newline"
+    );
+}
+
+/// Verifies JSON Lines into_inner leaves buffered bytes for explicit flush.
+#[cfg(feature = "json-lines")]
+#[test]
+fn test_json_lines_reporter_bufwriter_flush_contract() {
+    use qubit_progress::JsonLinesReporter;
+
+    let reporter = JsonLinesReporter::new(BufWriter::with_capacity(4096, Vec::new()));
+    report_cancelled_lifecycle(&reporter);
+    let mut writer = reporter.into_inner().expect("writer mutex must be healthy");
+    assert!(writer.get_ref().is_empty(), "into_inner must not flush");
+    writer.flush().expect("explicit flush must succeed");
+    let bytes = writer.into_inner().expect("buffered writer must not fail");
+    assert_eq!(bytes.iter().filter(|byte| **byte == b'\n').count(), 3);
 }
 
 /// Verifies NoopReporter accepts direct reporter calls.

@@ -17,21 +17,31 @@ use crate::ReporterError;
 
 /// Writes one complete event as one JSON line.
 ///
+/// A successful report means the complete newline-terminated record was
+/// accepted by the [`Write`] interface; it does not flush the writer. A write
+/// error may leave a prefix of the record in the destination, without rollback
+/// or repair of later line boundaries. After such an error, replace or reopen
+/// the destination, or recover its format-specific position before continuing;
+/// do not blindly retry the event. Flushing does not guarantee durable storage.
+///
 /// # Examples
 ///
 /// ```
+/// use std::io::BufWriter;
+/// use std::io::Write;
 /// use qubit_progress::{JsonLinesReporter, Metric, Progress};
 ///
-/// let reporter = JsonLinesReporter::new(Vec::<u8>::new());
-/// let progress = Progress::builder(&reporter)
+/// let reporter = JsonLinesReporter::new(BufWriter::new(Vec::<u8>::new()));
+/// let mut progress = Progress::builder(&reporter)
 ///     .metric(Metric::new("tasks", "Tasks").total(1))
 ///     .start()?;
 /// let tasks = progress.metric("tasks").expect("configured metric must exist");
 /// tasks.start(1)?;
 /// tasks.succeed(1)?;
+/// progress.report()?;
 /// progress.finish()?;
-/// let output = reporter.into_inner()?;
-/// assert!(output.ends_with(b"\n"));
+/// let mut writer = reporter.into_inner()?;
+/// writer.flush()?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 ///
@@ -57,7 +67,7 @@ impl<W> JsonLinesReporter<W> {
         }
     }
 
-    /// Consumes the reporter and returns its writer.
+    /// Consumes the reporter and returns its writer without flushing it.
     ///
     /// # Returns
     ///
@@ -68,6 +78,9 @@ impl<W> JsonLinesReporter<W> {
     ///
     /// Returns the writer in [`PoisonError`] when a reporting thread panicked
     /// while holding the mutex.
+    /// Flush the returned writer explicitly and handle its error. A successful
+    /// flush only passes buffered data to the underlying writer; it does not
+    /// guarantee durable storage.
     #[inline]
     pub fn into_inner(self) -> Result<W, PoisonError<W>> {
         self.writer.into_inner()
@@ -87,7 +100,9 @@ where
     /// # Errors
     ///
     /// Returns an error if serialization or writing fails, or if a reporting
-    /// thread previously panicked while holding the writer mutex.
+    /// thread previously panicked while holding the writer mutex. A failed
+    /// `write_all` may have already written a prefix; that prefix is not rolled
+    /// back, and later reports do not restore line boundaries.
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
         let mut encoded = serde_json::to_vec(event).map_err(ReporterError::new)?;
         encoded.push(b'\n');

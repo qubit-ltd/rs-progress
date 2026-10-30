@@ -18,6 +18,13 @@ use crate::ReporterError;
 
 /// Writes one complete human-readable record for each reported event.
 ///
+/// A successful report means the complete newline-terminated record was
+/// accepted by the [`Write`] interface; it does not flush the writer. A write
+/// error may leave a prefix of the record in the destination, without rollback
+/// or repair of later line boundaries. After such an error, replace or reopen
+/// the destination, or recover its format-specific position before continuing;
+/// do not blindly retry the event. Flushing does not guarantee durable storage.
+///
 /// # Type Parameters
 ///
 /// - `W`: The owned writer receiving the formatted event records.
@@ -25,11 +32,22 @@ use crate::ReporterError;
 /// # Examples
 ///
 /// ```
-/// use qubit_progress::TextReporter;
+/// use std::io::BufWriter;
+/// use std::io::Write;
+/// use qubit_progress::{Metric, Progress, TextReporter};
 ///
-/// let reporter = TextReporter::new(Vec::<u8>::new());
-/// assert!(reporter.into_inner()?.is_empty());
-/// # Ok::<(), std::sync::PoisonError<Vec<u8>>>(())
+/// let reporter = TextReporter::new(BufWriter::new(Vec::<u8>::new()));
+/// let mut progress = Progress::builder(&reporter)
+///     .metric(Metric::new("tasks", "Tasks").total(1))
+///     .start()?;
+/// let tasks = progress.metric("tasks").expect("configured metric must exist");
+/// tasks.start(1)?;
+/// tasks.succeed(1)?;
+/// progress.report()?;
+/// progress.finish()?;
+/// let mut writer = reporter.into_inner()?;
+/// writer.flush()?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub struct TextReporter<W> {
     /// Writer serialized across concurrent reporter calls.
@@ -55,10 +73,13 @@ impl<W> TextReporter<W> {
         }
     }
 
-    /// Consumes the reporter and returns its writer.
+    /// Consumes the reporter and returns its writer without flushing it.
     ///
     /// Returns the contained writer in the error when a reporting thread
     /// panicked while holding the mutex.
+    /// Flush the returned writer explicitly and handle its error. A successful
+    /// flush only passes buffered data to the underlying writer; it does not
+    /// guarantee durable storage.
     ///
     /// # Returns
     ///
@@ -82,12 +103,15 @@ where
     ///
     /// # Returns
     ///
-    /// `Ok(())` after the complete line is written.
+    /// `Ok(())` after the complete line has been accepted by the writer. This
+    /// does not flush the writer.
     ///
     /// # Errors
     ///
-    /// Returns a [`ReporterError`] if the writer is poisoned or rejects the
-    /// complete line.
+    /// Returns a [`ReporterError`] if the writer is poisoned or writing the
+    /// line fails. A failed `write_all` may have already written a prefix; that
+    /// prefix is not rolled back, and later reports do not restore line
+    /// boundaries.
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
         let mut line = format_event(event);
         line.push('\n');
