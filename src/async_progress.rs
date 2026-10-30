@@ -34,6 +34,9 @@ mod async_progress_builder;
 pub use self::async_progress_builder::AsyncProgressBuilder;
 use self::async_progress_builder::AsyncReporterHandle;
 
+#[cfg(test)]
+mod tests;
+
 /// One started asynchronous progress operation.
 ///
 /// Terminal methods consume the operation. Dropping a pending terminal future
@@ -189,7 +192,11 @@ impl<'reporter> AsyncProgress<'reporter> {
     ///
     /// A reporter error contains the complete attempted event. If this future
     /// is cancelled while pending, delivery status is unknown and the event
-    /// sequence remains consumed.
+    /// sequence remains consumed. Its due-report deadline is reset only after
+    /// the reporter future completes, whether successfully or with an error;
+    /// cancelling it while pending leaves the deadline unchanged, so another
+    /// due report may start immediately. Callers that cancel on timeout and
+    /// need to limit retries should apply their own backoff.
     ///
     /// # Errors
     ///
@@ -213,7 +220,8 @@ impl<'reporter> AsyncProgress<'reporter> {
     ///
     /// Returns [`EmissionError`] when a due event cannot be constructed or
     /// delivered. No error is returned when reporting is disabled or not yet
-    /// due.
+    /// due. A pending due report that is cancelled consumes its event sequence
+    /// but leaves the deadline unchanged, so the next call may also be due.
     pub async fn report_if_due_async(&mut self) -> Result<(), EmissionError> {
         if !self.enabled || !self.is_due() {
             return Ok(());
