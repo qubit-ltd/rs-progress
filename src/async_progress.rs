@@ -261,7 +261,11 @@ impl<'reporter> AsyncProgress<'reporter> {
     ///
     /// # Returns
     ///
-    /// The elapsed operation time after successful delivery.
+    /// The elapsed operation time sampled at the beginning of this terminal
+    /// attempt, before freezing metric updates or delivering the event. The
+    /// duration excludes subsequent waiting for delivery. The sample is taken
+    /// when the future is polled and reaches the terminal logic, not when the
+    /// future is created.
     ///
     /// # Errors
     ///
@@ -276,7 +280,11 @@ impl<'reporter> AsyncProgress<'reporter> {
     ///
     /// # Returns
     ///
-    /// The elapsed operation time after successful delivery.
+    /// The elapsed operation time sampled at the beginning of this terminal
+    /// attempt, before freezing metric updates, validating completion, or
+    /// delivering the event. The duration excludes subsequent waiting for
+    /// delivery. The sample is taken when the future is polled and reaches the
+    /// terminal logic, not when the future is created.
     ///
     /// # Errors
     ///
@@ -304,7 +312,11 @@ impl<'reporter> AsyncProgress<'reporter> {
     ///
     /// # Returns
     ///
-    /// The elapsed operation time after successful delivery.
+    /// The elapsed operation time sampled at the beginning of this terminal
+    /// attempt, before freezing metric updates or delivering the event. The
+    /// duration excludes subsequent waiting for delivery. The sample is taken
+    /// when the future is polled and reaches the terminal logic, not when the
+    /// future is created.
     ///
     /// # Errors
     ///
@@ -318,7 +330,11 @@ impl<'reporter> AsyncProgress<'reporter> {
     ///
     /// # Returns
     ///
-    /// The elapsed operation time after successful delivery.
+    /// The elapsed operation time sampled at the beginning of this terminal
+    /// attempt, before freezing metric updates or delivering the event. The
+    /// duration excludes subsequent waiting for delivery. The sample is taken
+    /// when the future is polled and reaches the terminal logic, not when the
+    /// future is created.
     ///
     /// # Errors
     ///

@@ -259,7 +259,10 @@ impl<'reporter> Progress<'reporter> {
     ///
     /// # Returns
     ///
-    /// Elapsed operation time after successful completion.
+    /// Elapsed operation time sampled at the beginning of this terminal
+    /// attempt, before freezing metric updates or delivering the terminal
+    /// event. The returned duration does not include subsequent waiting for
+    /// delivery.
     ///
     /// # Errors
     ///
@@ -273,7 +276,10 @@ impl<'reporter> Progress<'reporter> {
     ///
     /// # Returns
     ///
-    /// Elapsed operation time after validation and successful completion.
+    /// Elapsed operation time sampled at the beginning of this terminal
+    /// attempt, before freezing metric updates or validating completion.
+    /// The returned duration does not include subsequent waiting for
+    /// delivery.
     ///
     /// # Errors
     ///
@@ -300,7 +306,10 @@ impl<'reporter> Progress<'reporter> {
     ///
     /// # Returns
     ///
-    /// Elapsed operation time after successful completion.
+    /// Elapsed operation time sampled at the beginning of this terminal
+    /// attempt, before freezing metric updates or validating completion.
+    /// The returned duration does not include subsequent waiting for
+    /// delivery.
     ///
     /// # Errors
     ///
@@ -327,7 +336,9 @@ impl<'reporter> Progress<'reporter> {
     ///
     /// # Returns
     ///
-    /// Elapsed operation time after the failed-phase event is delivered.
+    /// Elapsed operation time sampled at the beginning of this terminal
+    /// attempt, before freezing metric updates or delivering the terminal
+    /// event.
     ///
     /// # Errors
     ///
@@ -340,7 +351,9 @@ impl<'reporter> Progress<'reporter> {
     ///
     /// # Returns
     ///
-    /// Elapsed operation time after the cancelled-phase event is delivered.
+    /// Elapsed operation time sampled at the beginning of this terminal
+    /// attempt, before freezing metric updates or delivering the terminal
+    /// event.
     ///
     /// # Errors
     ///

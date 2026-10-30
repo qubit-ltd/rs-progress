@@ -13,11 +13,13 @@ use std::time::Duration;
 
 use crate::error::EmissionError;
 
-/// Terminal event delivery failure paired with the elapsed operation time.
+/// Terminal event delivery failure paired with the elapsed operation time
+/// sampled at the beginning of the terminal attempt.
 ///
 /// The error preserves the underlying emission failure and the time measured
-/// when delivery was attempted. It is returned by terminal progress operations
-/// when the reporter rejects the final event.
+/// sampled before metric updates are frozen or the event is delivered. It is
+/// returned by terminal progress operations when the reporter rejects the final
+/// event.
 ///
 /// # Examples
 ///
@@ -44,7 +46,7 @@ use crate::error::EmissionError;
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct TerminalError {
-    /// Operation time measured when the final event was attempted.
+    /// Operation time sampled at the beginning of the terminal attempt.
     elapsed: Duration,
     /// Failure returned while delivering the final event.
     source: EmissionError,
@@ -56,11 +58,13 @@ impl TerminalError {
         Self { elapsed, source }
     }
 
-    /// Returns the operation time measured when terminal delivery failed.
+    /// Returns the operation time sampled at the beginning of the terminal
+    /// attempt.
     ///
     /// # Returns
     ///
-    /// The elapsed time recorded when delivery was attempted.
+    /// The elapsed time recorded before metric updates were frozen or delivery
+    /// was attempted.
     #[must_use]
     #[inline]
     pub const fn elapsed(&self) -> Duration {

@@ -87,7 +87,11 @@ progress.finish()?;
 known total unless `completed == total`. `FinishError::Incomplete` contains the
 completion error and the elapsed time sampled before validation after the
 operation has been consumed. `FinishError::elapsed()` returns that same value
-for either incomplete validation or terminal delivery failure. Use
+for either incomplete validation or terminal delivery failure. This value is
+the elapsed operation time sampled at the beginning of the terminal attempt,
+before freezing updates, validating completion, or delivering the terminal
+event. It is not the duration of the `finish()` call and excludes subsequent
+waiting for terminal delivery. Use
 `finish_recoverable()` when a caller needs repair-and-retry behavior; its
 `RecoverableFinishError::Incomplete` contains the reusable operation.
 `FinishError::Terminal` means terminal delivery was attempted and is permanent.
@@ -308,11 +312,13 @@ progress.finish()?;
 
 For a zero interval, `notify()` coalesces repeated calls into at most one pending report. For a positive interval, the worker emits heartbeats at the minimum interval and `notify()` is a no-op, avoiding synchronization work for worker threads. `notify()` is harmless after `stop()`. Always call `stop()` and handle its result before calling a terminal method. While the `AutoReporter` exists, the exclusive borrow prevents manual reporting, stage changes, and termination.
 
-The current automatic driver uses one scoped `std::thread` per enabled
-operation, independent of the number of workers. It is intended for
-thread-based workers and does not integrate with
-an async runtime; async callers should drive `report_if_due()` from their own
-runtime until a dedicated async driver is added.
+The automatic driver uses one scoped `std::thread` per enabled `Progress`
+operation and does not provide an automatic driver for `AsyncProgress`. With an
+`AsyncReporter`, schedule and await `AsyncProgress::report_if_due_async()` on
+the application's runtime. With a synchronous `Reporter`, use
+`Progress::report_if_due()`; its callback executes synchronously, so the
+application must keep blocking sinks off the runtime's worker threads. The
+application owns scheduling, cancellation, and backpressure policies.
 
 `AutoReporterStatus::is_failed()` becomes true when the background reporter exits with an
 error or panic. Workers can observe a cloned `AutoReporterStatus` to stop expensive work
@@ -460,8 +466,13 @@ event invariants as runtime construction.
 metric-handle transitions return `MetricError` directly. Do not ignore these
 errors: invalid state means no event was delivered, while a sink error means
 the delivery attempt failed. `finish()` returns a static `FinishError`, so it
-can be propagated with `?`; use `elapsed()` for the finish attempt duration and
-inspect its `CompletionError` or `TerminalError`. Use `finish_recoverable()` and
+can be propagated with `?`. `elapsed()` returns the elapsed operation time
+sampled at the beginning of the terminal attempt, not the duration of the
+`finish()` call. The sample precedes freezing metric updates, completion
+validation where applicable, and terminal delivery; subsequent waiting is
+excluded. Async methods take the sample when the future is polled and reaches
+terminal logic, not when the future is created. Use it to inspect the sample
+and its `CompletionError` or `TerminalError`. Use `finish_recoverable()` and
 `RecoverableFinishError` only when repair and retry are required.
 
 Terminal methods return these results:

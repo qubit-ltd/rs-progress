@@ -84,7 +84,9 @@ progress.finish()?;
 `finish()` 会拒绝仍有 active 工作的指标，也会拒绝 `completed != total` 的已知总量指标。
 校验失败时 `finish()` 返回包含 `CompletionError` 和校验前采样耗时的
 `FinishError::Incomplete`，此时操作已经被消费。`FinishError::elapsed()` 对校验失败和终态
-投递失败都返回本次 finish 的耗时。需要修复指标后重试时使用 `finish_recoverable()`，其
+投递失败都返回同一个采样值。该值是结束尝试开始时采样的操作已逝时间，早于冻结指标
+更新、完成校验和终态投递；它不是 `finish()` 调用自身的耗时，也不包含随后等待终态投递的时间。
+需要修复指标后重试时使用 `finish_recoverable()`，其
 `RecoverableFinishError::Incomplete` 才会带回仍可使用的 `Progress`。只有 terminal
 错误表示已经尝试终态投递且操作不可恢复。
 指南中的第一个示例将十个文件计入成功、失败和未分类完成；`finish()` 检查完成总数，
@@ -285,9 +287,11 @@ progress.finish()?;
 `notify()` 在 `stop()` 后无害。调用终态方法前必须调用 `stop()` 并处理其结果。
 `AutoReporter` 存活期间，独占借用会阻止手工上报、修改阶段和结束操作。
 
-当前自动驱动器会为每个启用的操作创建一个有作用域的
-`std::thread`。它面向基于线程的工作，不直接集成异步运行时；异步调用方应在
-自己的运行时中驱动 `report_if_due()`，等待未来提供专用的异步驱动器。
+当前自动驱动器为每个启用的 `Progress` 操作创建一个有作用域的 `std::thread`，
+尚未提供 `AsyncProgress` 专用的自动调度器。使用 `AsyncReporter` 时，由应用运行时
+安排并 await `AsyncProgress::report_if_due_async()`；使用同步 `Reporter` 时调用
+`Progress::report_if_due()`。同步回调会直接执行，应用应负责避免阻塞型输出占用异步
+运行时的工作线程。定时、取消和背压策略由应用负责。
 
 后台上报器因错误或 panic 退出后，`AutoReporterStatus::is_failed()` 会变为 `true`。
 工作线程可以观察克隆的 `AutoReporterStatus`，以便提前停止高成本工作；但 `stop()` 才是最终依据：
@@ -419,7 +423,9 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 `start()` 返回 `StartError`，运行中上报返回 `EmissionError`，指标句柄的状态转换
 直接返回 `MetricError`。不要忽略这些错误：状态无效表示事件没有发送，而输出目标
 错误表示本次投递失败。`finish()` 返回不带生命周期的 `FinishError`，可以直接使用
-`?` 传播，并通过 `elapsed()` 获取本次 finish 的耗时；需要修复并重试时使用 `finish_recoverable()` 和
+`?` 传播。`elapsed()` 返回结束尝试开始时采样的操作已逝时间，早于冻结指标更新、完成校验
+（如适用）和终态投递；它不是 `finish()` 调用自身的耗时，也不包含随后等待终态投递的时间。
+异步方法会在 Future 被 poll 并到达终态逻辑时采样，而不是在创建 Future 时采样。需要修复并重试时使用 `finish_recoverable()` 和
 `RecoverableFinishError`。
 
 终态方法的返回类型如下：
