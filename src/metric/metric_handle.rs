@@ -18,6 +18,8 @@ use crate::metric::internal::apply_delta_to_counts;
 /// Cloneable capability for one live metric owned by a progress operation.
 ///
 /// All mutation methods are serialized by one CAS gate critical section.
+/// Contending updates retry until they acquire the gate; this provides no
+/// fairness or bounded completion-time guarantee.
 /// A handle remains readable after its progress operation closes, but rejects
 /// all later mutations.
 ///
@@ -78,7 +80,10 @@ impl MetricHandle {
 
     /// Returns one internally consistent immutable metric snapshot.
     ///
-    /// This read remains available after the owning operation closes.
+    /// This read remains available after the owning operation closes. Under
+    /// contention it retries until it observes an unchanged even gate version,
+    /// using spin hints and periodically yielding the current thread. It has no
+    /// fairness or bounded completion-time guarantee.
     ///
     /// # Returns
     ///
