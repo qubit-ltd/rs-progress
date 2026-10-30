@@ -19,8 +19,14 @@ Event delivery is at-most-once: the crate returns reporter failures to the
 caller and does not automatically retry them. Applications that retry at a
 higher level must account for a reporter that accepted an event before
 returning an error, which can make a retry duplicate the event; idempotent
-reporter sinks should use the event's `operation_id` and `sequence` when
-deduplicating.
+reporter sinks should deduplicate using `(process_instance_id, operation_id,
+sequence)`. The application generates the process-instance ID, stores it in
+`OperationAttributes` or an external envelope, and uses a new value for each
+concurrent instance and after restart. Task IDs and attempts are sufficient
+only when they uniquely identify the process and progress instance. Replaying
+the original event returned by a delivery error preserves its key; calling
+`report()` or starting again creates a different event identity, and a
+restarted process may reuse an operation ID.
 
 ## Installation
 

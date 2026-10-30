@@ -59,7 +59,18 @@ Event delivery is at-most-once. The crate does not automatically retry a
 reporter failure; it returns the error to the caller. If an application retries
 at a higher level, the reporter may have accepted the event before returning
 the error, so the retry can produce a duplicate. Sinks that need idempotency
-should deduplicate using the event's `operation_id` and `sequence`.
+should deduplicate using `(process_instance_id, operation_id, sequence)`. The
+application generates `process_instance_id` and keeps it stable while replaying
+an event, while assigning a new value to each concurrent progress instance
+and after a process restart. It can be carried in `OperationAttributes` or an
+external envelope. A task ID and attempt are suitable only when they uniquely
+identify the process and progress instance; do not assume that they do.
+
+Replaying the original `Event` from `DeliveryError::event()` or
+`DeliveryError::into_parts()` preserves its key. Calling `report()` creates a
+new sequence, and starting again creates a new operation ID; after restart,
+that ID may also repeat. These calls do not identify a retry as a replay of the
+same business event. The sink owns its idempotency policy.
 
 For an intentionally unchecked successful close, call `finish_unchecked()`. For
 the normal checked successful close, call `finish()`:
@@ -218,6 +229,40 @@ A reporter failure consumes one delivery sequence number and resets the next
 deadline; sequence gaps therefore identify failed delivery attempts rather than
 missing state transitions.
 
+## Writer buffering and partial failures
+
+The built-in text and JSON Lines reporters pass each complete record to the
+configured `Write` implementation. A successful `report()` means that writer
+accepted the record; it does not call `flush()`. `into_inner()` only returns
+the writer. After reporting has stopped and the writer is no longer shared,
+flush it explicitly and handle the result:
+
+```rust
+use std::io::{BufWriter, Write};
+use qubit_progress::{Metric, Progress, TextReporter};
+
+let reporter = TextReporter::new(BufWriter::new(Vec::<u8>::new()));
+let mut progress = Progress::builder(&reporter)
+    .metric(Metric::new("tasks", "Tasks").total(1))
+    .start()?;
+let tasks = progress.metric("tasks").expect("configured metric must exist");
+tasks.start(1)?;
+tasks.succeed(1)?;
+progress.report()?;
+progress.finish()?;
+let mut writer = reporter.into_inner()?;
+writer.flush()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+For a `File`, handle `flush()` errors the same way. A successful flush is not a
+disk-persistence guarantee; applications that require persistence must also
+use the appropriate file synchronization and transaction policy. A failed
+`write_all` may already have written a prefix, which is not rolled back, and
+later records are not guaranteed to start on a fresh line. Reopen or replace
+the target, or resynchronize using the storage format's recovery procedure,
+before continuing. The reporters do not retry automatically.
+
 ## Automatically report state changed by worker threads
 
 `spawn_auto_reporter` reports metric state changed by worker threads. It starts
@@ -286,6 +331,22 @@ Running reports consume their sequence before awaiting delivery, and terminal
 operations are consumed when their future is polled. Do not retry a terminal
 event automatically unless the reporter provides its own deduplication.
 
+For `report_if_due_async()`, a polled due `Running` future consumes its
+sequence. If it completes with success or error, the next deadline is measured
+from completion. If it remains pending and is cancelled, the deadline is left
+unchanged, so the next call may be due immediately; the operation remains
+usable. Dropping an unpolled future consumes neither a sequence nor a deadline.
+Disabled operations emit nothing and keep their scheduling state unchanged.
+Applications that cancel on timeout and need to limit retries must apply their
+own backoff; the crate does not retry automatically.
+
+| Outcome | Sequence | Next deadline | Operation |
+| --- | --- | --- | --- |
+| Not due or disabled | Unchanged | Unchanged | Usable |
+| Due report completes, with success or error | Consumed | Reset from completion | Usable |
+| Polled due report is cancelled while pending | Consumed | Unchanged; next call may be due | Usable |
+| Unpolled `Running` future is dropped | Unchanged | Unchanged | Usable |
+
 ## Disabled operations
 
 Enablement belongs to `Reporter::is_enabled()` and is sampled once by `start()`. A disabled operation still validates its fixed configuration and maintains metric state, but emits no events and starts no automatic reporting thread. This makes an unconditional reporting path cheap when a sink is disabled.
@@ -326,7 +387,22 @@ can be propagated with `?`; use `elapsed()` for the finish attempt duration and
 inspect its `CompletionError` or `TerminalError`. Use `finish_recoverable()` and
 `RecoverableFinishError` only when repair and retry are required.
 
-Terminal methods return `Result<Duration, TerminalError>`. Inspect `TerminalError` when completion must be recorded reliably: it preserves elapsed time even when the final event cannot be delivered. For automatic reporting, `AutoReporter::stop()` returns `AutoReporterError`, whose `Emission` variant carries a normal delivery failure and whose `Panicked` variant preserves the worker panic payload. `Drop` remains panic-free and is intended for best-effort cleanup.
+Terminal methods return these results:
+
+| Method | Return value |
+| --- | --- |
+| `finish` | `Result<Duration, FinishError>` |
+| `finish_recoverable` | `Result<Duration, RecoverableFinishError<'reporter>>` |
+| `finish_unchecked`, `fail`, `cancel` | `Result<Duration, TerminalError>` |
+| `finish_async` | after `.await`: `Result<Duration, FinishError>` |
+| `finish_unchecked_async`, `fail_async`, `cancel_async` | after `.await`: `Result<Duration, TerminalError>` |
+
+`FinishError` preserves the distinction between completion validation and
+terminal delivery; `TerminalError` retains elapsed time if final delivery
+fails. For automatic reporting, `AutoReporter::stop()` returns
+`AutoReporterError`, whose `Emission` variant carries a normal delivery failure
+and whose `Panicked` variant preserves the worker panic payload. `Drop` remains
+panic-free and is intended for best-effort cleanup.
 
 When the `serde` feature is enabled, deserializing `Stage`, `MetricSnapshot`, or `Event` validates the same metadata and count invariants used by live progress operations. Treat a deserialization error as invalid external progress data rather than a recoverable event state.
 

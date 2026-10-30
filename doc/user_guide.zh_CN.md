@@ -60,8 +60,15 @@ let elapsed = progress.finish()?;
 
 事件投递采用“最多一次”语义。库不会自动重试上报器错误，而是将错误返回给
 调用方。如果业务层选择重试，上报器可能已经接受事件但随后返回错误，因此重试
-可能产生重复事件；需要幂等性的 sink 应使用事件的 `operation_id` 和 `sequence`
-进行去重。
+可能产生重复事件；需要幂等性的 sink 应使用应用生成的进程实例 ID 作为命名空间，并按
+`(process_instance_id, operation_id, sequence)` 去重。应用应在一次事件重放期间保持该 ID
+不变，为并发进度实例和进程重启分配新 ID。它可放入 `OperationAttributes` 或外部信封。
+只有任务 ID 和 attempt 足以唯一标识进程及进度实例时，才能用它们代替实例 ID，不能默认
+它们足够唯一。
+
+重放 `DeliveryError::event()` 或 `DeliveryError::into_parts()` 返回的原始 `Event` 会保留
+原键。重新调用 `report()` 会生成新序号，重新启动会生成新 operation ID；进程重启后该 ID
+还可能重复。这些调用不能自动识别为同一业务事件的重放，sink 应自行负责幂等策略。
 
 有意跳过指标校验时使用 `finish_unchecked()`；正常成功结束使用
 `finish()`：
@@ -205,6 +212,35 @@ progress.finish()?;
 会消耗一个投递序号并重置下次截止时间；因此序号空洞表示投递尝试失败，而不是缺少
 状态转换。
 
+## writer 缓冲与部分写入失败
+
+内置文本和 JSON Lines 上报器会把完整记录交给配置的 `Write` 实现。`report()` 成功表示
+writer 接受了记录，不会自动调用 `flush()`。`into_inner()` 只取回 writer。停止上报并确保
+writer 不再被共享使用后，应用应显式 flush 并处理结果：
+
+```rust
+use std::io::{BufWriter, Write};
+use qubit_progress::{Metric, Progress, TextReporter};
+
+let reporter = TextReporter::new(BufWriter::new(Vec::<u8>::new()));
+let mut progress = Progress::builder(&reporter)
+    .metric(Metric::new("tasks", "Tasks").total(1))
+    .start()?;
+let tasks = progress.metric("tasks").expect("configured metric must exist");
+tasks.start(1)?;
+tasks.succeed(1)?;
+progress.report()?;
+progress.finish()?;
+let mut writer = reporter.into_inner()?;
+writer.flush()?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+写入 `File` 时也应处理 `flush()` 错误。flush 成功不保证数据已持久化到磁盘；需要持久化的
+应用还应按自身要求执行文件同步并遵守业务事务策略。`write_all` 出错前可能已经写入一段
+前缀，该前缀不会回滚，后续记录也不保证从新行开始。继续写入前，应重新打开或替换目标，
+或按存储格式支持的恢复流程重新同步。上报器不会自动重试。
+
 ## 自动上报工作线程的状态
 
 `spawn_auto_reporter` 会上报由工作线程更新的指标状态。它在整个 `Progress` 操作期间
@@ -266,6 +302,19 @@ progress.finish()?;
 若调用方取消正在等待的上报 Future，投递结果未知。运行中事件会在等待投递前消耗序号，
 终态操作在 Future 被轮询后即被消费。除非上报器自身提供去重，否则不要自动重试终态事件。
 
+对于 `report_if_due_async()`，已轮询的到期 `Running` Future 会消耗序号。若投递正常完成或
+返回错误，下次截止时间从完成时重新计算。若 Future 一直 pending 后被取消，截止时间保持
+不变，因此下一次调用可能立即到期；操作仍可继续使用。丢弃未轮询的 Future 不消耗序号，
+也不改变截止时间。禁用操作不会发送事件，调度状态保持不变。若应用因 timeout 取消上报且
+需要限制重试频率，应自行执行 backoff；crate 不会自动重试。
+
+| 结果 | 序号 | 下次截止时间 | 操作 |
+| --- | --- | --- | --- |
+| 未到期或已禁用 | 不变 | 不变 | 可继续使用 |
+| 到期上报完成（成功或错误） | 已消耗 | 从完成时重置 | 可继续使用 |
+| 已轮询的到期上报 pending 后取消 | 已消耗 | 不变；下次可能立即到期 | 可继续使用 |
+| 丢弃未轮询的 `Running` Future | 不变 | 不变 | 可继续使用 |
+
 ## 禁用操作
 
 `Reporter::is_enabled()` 的结果由 `start()` 采样一次。禁用操作仍会校验固定配置并
@@ -305,10 +354,20 @@ JSON Lines 适合日志采集器和后处理，因为每一行都是完整事件
 `?` 传播，并通过 `elapsed()` 获取本次 finish 的耗时；需要修复并重试时使用 `finish_recoverable()` 和
 `RecoverableFinishError`。
 
-终态方法返回 `Result<Duration, TerminalError>`。如果必须可靠记录完成结果，
-应检查 `TerminalError`：即使最终事件无法投递，它仍会保留操作耗时。自动上报
-场景下，`AutoReporter::stop()` 会返回 `AutoReporterError`：`Emission` 变体携带普通
-投递失败，`Panicked` 变体保留后台 panic 载荷。`Drop` 不传播 panic，只适合尽力清理。
+终态方法的返回类型如下：
+
+| 方法 | 返回值 |
+| --- | --- |
+| `finish` | `Result<Duration, FinishError>` |
+| `finish_recoverable` | `Result<Duration, RecoverableFinishError<'reporter>>` |
+| `finish_unchecked`、`fail`、`cancel` | `Result<Duration, TerminalError>` |
+| `finish_async` | `.await` 后为 `Result<Duration, FinishError>` |
+| `finish_unchecked_async`、`fail_async`、`cancel_async` | `.await` 后为 `Result<Duration, TerminalError>` |
+
+`FinishError` 保留完成校验错误与终态投递错误的区别；`TerminalError` 会在终态投递失败时
+保留耗时。自动上报场景下，`AutoReporter::stop()` 返回 `AutoReporterError`：`Emission`
+变体携带普通投递失败，`Panicked` 变体保留后台 panic 载荷。`Drop` 不传播 panic，只适合
+尽力清理。
 
 启用 `serde` 特性后，反序列化 `Stage`、`MetricSnapshot` 或 `Event` 时会校验与在线进度操作相同的元数据和计数不变量。反序列化错误表示外部进度数据无效，而不是可恢复的事件状态。
 
