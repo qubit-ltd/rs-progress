@@ -7,7 +7,7 @@
 // =============================================================================
 //! Coverage-only entry points for library paths that need deterministic setup.
 
-#[cfg(coverage)]
+#[cfg(all(feature = "json-lines", coverage))]
 use qubit_progress::__coverage_event_serde;
 #[cfg(coverage)]
 use qubit_progress::__coverage_internal;
