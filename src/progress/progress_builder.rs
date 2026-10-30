@@ -62,6 +62,19 @@ pub struct ProgressBuilder<'reporter> {
 
 impl<'reporter> ProgressBuilder<'reporter> {
     /// Sets the minimum interval between due-based running reports.
+    ///
+    /// # Parameters
+    ///
+    /// - `interval`: Minimum spacing for [`Progress::report_if_due`] calls. A
+    ///   zero interval makes every enabled call due. A positive interval does
+    ///   not restrict manual [`Progress::report`] calls. Every duration,
+    ///   including [`Duration::MAX`], is accepted. Deadlines use elapsed
+    ///   durations rather than adding the interval to an [`Instant`], so even
+    ///   the maximum duration does not cause `Instant` overflow.
+    ///
+    /// # Returns
+    ///
+    /// The builder with the due-report interval set to `interval`.
     #[must_use]
     #[inline]
     pub const fn interval(mut self, interval: Duration) -> Self {

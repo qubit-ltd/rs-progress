@@ -176,6 +176,14 @@ impl<'reporter> Progress<'reporter> {
     }
     /// Immediately emits a Running event from current metric state.
     ///
+    /// Each enabled delivery attempt consumes a sequence number before
+    /// invoking the reporter. After the reporter returns, whether with success
+    /// or an error, the next due deadline is reset relative to completion of
+    /// this attempt. A manual report therefore also postpones the next
+    /// due-based report. Disabled operations emit no event and leave sequence
+    /// and scheduling state unchanged. These guarantees do not describe
+    /// reporter panics.
+    ///
     /// # Returns
     ///
     /// `Ok(())` after the attempt succeeds or when reporting is disabled.
@@ -196,6 +204,11 @@ impl<'reporter> Progress<'reporter> {
         result
     }
     /// Emits a Running event only when the configured interval is due.
+    ///
+    /// When the interval is not due or reporting is disabled, this method
+    /// leaves sequence and scheduling state unchanged. When due, it follows
+    /// [`Self::report`] sequence and deadline semantics. The schedule is set
+    /// with [`ProgressBuilder::interval`].
     ///
     /// # Returns
     ///
