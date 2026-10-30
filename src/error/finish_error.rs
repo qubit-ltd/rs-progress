@@ -69,7 +69,6 @@ impl FinishError {
     ///
     /// `Some` contains the completion validation error; `None` means terminal
     /// emission was attempted.
-    #[must_use]
     #[inline]
     pub const fn completion_error(&self) -> Option<&CompletionError> {
         match self {

@@ -59,7 +59,6 @@ impl<'reporter> RecoverableFinishError<'reporter> {
     ///
     /// `Some` contains the completion validation error; `None` means terminal
     /// delivery was attempted.
-    #[must_use]
     #[inline]
     pub fn completion_error(&self) -> Option<&CompletionError> {
         match self {
