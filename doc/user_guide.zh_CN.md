@@ -175,16 +175,17 @@ fn copy_one(
             Ok(())
         }
         Err(work_error) => {
-            progress.fail()?;
+            if let Err(report_error) = progress.fail() {
+                eprintln!("terminal reporting also failed: {report_error}");
+            }
             Err(work_error)
         }
     }
 }
 ```
 
-如果操作由调用方或用户主动停止，应改用 `cancel()`。上例中，
-`progress.fail()?` 会使终态投递错误优先于业务错误返回。需要同时保留两类错误时，
-应在尝试发送终态前记录业务错误，或把两个错误组合起来。
+如果操作由调用方或用户主动停止，应改用 `cancel()`。该示例保留原始业务错误，并单独记录
+终态上报错误。
 
 ## 选择上报调度
 

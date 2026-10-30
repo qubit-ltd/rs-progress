@@ -66,7 +66,9 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
             Ok(())
         }
         Err(error) => {
-            progress.fail()?;
+            if let Err(report_error) = progress.fail() {
+                eprintln!("terminal reporting also failed: {report_error}");
+            }
             Err(error)
         }
     }
@@ -75,7 +77,8 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
 
 `Started`、每个 `Running` 和 `Succeeded` 事件都会携带已配置的总量。业务代码无需重复填写固定配置，上报器也不需要之前的事件即可理解当前状态。
 
-这个示例只展示成功路径。失败或取消时，应在返回前发送对应终态事件；具体模式见
+这个示例展示了成功和失败路径；它保留原始业务错误，并单独记录终态上报错误。取消时，
+应在返回前发送对应终态事件；具体模式见
 [结束每次操作](doc/user_guide.zh_CN.md#结束每次操作)。
 
 ## 工作线程场景：自动上报共享的复制状态

@@ -189,17 +189,18 @@ fn copy_one(
             Ok(())
         }
         Err(work_error) => {
-            progress.fail()?;
+            if let Err(report_error) = progress.fail() {
+                eprintln!("terminal reporting also failed: {report_error}");
+            }
             Err(work_error)
         }
     }
 }
 ```
 
-Use `cancel()` instead when the caller or user stops the operation. In the
-example, a failed terminal delivery takes precedence over the work error
-because `progress.fail()?` returns first. Applications that must retain both
-should record or combine the work error before attempting terminal delivery.
+Use `cancel()` instead when the caller or user stops the operation. The example
+retains the original work error and records a separate terminal reporting
+error.
 
 ## Choose a report schedule
 

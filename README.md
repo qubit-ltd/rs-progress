@@ -70,7 +70,9 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
             Ok(())
         }
         Err(error) => {
-            progress.fail()?;
+            if let Err(report_error) = progress.fail() {
+                eprintln!("terminal reporting also failed: {report_error}");
+            }
             Err(error)
         }
     }
@@ -79,8 +81,9 @@ fn copy_files(files: &[(&str, &str)]) -> Result<(), Box<dyn std::error::Error>> 
 
 `Started`, every `Running` event, and `Succeeded` all carry the configured total. The application never repeats that fixed configuration, and a reporter never needs a previous event to understand the current state.
 
-This example shows the success path. On failure or cancellation, send the
-matching terminal event before returning; see
+The example shows both success and failure paths. It retains the original work
+error and records a separate terminal reporting error. On cancellation, send
+the matching terminal event before returning; see
 [Close every operation](doc/user_guide.md#close-every-operation).
 
 ## Worker-thread use: automatically report shared copy state
