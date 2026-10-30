@@ -72,6 +72,60 @@ pub(crate) static NEXT_OPERATION_ID: AtomicU64 = AtomicU64::new(1);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 ///
+/// A terminal method consumes the operation, so it cannot be used again:
+///
+/// ```compile_fail,E0382
+/// use qubit_progress::Metric;
+/// use qubit_progress::NoopReporter;
+/// use qubit_progress::Progress;
+///
+/// let mut progress = Progress::builder(&NoopReporter)
+///     .metric(Metric::new("tasks", "Tasks"))
+///     .start().expect("valid configuration");
+/// progress.finish().expect("complete operation");
+/// progress.report().expect("cannot report after finish");
+/// ```
+///
+/// The same ownership rule prevents a second terminal call:
+///
+/// ```compile_fail,E0382
+/// use qubit_progress::Metric;
+/// use qubit_progress::NoopReporter;
+/// use qubit_progress::Progress;
+///
+/// let progress = Progress::builder(&NoopReporter)
+///     .metric(Metric::new("tasks", "Tasks"))
+///     .start().expect("valid configuration");
+/// progress.finish().expect("complete operation");
+/// progress.finish().expect("cannot finish twice");
+/// ```
+///
+/// Removing the invalid call leaves a valid operation:
+///
+/// ```no_run
+/// use qubit_progress::Metric;
+/// use qubit_progress::NoopReporter;
+/// use qubit_progress::Progress;
+///
+/// let mut progress = Progress::builder(&NoopReporter)
+///     .metric(Metric::new("tasks", "Tasks"))
+///     .start().expect("valid configuration");
+/// progress.finish().expect("complete operation");
+/// ```
+///
+/// A single terminal call is valid as well:
+///
+/// ```no_run
+/// use qubit_progress::Metric;
+/// use qubit_progress::NoopReporter;
+/// use qubit_progress::Progress;
+///
+/// let progress = Progress::builder(&NoopReporter)
+///     .metric(Metric::new("tasks", "Tasks"))
+///     .start().expect("valid configuration");
+/// progress.finish().expect("complete operation");
+/// ```
+///
 /// # Type Parameters
 ///
 /// * `'reporter` — lifetime of a borrowed reporter. An owned reporter uses
@@ -377,6 +431,70 @@ impl<'reporter> Progress<'reporter> {
     /// # Returns
     ///
     /// A handle that joins the scoped reporting worker when dropped.
+    ///
+    /// Calling this method exclusively borrows the operation for the handle's
+    /// lifetime. Keep the handle alive until `stop()` has completed before
+    /// using or consuming the operation again.
+    ///
+    /// ```compile_fail,E0499
+    /// use qubit_progress::Metric;
+    /// use qubit_progress::NoopReporter;
+    /// use qubit_progress::Progress;
+    ///
+    /// let mut progress = Progress::builder(&NoopReporter)
+    ///     .metric(Metric::new("tasks", "Tasks"))
+    ///     .start().expect("valid configuration");
+    /// std::thread::scope(|scope| {
+    ///     let auto = progress.spawn_auto_reporter(scope);
+    ///     progress.report().expect("overlapping mutable borrow");
+    ///     auto.stop().expect("worker shutdown");
+    /// });
+    /// ```
+    ///
+    /// ```compile_fail,E0505
+    /// use qubit_progress::Metric;
+    /// use qubit_progress::NoopReporter;
+    /// use qubit_progress::Progress;
+    ///
+    /// let mut progress = Progress::builder(&NoopReporter)
+    ///     .metric(Metric::new("tasks", "Tasks"))
+    ///     .start().expect("valid configuration");
+    /// std::thread::scope(|scope| {
+    ///     let auto = progress.spawn_auto_reporter(scope);
+    ///     progress.finish().expect("cannot move while borrowed");
+    ///     auto.stop().expect("worker shutdown");
+    /// });
+    /// ```
+    ///
+    /// ```no_run
+    /// use qubit_progress::Metric;
+    /// use qubit_progress::NoopReporter;
+    /// use qubit_progress::Progress;
+    ///
+    /// let mut progress = Progress::builder(&NoopReporter)
+    ///     .metric(Metric::new("tasks", "Tasks"))
+    ///     .start().expect("valid configuration");
+    /// std::thread::scope(|scope| {
+    ///     let auto = progress.spawn_auto_reporter(scope);
+    ///     auto.stop().expect("worker shutdown");
+    /// });
+    /// progress.finish().expect("complete operation");
+    /// ```
+    ///
+    /// ```no_run
+    /// use qubit_progress::Metric;
+    /// use qubit_progress::NoopReporter;
+    /// use qubit_progress::Progress;
+    ///
+    /// let mut progress = Progress::builder(&NoopReporter)
+    ///     .metric(Metric::new("tasks", "Tasks"))
+    ///     .start().expect("valid configuration");
+    /// std::thread::scope(|scope| {
+    ///     let auto = progress.spawn_auto_reporter(scope);
+    ///     auto.stop().expect("worker shutdown");
+    /// });
+    /// progress.finish().expect("complete operation");
+    /// ```
     pub fn spawn_auto_reporter<'scope, 'env>(
         &'scope mut self,
         scope: &'scope std::thread::Scope<'scope, 'env>,

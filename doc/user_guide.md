@@ -324,7 +324,14 @@ application owns scheduling, cancellation, and backpressure policies.
 error or panic. Workers can observe a cloned `AutoReporterStatus` to stop expensive work
 early, but `stop()` remains authoritative: it joins the thread, returns its
 validation or reporter error, or a structured worker panic. Dropping the handle
-still stops and joins the worker without propagating a panic.
+still stops and joins the worker without propagating a panic. Both `stop()` and
+dropped handles synchronously wait for the worker to exit, with no shutdown
+timeout. The stop signal wakes the reporting loop but cannot interrupt a
+reporter callback already in progress. In notification-driven mode, shutdown
+may also deliver a pending coalesced report. A callback that does not return can
+keep shutdown and scope exit waiting indefinitely. Applications that require
+bounded shutdown must bound the sink's blocking operations or provide
+cooperative cancellation within the sink.
 
 ## Asynchronous reporters
 

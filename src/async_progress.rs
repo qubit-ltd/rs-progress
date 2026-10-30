@@ -43,6 +43,54 @@ mod tests;
 /// therefore ends the operation locally while leaving remote delivery status
 /// unknown.
 ///
+/// The parameter below is assumed to come from a successful
+/// [`AsyncProgressBuilder::start_async`] call. A terminal method transfers
+/// ownership when its future is created, even if that future is never polled:
+///
+/// ```compile_fail,E0382
+/// use qubit_progress::AsyncProgress;
+///
+/// async fn invalid_report(mut progress: AsyncProgress<'_>) {
+///     let terminal = progress.finish_async();
+///     let running = progress.report_async();
+///     drop(running);
+///     drop(terminal);
+/// }
+/// ```
+///
+/// Creating only one terminal future is valid:
+///
+/// ```no_run
+/// use qubit_progress::AsyncProgress;
+///
+/// async fn valid_report(progress: AsyncProgress<'_>) {
+///     let terminal = progress.finish_async();
+///     drop(terminal);
+/// }
+/// ```
+///
+/// A second terminal future cannot be created from the moved operation:
+///
+/// ```compile_fail,E0382
+/// use qubit_progress::AsyncProgress;
+///
+/// async fn invalid_second_terminal(progress: AsyncProgress<'_>) {
+///     let first = progress.finish_async();
+///     let second = progress.cancel_async();
+///     drop(second);
+///     drop(first);
+/// }
+/// ```
+///
+/// ```no_run
+/// use qubit_progress::AsyncProgress;
+///
+/// async fn valid_terminal(progress: AsyncProgress<'_>) {
+///     let terminal = progress.finish_async();
+///     drop(terminal);
+/// }
+/// ```
+///
 /// # Type Parameters
 ///
 /// * `'reporter` - Lifetime of a borrowed reporter; owned reporters use

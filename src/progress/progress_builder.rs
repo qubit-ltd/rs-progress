@@ -81,26 +81,70 @@ impl<'reporter> ProgressBuilder<'reporter> {
         self.interval = interval;
         self
     }
-    /// Adds one stable metric to the operation.
+    /// Appends one stable metric in declaration order.
+    ///
+    /// Duplicate IDs are not replaced; they are rejected by [`Self::start`].
+    ///
+    /// # Parameters
+    ///
+    /// - `metric`: Metric definition to attach to every operation event. Its ID
+    ///   and name are validated when the operation starts.
+    ///
+    /// # Returns
+    ///
+    /// The builder with the metric appended.
     #[must_use]
     pub fn metric(mut self, metric: Metric) -> Self {
         self.metrics.push(metric);
         self
     }
-    /// Adds stage metadata to the Started event and subsequent events.
+    /// Replaces the initial stage attached to operation events.
+    ///
+    /// Repeated calls keep the last stage. Metadata is validated by
+    /// [`Self::start`].
+    ///
+    /// # Parameters
+    ///
+    /// - `stage`: Initial stage metadata to install.
+    ///
+    /// # Returns
+    ///
+    /// The builder with the initial stage replaced.
     #[must_use]
     #[inline]
     pub fn stage(mut self, stage: Stage) -> Self {
         self.stage = Some(stage);
         self
     }
-    /// Adds or replaces one operation correlation attribute.
+    /// Inserts or replaces one operation correlation attribute.
+    ///
+    /// Other keys are preserved. Blank keys are rejected by [`Self::start`].
+    ///
+    /// # Parameters
+    ///
+    /// - `key`: Key whose value is inserted or replaced.
+    /// - `value`: String value shared by all operation events.
+    ///
+    /// # Returns
+    ///
+    /// The builder with this attribute inserted or replaced.
     #[must_use]
     pub fn attribute(mut self, key: &str, value: &str) -> Self {
         self.attributes.insert(key, value);
         self
     }
-    /// Replaces all operation correlation attributes.
+    /// Replaces the complete operation correlation attribute set.
+    ///
+    /// Existing entries are discarded rather than merged. Attribute keys are
+    /// validated by [`Self::start`].
+    ///
+    /// # Parameters
+    ///
+    /// - `attributes`: Complete replacement set shared by all operation events.
+    ///
+    /// # Returns
+    ///
+    /// The builder with the supplied attributes installed.
     #[must_use]
     pub fn attributes(mut self, attributes: OperationAttributes) -> Self {
         self.attributes = attributes;
@@ -108,6 +152,13 @@ impl<'reporter> ProgressBuilder<'reporter> {
     }
     /// Validates configuration, samples enablement and emits Started when
     /// enabled.
+    ///
+    /// # Returns
+    ///
+    /// The started operation after configuration validation and enablement
+    /// sampling. When enabled, its Started event has been accepted by the
+    /// reporter before this method returns successfully. Disabled operations
+    /// return without delivering an event.
     ///
     /// # Errors
     ///

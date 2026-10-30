@@ -23,6 +23,15 @@ use crate::WorkerPanic;
 
 /// Handle controlling one scoped automatic reporter.
 ///
+/// Stopping or dropping this handle synchronously waits for the worker to exit;
+/// shutdown has no timeout. The stop signal wakes the reporting loop but cannot
+/// interrupt a reporter callback already in progress. In notification-driven
+/// mode, shutdown may also deliver a pending coalesced report. A callback that
+/// does not return can therefore keep shutdown and scope exit waiting
+/// indefinitely. Applications that require bounded shutdown must bound the
+/// sink's blocking operations or provide cooperative cancellation within the
+/// sink.
+///
 /// # Type Parameters
 ///
 /// - `'scope` is the lifetime of the scoped worker thread.
@@ -89,6 +98,14 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
 
     /// Stops, joins and returns the background report result.
     ///
+    /// This call waits synchronously for the worker to exit and has no timeout.
+    /// The stop signal cannot interrupt a reporter callback already in
+    /// progress; notification-driven mode may also deliver a pending coalesced
+    /// report during shutdown. A callback that does not return can keep this
+    /// call and scope exit waiting indefinitely. Bound blocking sink operations
+    /// or provide cooperative cancellation in the sink when bounded shutdown
+    /// is required.
+    ///
     /// A reporter or snapshot error is returned as
     /// [`AutoReporterError::Emission`]. A worker panic is captured as
     /// [`AutoReporterError::Panicked`] after the worker has been joined.
@@ -127,7 +144,10 @@ impl<'scope, 'reporter> AutoReporter<'scope, 'reporter> {
 }
 
 impl Drop for AutoReporter<'_, '_> {
-    /// Stops and joins a forgotten reporter without silently leaving a thread.
+    /// Stops and synchronously joins a forgotten reporter without silently
+    /// leaving a thread. A callback already in progress cannot be interrupted,
+    /// so dropping this handle can wait indefinitely if the callback does not
+    /// return. Worker panics are not propagated from `Drop`.
     fn drop(&mut self) {
         self.signal_stop();
         match self.join_worker() {
