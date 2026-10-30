@@ -175,6 +175,11 @@ fuzz_target!(|input: &[u8]| {
                 "counters={counters:?}, total={total:?}, model={model:?}, ",
                 "result={result:?}",
             ),
+            operation = operation,
+            counters = counters,
+            total = total,
+            model = model,
+            result = result,
         );
         let after = metric.snapshot();
         model.assert_matches(&after);
