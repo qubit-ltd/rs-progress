@@ -4,6 +4,8 @@
 （`Reporter`）。请先通过 [README](../README.zh_CN.md) 了解文件复制示例；
 本指南用于选择指标、安排上报，以及集成工作线程和输出目标。
 
+[English](user_guide.md)
+
 ## 选择特性
 
 默认特性集不引入可选依赖。应用只需开启实际使用的集成：
@@ -299,8 +301,71 @@ progress.finish()?;
 运行时；调用方在自己的 executor 中 await 这些方法。Future 返回 `Ok(())` 表示上报器已
 接收事件。
 
+上报器方法返回装箱 Future 类型 `ReportFuture<'a>`：
+
+```rust
+impl AsyncReporter for RecordingSink {
+    fn report<'a>(&'a self, event: &'a Event) -> ReportFuture<'a> {
+        Box::pin(async move {
+            self.0.lock().expect("recording lock must work").push(event.clone());
+            Ok(())
+        })
+    }
+}
+```
+
+操作先 await 启动，工作指标转换本身同步执行，然后 await 到期上报与终态上报。业务失败时，
+先尝试投递失败终态，同时保留原始业务错误：
+
+```rust
+async fn run_batch(reporter: &dyn AsyncReporter, fail_work: bool) -> Result<(), Box<dyn Error>> {
+    let mut progress = AsyncProgress::builder(reporter)
+        .metric(Metric::new("items", "Items").total(1))
+        .start_async()
+        .await?;
+    let items = progress.metric("items").expect("configured metric must exist");
+    items.start(1)?;
+
+    if fail_work {
+        let work_error = io::Error::other("demonstration work failure");
+        items.fail(1)?;
+        if let Err(report_error) = progress.fail_async().await {
+            eprintln!("terminal reporting also failed: {report_error}");
+        }
+        return Err(Box::new(work_error));
+    }
+
+    items.succeed(1)?;
+    progress.report_if_due_async().await?;
+    progress.finish_async().await?;
+    Ok(())
+}
+```
+
 若调用方取消正在等待的上报 Future，投递结果未知。运行中事件会在等待投递前消耗序号，
 终态操作在 Future 被轮询后即被消费。除非上报器自身提供去重，否则不要自动重试终态事件。
+
+[examples/async_reporting.rs](../examples/async_reporting.rs) 提供了完整的独立示例：它实现
+只记录内存事件的 `RecordingSink`，并依次 await 启动、到期上报和成功结束。运行命令为：
+
+```sh
+cargo run --locked --example async_reporting
+```
+
+输出如下：
+
+```text
+success: Started -> Running -> Succeeded; work error: Started -> Failed
+```
+
+示例使用默认零间隔，因此 `report_if_due_async().await` 会立即上报。正间隔下，应用应由
+自己的运行时周期调用 `AsyncProgress::report_if_due_async().await`。同步对应方法是
+`Progress::report_if_due()`，无需 `.await`。`RecordingSink` 只在内存中记录事件，不是持久化
+存储。实际 sink 应 await 存储操作，并用 `ReporterError::new` 映射存储错误，使成功路径的
+错误通过 `?` 传播。业务失败路径保留并返回业务错误，同时单独记录终态投递错误。普通的
+提前返回不会自动发送终态事件；在业务结果明确处安排 `fail_async()` 或 `cancel_async()`。
+指标校验失败和投递失败是不同情况：完成校验可以在尝试终态投递前失败；终态投递错误则表示
+操作已被消费且投递已经尝试。
 
 对于 `report_if_due_async()`，已轮询的到期 `Running` Future 会消耗序号。若投递正常完成或
 返回错误，下次截止时间从完成时重新计算。若 Future 一直 pending 后被取消，截止时间保持
@@ -333,6 +398,9 @@ progress.finish()?;
 - `NoopReporter`：禁用事件。
 - `JsonLinesReporter<W>`：开启 `json-lines` 后可用，每行写入一个完整 JSON 事件。
 - `LogReporter`：开启 `log` 后可用，在 info 级别写入事件的 `Debug` 表示。
+
+文本输出会保留可打印 Unicode（包括普通中文）的可读形式。metadata 中的换行、回车、制表符
+等控制字符会被转义，因此每个事件仍只占一行。
 
 满足 `Fn(&Event) -> Result<(), ReporterError> + Send + Sync` 的闭包也会自动实现
 `Reporter`，通常是最简短的自定义集成方式。

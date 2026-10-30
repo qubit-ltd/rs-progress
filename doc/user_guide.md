@@ -2,6 +2,8 @@
 
 `qubit-progress` represents one long-running operation and delivers complete events to a `Reporter`. Start with the [README](../README.md) for a file-copying walkthrough; use this guide when choosing metrics, scheduling reports, or integrating worker threads and output sinks.
 
+[中文](user_guide.zh_CN.md)
+
 ## Choose features
 
 The default feature set has no optional dependencies. Enable only the
@@ -326,10 +328,81 @@ still stops and joins the worker without propagating a panic.
 depend on a particular async runtime; the caller awaits these methods on its
 own executor. A completed `Ok(())` means the reporter accepted the event.
 
+The reporter method returns the boxed future type `ReportFuture<'a>`:
+
+```rust
+impl AsyncReporter for RecordingSink {
+    fn report<'a>(&'a self, event: &'a Event) -> ReportFuture<'a> {
+        Box::pin(async move {
+            self.0.lock().expect("recording lock must work").push(event.clone());
+            Ok(())
+        })
+    }
+}
+```
+
+The operation awaits startup, records work synchronously, then awaits due and
+terminal reports. On business failure it tries the failed terminal event while
+preserving the original work error:
+
+```rust
+async fn run_batch(reporter: &dyn AsyncReporter, fail_work: bool) -> Result<(), Box<dyn Error>> {
+    let mut progress = AsyncProgress::builder(reporter)
+        .metric(Metric::new("items", "Items").total(1))
+        .start_async()
+        .await?;
+    let items = progress.metric("items").expect("configured metric must exist");
+    items.start(1)?;
+
+    if fail_work {
+        let work_error = io::Error::other("demonstration work failure");
+        items.fail(1)?;
+        if let Err(report_error) = progress.fail_async().await {
+            eprintln!("terminal reporting also failed: {report_error}");
+        }
+        return Err(Box::new(work_error));
+    }
+
+    items.succeed(1)?;
+    progress.report_if_due_async().await?;
+    progress.finish_async().await?;
+    Ok(())
+}
+```
+
 If a caller cancels an in-flight report future, delivery status is unknown.
 Running reports consume their sequence before awaiting delivery, and terminal
 operations are consumed when their future is polled. Do not retry a terminal
 event automatically unless the reporter provides its own deduplication.
+
+The complete standalone example at [examples/async_reporting.rs](../examples/async_reporting.rs)
+implements an in-memory `RecordingSink`, then awaits startup, due reporting,
+and successful completion. Run it with:
+
+```sh
+cargo run --locked --example async_reporting
+```
+
+It prints:
+
+```text
+success: Started -> Running -> Succeeded; work error: Started -> Failed
+```
+
+The example's default interval is zero, so `report_if_due_async().await`
+reports immediately. With a positive interval, call
+`AsyncProgress::report_if_due_async().await` from the application's runtime
+schedule. The synchronous counterpart is `Progress::report_if_due()` and does
+not use `.await`. `RecordingSink` only records events in memory; it is not a
+persistent store. A real sink should await its storage operation and map its
+error with `ReporterError::new`, allowing successful-path errors to propagate
+through the `?` operators. The business-failure path retains and returns the
+business error while recording a separate terminal reporting error. Ordinary
+early returns do not automatically emit a terminal event; arrange `fail_async()`
+or `cancel_async()` at the point where the outcome is known. Metric validation
+failures and delivery failures are distinct: completion validation can fail
+before terminal delivery is attempted, while a terminal delivery error means
+the operation was consumed and its delivery was attempted.
 
 For `report_if_due_async()`, a polled due `Running` future consumes its
 sequence. If it completes with success or error, the next deadline is measured
@@ -361,6 +434,10 @@ Implement `Reporter` to consume `&Event`; implementations must be `Send + Sync`.
 - `NoopReporter` disables events.
 - `JsonLinesReporter<W>` is available with `json-lines` and writes one complete JSON event per line.
 - `LogReporter` is available with `log` and writes the event's `Debug` representation at info level.
+
+Text output keeps printable Unicode, including ordinary Chinese text, readable.
+It escapes control characters such as line feed, carriage return, and tab in
+metadata, preserving one output line per event.
 
 A thread-safe closure with the signature
 `Fn(&Event) -> Result<(), ReporterError> + Send + Sync` also implements
