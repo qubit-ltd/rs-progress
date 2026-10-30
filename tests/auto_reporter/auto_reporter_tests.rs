@@ -15,7 +15,9 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::channel;
 use std::sync::mpsc::sync_channel;
 use std::thread;
 use std::time::Duration;
@@ -33,25 +35,58 @@ use qubit_progress::ReporterError;
 
 /// Reporter that exposes emitted phases to the waiting integration test.
 struct SignalingReporter {
-    /// Sender for event phases.
-    sender: SyncSender<Phase>,
+    /// Sender for event phases without observation backpressure.
+    sender: Sender<Phase>,
 }
 
 impl SignalingReporter {
     /// Creates a reporter and the matching phase receiver.
     fn new() -> (Self, Receiver<Phase>) {
-        let (sender, receiver) = sync_channel(8);
+        let (sender, receiver) = channel();
         (Self { sender }, receiver)
     }
 }
 
 impl Reporter for SignalingReporter {
-    /// Records one phase through the bounded test channel.
+    /// Records one phase without waiting for the test to drain events.
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
         self.sender
             .send(event.phase())
             .map_err(|error| ReporterError::message(&error.to_string()))
     }
+}
+
+/// Verifies recording phases does not require the receiver to drain them.
+#[test]
+fn test_signaling_reporter_does_not_block_without_receiver_drain() {
+    let (reporter, phases) = SignalingReporter::new();
+    let (done_tx, done_rx) = channel();
+    let worker = thread::spawn(move || {
+        let result = (|| -> Result<(), Box<dyn Error + Send + Sync>> {
+            let mut progress = Progress::builder(&reporter)
+                .metric(Metric::new("tasks", "Tasks"))
+                .start()?;
+            for _ in 0..16 {
+                progress.report()?;
+            }
+            progress.cancel()?;
+            Ok(())
+        })();
+        let succeeded = result.is_ok();
+        let _ = done_tx.send(succeeded);
+        succeeded
+    });
+
+    let completed = done_rx.recv_timeout(Duration::from_secs(5));
+    let observed: Vec<_> = phases.try_iter().collect();
+    drop(phases);
+    let succeeded = worker.join().expect("observer worker must join");
+
+    assert_eq!(completed, Ok(true), "event recording must not require draining");
+    assert!(succeeded, "all reports must succeed");
+    assert_eq!(observed.len(), 18);
+    assert_eq!(observed.first(), Some(&Phase::Started));
+    assert_eq!(observed.last(), Some(&Phase::Cancelled));
 }
 
 /// Blocks the first background Running callback until the test releases it.
