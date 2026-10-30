@@ -21,6 +21,16 @@ impl<'gate, G: MetricAtomicWord> MetricGateGuard<'gate, G> {
     /// The caller supplies the next even version; this guard stores it with
     /// release ordering when dropped, including during unwinding. Version
     /// calculation, including wrapping, is performed by the caller.
+    ///
+    /// # Parameters
+    ///
+    /// * `gate` is the atomic gate to release.
+    /// * `next_version` is the even version to publish when this guard drops.
+    ///
+    /// # Returns
+    ///
+    /// A guard that must remain alive until the protected update is complete.
+    #[must_use = "dropping the guard releases the gate"]
     #[inline]
     pub fn new(gate: &'gate G, next_version: u64) -> Self {
         Self { gate, next_version }

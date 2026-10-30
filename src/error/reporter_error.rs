@@ -33,6 +33,7 @@ use crate::error::internal::MessageError;
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct ReporterError {
+    /// Original reporter failure retained for source-chain inspection.
     source: Arc<dyn Error + Send + Sync + 'static>,
 }
 
@@ -103,6 +104,7 @@ impl Error for ReporterError {
     /// # Returns
     ///
     /// `Some` containing the wrapped error.
+    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(self.source.as_ref())
     }

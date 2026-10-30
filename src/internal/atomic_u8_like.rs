@@ -16,12 +16,20 @@ pub trait AtomicU8Like {
     /// Creates an atomic value with the supplied initial state.
     ///
     /// The returned value must be retained for subsequent atomic operations.
+    ///
+    /// # Returns
+    ///
+    /// The newly initialized atomic value.
     #[must_use]
     fn new(value: u8) -> Self;
 
     /// Loads the value with sequentially consistent ordering.
     ///
     /// The caller must observe the loaded state to use this operation's result.
+    ///
+    /// # Returns
+    ///
+    /// The byte value observed by the load.
     #[must_use]
     fn load(&self) -> u8;
 

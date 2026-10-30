@@ -16,20 +16,20 @@ use crate::event::Phase;
 
 /// Borrowed event representation used for serialization.
 #[derive(Serialize)]
-pub(super) struct EventWireRef<'a> {
+pub(crate) struct EventWireRef<'a> {
     /// Process-local operation identifier.
-    pub(super) operation_id: u64,
+    pub(crate) operation_id: u64,
     /// Attempted-delivery sequence.
-    pub(super) sequence: u64,
+    pub(crate) sequence: u64,
     /// Event lifecycle phase.
-    pub(super) phase: Phase,
+    pub(crate) phase: Phase,
     /// Optional stage metadata.
-    pub(super) stage: Option<&'a Stage>,
+    pub(crate) stage: Option<&'a Stage>,
     /// Stable operation correlation attributes.
     #[serde(skip_serializing_if = "OperationAttributes::is_empty")]
-    pub(super) attributes: &'a OperationAttributes,
+    pub(crate) attributes: &'a OperationAttributes,
     /// Complete metric snapshots.
-    pub(super) metrics: &'a [MetricSnapshot],
+    pub(crate) metrics: &'a [MetricSnapshot],
     /// Canonical elapsed duration.
-    pub(super) elapsed: String,
+    pub(crate) elapsed: String,
 }

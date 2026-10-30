@@ -16,20 +16,20 @@ use crate::event::Phase;
 
 /// Owned event representation used before validation during deserialization.
 #[derive(Deserialize)]
-pub(super) struct EventWire {
+pub(crate) struct EventWire {
     /// Process-local operation identifier.
-    pub(super) operation_id: u64,
+    pub(crate) operation_id: u64,
     /// Attempted-delivery sequence.
-    pub(super) sequence: u64,
+    pub(crate) sequence: u64,
     /// Event lifecycle phase.
-    pub(super) phase: Phase,
+    pub(crate) phase: Phase,
     /// Optional stage metadata.
-    pub(super) stage: Option<Stage>,
+    pub(crate) stage: Option<Stage>,
     /// Stable operation correlation attributes.
     #[serde(default)]
-    pub(super) attributes: OperationAttributes,
+    pub(crate) attributes: OperationAttributes,
     /// Complete metric snapshots.
-    pub(super) metrics: Vec<MetricSnapshot>,
+    pub(crate) metrics: Vec<MetricSnapshot>,
     /// Canonical elapsed duration.
-    pub(super) elapsed: String,
+    pub(crate) elapsed: String,
 }

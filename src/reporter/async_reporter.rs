@@ -13,7 +13,12 @@ use std::pin::Pin;
 use crate::Event;
 use crate::ReporterError;
 
-/// Boxed future returned by [`AsyncReporter::report`].
+/// Pinned, boxed future returned by [`AsyncReporter::report`].
+///
+/// The future may borrow the reporter and event for the same lifetime `'a`,
+/// and implements [`Send`] so delivery can move between threads. It resolves
+/// to `Ok(())` when delivery succeeds or to [`ReporterError`] when the sink
+/// rejects the event.
 pub type ReportFuture<'a> = Pin<Box<dyn Future<Output = Result<(), ReporterError>> + Send + 'a>>;
 
 /// Asynchronously delivers complete immutable progress events.
@@ -52,6 +57,7 @@ pub trait AsyncReporter: Send + Sync {
     ///
     /// `true` when the operation should emit events; otherwise, `false`.
     #[must_use]
+    #[inline]
     fn is_enabled(&self) -> bool {
         true
     }

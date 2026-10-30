@@ -26,6 +26,7 @@ use std::fmt;
 ///     "metric \"uploads\" still has 2 active work items at finish"
 /// );
 /// ```
+#[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CompletionError {
@@ -49,6 +50,10 @@ pub enum CompletionError {
 
 impl fmt::Display for CompletionError {
     /// Formats the first completion invariant that failed.
+    ///
+    /// # Returns
+    ///
+    /// The formatter result, including any formatting error.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ActiveWork { metric_id, active } => write!(

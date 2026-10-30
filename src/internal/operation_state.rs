@@ -27,7 +27,12 @@ pub(crate) struct OperationState {
 }
 
 impl OperationState {
-    /// Creates a new open operation state.
+    /// Creates a new operation state whose lifecycle is open and update count
+    /// is zero.
+    ///
+    /// # Returns
+    ///
+    /// A shared operation state ready to admit metric updates.
     #[must_use]
     pub(crate) fn new() -> Arc<Self> {
         Arc::new(Self {
@@ -36,6 +41,10 @@ impl OperationState {
     }
 
     /// Returns the currently published lifecycle state.
+    ///
+    /// # Returns
+    ///
+    /// The lifecycle state observed from the operation gate.
     #[inline(never)]
     pub(crate) fn lifecycle(&self) -> OperationLifecycle {
         match self.gate.lifecycle() {
@@ -46,6 +55,19 @@ impl OperationState {
     }
 
     /// Registers one metric update while the operation remains open.
+    ///
+    /// # Parameters
+    ///
+    /// - `metric_id`: stable identifier included in a rejection error.
+    ///
+    /// # Returns
+    ///
+    /// An update guard when registration succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MetricError::OperationNotOpen`] with the observed lifecycle
+    /// state when the operation is finishing or closed.
     #[inline]
     pub(crate) fn enter_update<'state>(&'state self, metric_id: &str) -> Result<UpdateGuard<'state>, MetricError> {
         match self.gate.enter_update() {
@@ -57,7 +79,17 @@ impl OperationState {
         }
     }
 
-    /// Freezes new updates and waits for already registered updates.
+    /// Freezes new updates and waits for already registered updates to leave.
+    ///
+    /// # Returns
+    ///
+    /// A guard that lets terminal validation reopen the operation or close it
+    /// when the guard is dropped.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the operation is not open, because only the owning progress
+    /// operation may begin the finishing transition.
     pub(crate) fn begin_finish(&self) -> FinishGuard<'_> {
         assert!(
             self.gate.try_begin_finish(),
@@ -67,12 +99,18 @@ impl OperationState {
     }
 
     /// Permanently closes the operation without waiting for metric updates.
+    ///
+    /// New updates are rejected after the lifecycle changes to closed. Updates
+    /// already registered may still leave normally.
     #[inline]
     pub(crate) fn close(&self) {
         self.gate.close();
     }
 
     /// Releases one metric update registered with this operation.
+    ///
+    /// The caller must invoke this exactly once for each successful
+    /// registration after its update critical section ends.
     #[inline]
     pub(crate) fn leave_update(&self) {
         self.gate.leave_update();

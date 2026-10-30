@@ -23,13 +23,27 @@ use crate::ReporterError;
 /// ```
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NoopReporter;
+
 impl Reporter for NoopReporter {
     /// Disables operations that use this reporter.
+    ///
+    /// # Returns
+    ///
+    /// Always returns `false` so operations do not emit events.
     #[inline]
     fn is_enabled(&self) -> bool {
         false
     }
+
     /// Accepts events defensively when called outside [`crate::Progress`].
+    ///
+    /// # Returns
+    ///
+    /// Always returns `Ok(())` because this reporter discards events.
+    ///
+    /// # Errors
+    ///
+    /// This implementation never returns an error.
     #[inline]
     fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         Ok(())

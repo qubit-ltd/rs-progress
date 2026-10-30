@@ -16,8 +16,8 @@ use crate::error::EmissionError;
 /// Terminal event delivery failure paired with the elapsed operation time
 /// sampled at the beginning of the terminal attempt.
 ///
-/// The error preserves the underlying emission failure and the time measured
-/// sampled before metric updates are frozen or the event is delivered. It is
+/// The error preserves the underlying emission failure and the time sampled
+/// before metric updates are frozen or the event is delivered. It is
 /// returned by terminal progress operations when the reporter rejects the final
 /// event.
 ///
@@ -96,6 +96,7 @@ impl TerminalError {
     /// # Returns
     ///
     /// The elapsed time followed by the underlying emission failure.
+    #[must_use = "inspect the elapsed time and emission failure"]
     pub fn into_parts(self) -> (Duration, EmissionError) {
         (self.elapsed, self.source)
     }

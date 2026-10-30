@@ -35,6 +35,7 @@ impl MetricCounts {
     ///
     /// `Some` contains the sum of all terminal states when it fits in `u64`;
     /// `None` indicates that adding the terminal counts overflowed.
+    #[inline]
     pub fn completed(self) -> Option<u64> {
         self.completed_unclassified
             .checked_add(self.succeeded)?
@@ -51,6 +52,7 @@ impl MetricCounts {
     ///
     /// `Some` contains the total active and terminal work when it fits in
     /// `u64`; `None` indicates that either addition overflowed.
+    #[inline]
     pub fn occupied(self) -> Option<u64> {
         self.completed()?.checked_add(self.active)
     }

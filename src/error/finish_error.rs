@@ -21,9 +21,13 @@ use crate::error::TerminalError;
 ///
 /// # Examples
 ///
+/// A `FinishError` value is returned by [`crate::Progress::finish`] when
+/// checked completion fails.
+///
 /// ```
 /// use qubit_progress::FinishError;
 ///
+/// // `Progress::finish` supplies the error when checked completion fails.
 /// fn inspect_finish_error(error: &FinishError) {
 ///     assert!(error.elapsed() >= std::time::Duration::ZERO);
 ///     if let Some(completion_error) = error.completion_error() {

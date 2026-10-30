@@ -37,7 +37,15 @@ pub enum StartError {
 }
 
 impl fmt::Display for StartError {
-    /// Formats the start failure.
+    /// Formats the start failure using its underlying error message.
+    ///
+    /// The operation ID exhaustion variant uses a fixed message describing
+    /// that no more progress operation IDs are available.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` when the complete message is written, or the
+    /// formatter's error if writing fails.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidConfiguration(error) => error.fmt(formatter),
@@ -48,7 +56,16 @@ impl fmt::Display for StartError {
 }
 
 impl Error for StartError {
-    /// Returns the nested configuration or delivery failure.
+    /// Returns the nested configuration or delivery failure, if present.
+    ///
+    /// `InvalidConfiguration` and `Delivery` return their contained error as
+    /// the source. `OperationIdExhausted` has no underlying cause and returns
+    /// `None`.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some` for configuration and delivery failures, and `None` for
+    /// operation ID exhaustion.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidConfiguration(error) => Some(error),

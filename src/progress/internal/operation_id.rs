@@ -12,7 +12,19 @@ use crate::error::StartError;
 
 /// Allocates a nonzero operation ID from the supplied counter.
 ///
-/// Returns [`StartError::OperationIdExhausted`] when the counter holds zero.
+/// # Parameters
+///
+/// - `counter`: Atomic counter shared by callers that allocate from the same ID
+///   sequence.
+///
+/// # Returns
+///
+/// The next nonzero ID from `counter`.
+///
+/// # Errors
+///
+/// Returns [`StartError::OperationIdExhausted`] when the counter is zero,
+/// indicating that the ID space has been exhausted.
 pub(crate) fn allocate_operation_id_from(counter: &AtomicU64) -> Result<u64, StartError> {
     loop {
         let current = counter.load(Ordering::Relaxed);

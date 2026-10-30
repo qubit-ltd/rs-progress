@@ -15,7 +15,10 @@ use qubit_progress::Event;
 /// Limits parser work while retaining representative structured JSON inputs.
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 
-fuzz_target!(|input: &[u8]| {
+fuzz_target!(|input: &[u8]| fuzz_event_json(input));
+
+/// Checks event metric invariants and JSON round trips for bounded inputs.
+fn fuzz_event_json(input: &[u8]) {
     if input.len() > MAX_INPUT_BYTES {
         return;
     }
@@ -42,4 +45,4 @@ fuzz_target!(|input: &[u8]| {
         let decoded = serde_json::from_slice::<Event>(&encoded).expect("serialized event JSON must deserialize");
         assert_eq!(decoded, event, "event JSON round trips exactly");
     }
-});
+}

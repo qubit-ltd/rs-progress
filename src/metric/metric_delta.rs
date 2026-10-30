@@ -12,7 +12,8 @@
 /// ```
 /// use qubit_progress::MetricDelta;
 ///
-/// let _delta = MetricDelta::new().started(3).succeeded(1);
+/// let delta = MetricDelta::new().started(3).succeeded(1);
+/// assert_ne!(delta, MetricDelta::new());
 /// ```
 #[must_use]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

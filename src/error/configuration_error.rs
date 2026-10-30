@@ -72,6 +72,11 @@ pub enum ConfigurationError {
 
 impl fmt::Display for ConfigurationError {
     /// Formats a concise configuration explanation.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` when formatting succeeds, or the error returned by the
+    /// formatter when writing the explanation fails.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoMetrics => formatter.write_str("a progress operation requires at least one metric"),

@@ -25,6 +25,7 @@ use crate::metric::internal::metric_atomic_word::MetricAtomicWord;
 /// this description does not make any individual ordering interchangeable.
 /// Versions advance with wrapping arithmetic, so this protocol does not claim
 /// to prevent ABA after a complete version cycle.
+#[must_use]
 pub(in crate::metric) struct MetricCounterState<G, A> {
     /// Even versions are stable; odd versions indicate an update in progress.
     gate: G,
@@ -42,6 +43,7 @@ pub(in crate::metric) struct MetricCounterState<G, A> {
 
 impl<G: MetricAtomicWord, A: MetricAtomicWord> MetricCounterState<G, A> {
     /// Creates a counter state with all values initialized to zero.
+    #[inline]
     pub(super) fn new() -> Self {
         Self {
             gate: G::new(0),
@@ -59,6 +61,7 @@ impl<G: MetricAtomicWord, A: MetricAtomicWord> MetricCounterState<G, A> {
     /// The counters are loaded with acquire ordering, and the snapshot is
     /// accepted only if the gate has the same even version before and after
     /// those loads. The supplied callback determines how a retry waits.
+    #[must_use]
     pub(super) fn snapshot_counts<W: FnMut(usize)>(&self, mut wait: W) -> MetricCounts {
         let mut attempts = 0;
         loop {

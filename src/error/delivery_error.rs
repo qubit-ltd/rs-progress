@@ -56,6 +56,10 @@ pub struct DeliveryError {
 
 impl DeliveryError {
     /// Creates a delivery error retaining the failed Event and sink error.
+    ///
+    /// # Returns
+    ///
+    /// A delivery error containing the event and reporter error.
     pub(crate) fn new(event: Event, source: ReporterError) -> Self {
         Self {
             event: Box::new(event),
@@ -64,6 +68,10 @@ impl DeliveryError {
     }
 
     /// Returns the complete Event whose delivery failed.
+    ///
+    /// # Returns
+    ///
+    /// A borrowed view of the failed event, valid for the lifetime of `self`.
     #[must_use]
     #[inline]
     pub const fn event(&self) -> &Event {
@@ -71,23 +79,42 @@ impl DeliveryError {
     }
 
     /// Returns the original reporter error.
+    ///
+    /// # Returns
+    ///
+    /// A borrowed view of the underlying reporter error, valid for the
+    /// lifetime of `self`.
+    #[must_use = "the reporter error should be inspected or propagated"]
     #[inline]
     pub const fn reporter_error(&self) -> &ReporterError {
         &self.source
     }
 
     /// Consumes the error and returns its failed Event.
+    ///
+    /// # Returns
+    ///
+    /// The event whose delivery failed.
     #[must_use]
     pub fn into_event(self) -> Event {
         *self.event
     }
 
     /// Consumes the error and returns its reporter error.
+    ///
+    /// # Returns
+    ///
+    /// The original reporter error.
     pub fn into_reporter_error(self) -> ReporterError {
         self.source
     }
 
     /// Consumes the error and returns the Event with its reporter error.
+    ///
+    /// # Returns
+    ///
+    /// The failed event and the original reporter error, in that order.
+    #[must_use = "the failed event and reporter error should be inspected or propagated"]
     pub fn into_parts(self) -> (Event, ReporterError) {
         (*self.event, self.source)
     }
@@ -95,6 +122,10 @@ impl DeliveryError {
 
 impl fmt::Display for DeliveryError {
     /// Formats the failed Event identity and reporter error.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if formatting succeeds, or the formatter's error otherwise.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
@@ -109,6 +140,10 @@ impl fmt::Display for DeliveryError {
 
 impl Error for DeliveryError {
     /// Returns the reporter error as the cause.
+    ///
+    /// # Returns
+    ///
+    /// `Some` containing the reporter error.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.source)
     }

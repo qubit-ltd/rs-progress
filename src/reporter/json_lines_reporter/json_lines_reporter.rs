@@ -11,6 +11,8 @@ use std::io::Write;
 use std::sync::Mutex;
 use std::sync::PoisonError;
 
+use serde_json::to_vec;
+
 use crate::Event;
 use crate::Reporter;
 use crate::ReporterError;
@@ -50,6 +52,7 @@ use crate::ReporterError;
 /// # Type Parameters
 ///
 /// * `W` — writer that receives each serialized event record.
+#[must_use]
 pub struct JsonLinesReporter<W> {
     /// Writer serialized across concurrent report calls.
     writer: Mutex<W>,
@@ -61,7 +64,10 @@ impl<W> JsonLinesReporter<W> {
     /// # Parameters
     ///
     /// * `writer` — destination for serialized event records.
-    #[must_use]
+    ///
+    /// # Returns
+    ///
+    /// A reporter that serializes writes to the owned destination.
     #[inline]
     pub const fn new(writer: W) -> Self {
         Self {
@@ -99,6 +105,10 @@ where
     ///
     /// * `event` — complete event to serialize and write.
     ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the complete JSON line was accepted by the writer.
+    ///
     /// # Errors
     ///
     /// Returns an error if serialization or writing fails, or if a reporting
@@ -106,7 +116,7 @@ where
     /// `write_all` may have already written a prefix; that prefix is not rolled
     /// back, and later reports do not restore line boundaries.
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
-        let mut encoded = serde_json::to_vec(event).map_err(ReporterError::new)?;
+        let mut encoded = to_vec(event).map_err(ReporterError::new)?;
         encoded.push(b'\n');
         let mut writer = self
             .writer

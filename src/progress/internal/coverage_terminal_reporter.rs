@@ -31,6 +31,18 @@ impl Reporter for CoverageTerminalReporter {
     ///
     /// The atomic counter is relaxed because it only selects which call fails;
     /// it does not publish or synchronize any other data.
+    ///
+    /// # Parameters
+    ///
+    /// - `event`: Event whose delivery attempt is counted.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` for the first attempt, then a stable coverage-only failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns a reporter error for every attempt after the first.
     fn report(&self, _event: &Event) -> Result<(), ReporterError> {
         if self.attempts.fetch_add(1, Ordering::Relaxed) == 0 {
             Ok(())

@@ -18,6 +18,7 @@ use std::time::Duration;
 use qubit_progress::AsyncProgress;
 use qubit_progress::AsyncReporter;
 use qubit_progress::CompletionError;
+use qubit_progress::ConfigurationError;
 use qubit_progress::EmissionError;
 use qubit_progress::Event;
 use qubit_progress::FinishError;
@@ -378,7 +379,7 @@ macro_rules! assert_terminal_rejection_is_preserved {
             panic!("finish must wrap terminal delivery failure");
         };
         let elapsed = error.elapsed();
-        let qubit_progress::EmissionError::Delivery(delivery) = error.emission_error() else {
+        let EmissionError::Delivery(delivery) = error.emission_error() else {
             panic!("terminal failure must preserve delivery error");
         };
         let event = delivery.event().clone();
@@ -410,7 +411,7 @@ macro_rules! assert_terminal_rejection_is_preserved {
         let handle = progress.metric("tasks").expect("metric must exist");
         let error = block_on(progress.$method()).expect_err("terminal report must fail");
         let elapsed = error.elapsed();
-        let qubit_progress::EmissionError::Delivery(delivery) = error.emission_error() else {
+        let EmissionError::Delivery(delivery) = error.emission_error() else {
             panic!("terminal failure must preserve delivery error");
         };
         let event = delivery.event().clone();
@@ -521,7 +522,7 @@ fn test_disabled_async_reporter_skips_events_but_keeps_metric_lifecycle() {
     };
     assert!(matches!(
         error,
-        StartError::InvalidConfiguration(qubit_progress::ConfigurationError::NoMetrics)
+        StartError::InvalidConfiguration(ConfigurationError::NoMetrics)
     ));
     assert_eq!(reporter.calls.load(Ordering::Relaxed), 0);
 }

@@ -16,6 +16,7 @@ use qubit_progress::DeliveryError;
 use qubit_progress::EmissionError;
 use qubit_progress::Event;
 use qubit_progress::Metric;
+use qubit_progress::MetricError;
 use qubit_progress::NoopReporter;
 use qubit_progress::Phase;
 use qubit_progress::Progress;
@@ -185,8 +186,5 @@ fn test_disabled_terminal_finish_returns_without_delivery() {
     progress
         .finish_unchecked()
         .expect("disabled terminal finish must not deliver");
-    assert!(matches!(
-        tasks.start(1),
-        Err(qubit_progress::MetricError::OperationNotOpen { .. })
-    ));
+    assert!(matches!(tasks.start(1), Err(MetricError::OperationNotOpen { .. })));
 }

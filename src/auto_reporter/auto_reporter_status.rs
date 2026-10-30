@@ -49,6 +49,10 @@ impl AutoReporterStatus {
 
     /// Returns whether the automatic reporter terminated with an error or
     /// panic.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the reporter failed or panicked; otherwise, `false`.
     #[must_use]
     #[inline]
     pub fn is_failed(&self) -> bool {

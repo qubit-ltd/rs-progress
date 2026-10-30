@@ -17,6 +17,7 @@ use std::time::Instant;
 
 use crate::AsyncProgress;
 use crate::AsyncReporter;
+use crate::EmissionError;
 use crate::Event;
 use crate::Metric;
 use crate::Phase;
@@ -223,7 +224,7 @@ fn test_resumed_running_attempt_resets_deadline_from_completion() {
             make_due(&mut progress);
             let origin = progress.started_at;
 
-            let mut running: Pin<Box<dyn Future<Output = Result<(), crate::EmissionError>> + '_>> = if due_only {
+            let mut running: Pin<Box<dyn Future<Output = Result<(), EmissionError>> + '_>> = if due_only {
                 Box::pin(progress.report_if_due_async())
             } else {
                 Box::pin(progress.report_async())
@@ -242,7 +243,7 @@ fn test_resumed_running_attempt_resets_deadline_from_completion() {
             let output = poll_once(running.as_mut());
             if fail {
                 match output {
-                    Poll::Ready(Err(crate::EmissionError::Delivery(delivery))) => {
+                    Poll::Ready(Err(EmissionError::Delivery(delivery))) => {
                         assert_eq!(delivery.event().phase(), Phase::Running);
                         assert_eq!(delivery.event().sequence(), 1);
                     }

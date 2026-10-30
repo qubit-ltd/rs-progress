@@ -100,6 +100,7 @@ impl Metric {
     /// # Returns
     ///
     /// `Some(total)` when configured, or `None` otherwise.
+    #[must_use]
     #[inline]
     pub const fn configured_total(&self) -> Option<u64> {
         self.total

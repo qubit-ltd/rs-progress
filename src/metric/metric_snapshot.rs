@@ -68,6 +68,7 @@ pub struct MetricSnapshot {
 
 impl MetricSnapshot {
     /// Builds an immutable snapshot from one internally validated metric state.
+    #[must_use]
     pub(super) fn from_counts(metric: &Metric, counts: MetricCounts) -> Self {
         Self {
             id: Arc::clone(&metric.id),
@@ -108,6 +109,7 @@ impl MetricSnapshot {
     /// # Returns
     ///
     /// `Some(total)` when a total was configured, or `None` otherwise.
+    #[must_use]
     #[inline]
     pub const fn total(&self) -> Option<u64> {
         self.total
@@ -184,6 +186,7 @@ impl MetricSnapshot {
     /// # Returns
     ///
     /// `Some(fraction)` for a positive configured total, or `None` otherwise.
+    #[must_use]
     #[inline]
     pub fn completion_fraction(&self) -> Option<f64> {
         self.total

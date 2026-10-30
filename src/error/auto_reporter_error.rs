@@ -42,6 +42,14 @@ pub enum AutoReporterError {
 
 impl From<EmissionError> for AutoReporterError {
     /// Wraps a normal worker emission failure.
+    ///
+    /// # Parameters
+    ///
+    /// - `error`: The emission failure to retain.
+    ///
+    /// # Returns
+    ///
+    /// Returns [`AutoReporterError::Emission`] containing the given failure.
     fn from(error: EmissionError) -> Self {
         Self::Emission(error)
     }
@@ -49,6 +57,18 @@ impl From<EmissionError> for AutoReporterError {
 
 impl fmt::Display for AutoReporterError {
     /// Formats the structured worker failure.
+    ///
+    /// # Parameters
+    ///
+    /// - `formatter`: The destination for the formatted failure.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` when formatting succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns the formatting error if writing to `formatter` fails.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Emission(error) => error.fmt(formatter),

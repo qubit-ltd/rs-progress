@@ -404,9 +404,10 @@ fn bench_metric_update_with_sampling(criterion: &mut Criterion) {
                                 let mut first_error = error.lock().expect("benchmark error mutex must not poison");
                                 if first_error.is_none() {
                                     *first_error = Some(format!(
-                                        "round invariant failed: active={}, completed={}, expected={completed_rounds}",
+                                        concat!("round invariant failed: active={}, ", "completed={}, expected={}",),
                                         snapshot.active(),
-                                        snapshot.completed()
+                                        snapshot.completed(),
+                                        completed_rounds
                                     ));
                                 }
                             }

@@ -35,11 +35,24 @@ pub struct LogReporter;
 
 impl Reporter for LogReporter {
     /// Samples whether the `log` facade accepts info-level output.
+    ///
+    /// # Returns
+    ///
+    /// `true` when info-level logging is enabled; otherwise, `false`.
     fn is_enabled(&self) -> bool {
         log_enabled!(Level::Info)
     }
 
     /// Writes the event's debug representation through `log::info!`.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` after passing the event to the `log` facade.
+    ///
+    /// # Errors
+    ///
+    /// This implementation does not return an error because the `log` facade
+    /// does not report delivery failures.
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
         info!("{event:?}");
         Ok(())

@@ -29,6 +29,10 @@ impl MetricInner {
     /// # Parameters
     ///
     /// - `metric`: The fixed definition used to validate future updates.
+    ///
+    /// # Returns
+    ///
+    /// A live metric inner state with zeroed counters.
     #[must_use]
     pub fn new(metric: Metric) -> Self {
         Self {
@@ -47,6 +51,7 @@ impl MetricInner {
     ///
     /// A consistent copy of the current counters.
     #[must_use]
+    #[inline]
     pub fn snapshot_counts(&self) -> MetricCounts {
         self.state.snapshot_counts(wait_for_contention)
     }
@@ -56,6 +61,11 @@ impl MetricInner {
     /// The closure receives a local copy of the counters. Its changes are
     /// committed only when it returns `Ok`, so a validation error leaves the
     /// stored counters unchanged. The gate is released on return or unwind.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `R`: Value returned after a successful update.
+    /// - `F`: Closure that validates and modifies the local counter copy.
     ///
     /// # Parameters
     ///
@@ -69,6 +79,7 @@ impl MetricInner {
     ///
     /// Returns the error produced by `update` without committing its local
     /// counter changes.
+    #[inline]
     pub fn with_update<R, F>(&self, update: F) -> Result<R, MetricError>
     where
         F: FnMut(&mut MetricCounts) -> Result<R, MetricError>,
