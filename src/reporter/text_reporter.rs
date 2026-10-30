@@ -18,6 +18,11 @@ use crate::ReporterError;
 
 /// Writes one complete human-readable record for each reported event.
 ///
+/// Printable Unicode metadata is kept readable, while control characters are
+/// escaped so metadata cannot add extra record lines. This is a human-readable
+/// format rather than a machine-readable serialization; use a structured
+/// reporter when stable machine data is required.
+///
 /// A successful report means the complete newline-terminated record was
 /// accepted by the [`Write`] interface; it does not flush the writer. A write
 /// error may leave a prefix of the record in the destination, without rollback
@@ -123,7 +128,9 @@ where
     }
 }
 
-/// Produces one complete human-readable event record with escaped metadata.
+/// Produces one complete human-readable event record, preserving printable
+/// Unicode and escaping control characters in metadata so the record stays on
+/// one line.
 fn format_event(event: &Event) -> String {
     let mut line = format!(
         "operation={} sequence={} phase={} elapsed={:?}",
@@ -136,21 +143,26 @@ fn format_event(event: &Event) -> String {
         let _ = write!(
             line,
             " stage={}({}) position={:?} total={:?}",
-            stage.id().escape_default(),
-            stage.name().escape_default(),
+            stage.id().escape_debug(),
+            stage.name().escape_debug(),
             stage.position_value(),
             stage.total(),
         );
     }
     for (key, value) in event.attributes().iter() {
-        let _ = write!(line, " attribute={}({})", key.escape_default(), value.escape_default(),);
+        let _ = write!(
+            line,
+            " attribute={}({})",
+            key.escape_debug(),
+            value.escape_debug(),
+        );
     }
     for metric in event.metrics() {
         let _ = write!(
             line,
             " metric={}({}) total={:?} completed={} active={} succeeded={} failed={} cancelled={}",
-            metric.id().escape_default(),
-            metric.name().escape_default(),
+            metric.id().escape_debug(),
+            metric.name().escape_debug(),
             metric.total(),
             metric.completed(),
             metric.active(),

@@ -91,3 +91,31 @@ fn test_text_reporter_includes_operation_attributes() {
         "text output must escape operation attribute names and values"
     );
 }
+
+/// Keeps readable Unicode while preventing metadata from adding record lines.
+#[test]
+fn test_text_reporter_keeps_unicode_and_escapes_controls() {
+    let reporter = TextReporter::new(Vec::new());
+    let progress = Progress::builder(&reporter)
+        .stage(Stage::new("复制", "复制\n文件").position(1, 1))
+        .attribute("租户", "甲\r乙\t丙\\丁")
+        .metric(Metric::new("文件", "文件\n数量").total(0))
+        .start()
+        .expect("Unicode metadata must be accepted");
+    progress.finish().expect("zero-total operation must finish");
+    let output = String::from_utf8(reporter.into_inner().expect("writer lock must work"))
+        .expect("text output must be UTF-8");
+    assert_eq!(output.lines().count(), 2, "one line per event is required");
+    assert!(output.contains("stage=复制(复制\\n文件)"));
+    assert!(output.contains("attribute=租户(甲\\r乙\\t丙\\\\丁)"));
+    assert!(output.contains("metric=文件(文件\\n数量)"));
+    assert!(
+        !output.contains("\\u{6587}"),
+        "ordinary Chinese must stay readable"
+    );
+    assert!(
+        !output.contains('\r'),
+        "metadata must not emit a raw carriage return"
+    );
+    assert!(!output.contains('\t'), "metadata must not emit a raw tab");
+}
