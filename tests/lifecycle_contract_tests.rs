@@ -180,8 +180,13 @@ fn test_disabled_terminal_finish_returns_without_delivery() {
         .metric(Metric::new("tasks", "Tasks"))
         .start()
         .expect("disabled progress must start");
-    let elapsed = progress
+    assert!(!progress.is_enabled());
+    let tasks = progress.metric("tasks").expect("configured metric must exist");
+    progress
         .finish_unchecked()
         .expect("disabled terminal finish must not deliver");
-    assert!(elapsed < Duration::from_secs(1));
+    assert!(matches!(
+        tasks.start(1),
+        Err(qubit_progress::MetricError::OperationNotOpen { .. })
+    ));
 }

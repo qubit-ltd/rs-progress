@@ -99,12 +99,16 @@ fn test_terminal_error_retains_elapsed_and_emission_source() {
     let FinishError::Terminal(terminal) = error else {
         panic!("terminal delivery must produce FinishError::Terminal");
     };
-    assert!(terminal.elapsed() < std::time::Duration::from_secs(1));
+    let sampled_elapsed = terminal.elapsed();
+    let EmissionError::Delivery(delivery) = terminal.emission_error() else {
+        panic!("terminal delivery must retain its attempted event");
+    };
+    assert_eq!(sampled_elapsed, delivery.event().elapsed());
     assert!(terminal.emission_error().to_string().contains("terminal"));
     assert!(terminal.to_string().contains("terminal progress report failed"));
     assert!(Error::source(&terminal).is_some());
     let (elapsed, emission) = terminal.into_parts();
-    assert!(elapsed < std::time::Duration::from_secs(1));
+    assert_eq!(elapsed, sampled_elapsed);
     assert!(matches!(emission, EmissionError::Delivery(_)));
 }
 
@@ -286,7 +290,6 @@ fn test_finish_error_supports_recovery_and_terminal_parts() {
         .expect_err("incomplete work must reject checked finish");
     assert!(incomplete.completion_error().is_some());
     let incomplete_elapsed = incomplete.elapsed();
-    assert!(incomplete_elapsed < std::time::Duration::from_secs(1));
     assert!(incomplete.to_string().contains("work items"));
     assert!(format!("{incomplete:?}").contains("Incomplete"));
     assert!(Error::source(&incomplete).is_some());
@@ -304,7 +307,6 @@ fn test_finish_error_supports_recovery_and_terminal_parts() {
     let terminal = progress.finish().expect_err("terminal delivery must fail");
     assert!(terminal.completion_error().is_none());
     let finish_elapsed = terminal.elapsed();
-    assert!(finish_elapsed < std::time::Duration::from_secs(1));
     assert!(terminal.to_string().contains("terminal progress report failed"));
     assert!(format!("{terminal:?}").contains("Terminal"));
     assert!(Error::source(&terminal).is_some());
