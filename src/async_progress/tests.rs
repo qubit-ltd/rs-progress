@@ -81,8 +81,47 @@ impl AsyncReporter for TestReporter {
     }
 }
 
-fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
+fn poll_once<F: Future + ?Sized>(future: Pin<&mut F>) -> Poll<F::Output> {
     future.poll(&mut Context::from_waker(Waker::noop()))
+}
+
+struct ResumableReporter {
+    result: Mutex<Option<Result<(), ReporterError>>>,
+    waker: Mutex<Option<Waker>>,
+}
+
+impl ResumableReporter {
+    fn new() -> Self {
+        Self {
+            result: Mutex::new(None),
+            waker: Mutex::new(None),
+        }
+    }
+
+    fn complete(&self, result: Result<(), ReporterError>) {
+        *self.result.lock().expect("result lock must work") = Some(result);
+        let waker = self.waker.lock().expect("waker lock must work").take();
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+}
+
+impl AsyncReporter for ResumableReporter {
+    fn report<'a>(&'a self, event: &'a Event) -> ReportFuture<'a> {
+        if event.phase() != Phase::Running {
+            return Box::pin(async { Ok(()) });
+        }
+        Box::pin(std::future::poll_fn(move |context| {
+            let mut result = self.result.lock().expect("result lock must work");
+            if let Some(result) = result.take() {
+                Poll::Ready(result)
+            } else {
+                *self.waker.lock().expect("waker lock must work") = Some(context.waker().clone());
+                Poll::Pending
+            }
+        }))
+    }
 }
 
 async fn started_progress(reporter: &TestReporter) -> AsyncProgress<'_> {
@@ -165,6 +204,63 @@ fn test_completed_running_attempt_resets_deadline_on_success_and_error() {
         assert_eq!(progress.next_sequence, 2);
         assert_eq!(progress.next_due_elapsed, None);
         assert_eq!(reporter.sequences(), [0, 1]);
+    }
+}
+
+#[test]
+fn test_resumed_running_attempt_resets_deadline_from_completion() {
+    for due_only in [false, true] {
+        for fail in [false, true] {
+            let reporter = ResumableReporter::new();
+            let interval = Duration::from_secs(60);
+            let mut progress = block_on(
+                AsyncProgress::builder(&reporter)
+                    .interval(interval)
+                    .metric(Metric::new("tasks", "Tasks"))
+                    .start_async(),
+            )
+            .expect("progress must start");
+            make_due(&mut progress);
+            let origin = progress.started_at;
+
+            let mut running: Pin<Box<dyn Future<Output = Result<(), crate::EmissionError>> + '_>> = if due_only {
+                Box::pin(progress.report_if_due_async())
+            } else {
+                Box::pin(progress.report_async())
+            };
+            assert!(poll_once(running.as_mut()).is_pending());
+            let pending_lower_bound = origin.elapsed();
+            thread::sleep(Duration::from_millis(10));
+            let completion_lower_bound = origin.elapsed();
+            assert!(completion_lower_bound > pending_lower_bound);
+
+            reporter.complete(if fail {
+                Err(ReporterError::message("resumed delivery failed"))
+            } else {
+                Ok(())
+            });
+            let output = poll_once(running.as_mut());
+            if fail {
+                match output {
+                    Poll::Ready(Err(crate::EmissionError::Delivery(delivery))) => {
+                        assert_eq!(delivery.event().phase(), Phase::Running);
+                        assert_eq!(delivery.event().sequence(), 1);
+                    }
+                    other => panic!("expected resumed delivery error, got {other:?}"),
+                }
+            } else {
+                assert!(matches!(output, Poll::Ready(Ok(()))));
+            }
+            drop(running);
+
+            let completion_upper_bound = progress.elapsed();
+            let deadline = progress.next_due_elapsed.expect("finite interval must fit");
+            assert!(deadline >= completion_lower_bound.checked_add(interval).unwrap());
+            assert!(deadline <= completion_upper_bound.checked_add(interval).unwrap());
+            assert_eq!(progress.next_sequence, 2);
+            assert_eq!(progress.metric("tasks").unwrap().snapshot().active(), 0);
+            block_on(progress.cancel_async()).expect("operation remains usable");
+        }
     }
 }
 
