@@ -53,6 +53,10 @@ pub struct Stage {
 impl<'de> Deserialize<'de> for Stage {
     /// Deserializes and validates one standalone stage.
     ///
+    /// # Type Parameters
+    ///
+    /// - `D` - A Serde deserializer that provides the stage's wire fields.
+    ///
     /// # Parameters
     ///
     /// - `deserializer` - Serde deserializer supplying the stage fields.

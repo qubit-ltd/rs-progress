@@ -75,6 +75,11 @@ where
     F: Fn(&Event) -> Result<(), ReporterError> + Send + Sync,
 {
     /// Invokes this closure synchronously for one complete event.
+    ///
+    /// # Parameters
+    ///
+    /// - `event`: Complete immutable progress data supplied by the reporting
+    ///   operation for this call.
     #[inline]
     fn report(&self, event: &Event) -> Result<(), ReporterError> {
         self(event)

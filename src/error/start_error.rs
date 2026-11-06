@@ -29,11 +29,17 @@ use crate::error::EmissionError;
 #[non_exhaustive]
 pub enum StartError {
     /// Fixed operation metadata is invalid.
-    InvalidConfiguration(ConfigurationError),
+    InvalidConfiguration(
+        /// The configuration validation failure that prevented the start.
+        ConfigurationError,
+    ),
     /// The process-local operation ID space is exhausted.
     OperationIdExhausted,
     /// Started was attempted but rejected by the reporter.
-    Delivery(DeliveryError),
+    Delivery(
+        /// The rejected Started event and its reporter failure.
+        DeliveryError,
+    ),
 }
 
 impl fmt::Display for StartError {
@@ -41,6 +47,10 @@ impl fmt::Display for StartError {
     ///
     /// The operation ID exhaustion variant uses a fixed message describing
     /// that no more progress operation IDs are available.
+    ///
+    /// # Parameters
+    ///
+    /// * `formatter` - Receives the formatted start failure.
     ///
     /// # Returns
     ///
@@ -77,6 +87,14 @@ impl Error for StartError {
 
 impl From<ConfigurationError> for StartError {
     /// Converts configuration validation into a start failure.
+    ///
+    /// # Parameters
+    ///
+    /// * `error` - The configuration validation failure to retain.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding start failure.
     fn from(error: ConfigurationError) -> Self {
         Self::InvalidConfiguration(error)
     }
@@ -84,6 +102,14 @@ impl From<ConfigurationError> for StartError {
 
 impl From<EmissionError> for StartError {
     /// Converts the only possible start-time emission failures.
+    ///
+    /// # Parameters
+    ///
+    /// * `error` - The start-time emission failure to map.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding start failure.
     fn from(error: EmissionError) -> Self {
         match error {
             EmissionError::Delivery(error) => Self::Delivery(error),

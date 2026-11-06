@@ -8,6 +8,11 @@
 use crate::metric::internal::metric_atomic_word::MetricAtomicWord;
 
 /// RAII wrapper that always releases a locked gate.
+///
+/// # Type Parameters
+///
+/// * `'gate` is the borrow lifetime of the gate held by this guard.
+/// * `G` is an atomic word implementation that stores the released version.
 pub(in crate::metric) struct MetricGateGuard<'gate, G: MetricAtomicWord> {
     /// Gate whose version is held odd while the update is in progress.
     gate: &'gate G,

@@ -46,7 +46,11 @@ pub enum FinishError {
         source: CompletionError,
     },
     /// A terminal emission was attempted and failed permanently.
-    Terminal(TerminalError),
+    Terminal(
+        /// The permanent failure returned after terminal event delivery was
+        /// attempted.
+        TerminalError,
+    ),
 }
 
 impl FinishError {
@@ -85,6 +89,11 @@ impl FinishError {
 impl fmt::Display for FinishError {
     /// Formats the completion or terminal failure.
     ///
+    /// # Parameters
+    ///
+    /// - `formatter`: The destination formatter used to write this error's
+    ///   display representation.
+    ///
     /// # Returns
     ///
     /// The formatter result, including any formatting error.
@@ -101,7 +110,8 @@ impl Error for FinishError {
     ///
     /// # Returns
     ///
-    /// Always returns the nested error that caused finish to fail.
+    /// Returns `Some` with the nested error that caused finish to fail; `None`
+    /// is never returned.
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Incomplete { source, .. } => Some(source),

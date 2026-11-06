@@ -118,6 +118,10 @@ impl OperationState {
 }
 
 /// Converts the generic operation-gate state into its public lifecycle state.
+///
+/// # Parameters
+///
+/// - `state`: lifecycle value produced by the operation gate.
 #[inline(never)]
 fn operation_lifecycle(state: GateLifecycle) -> OperationLifecycle {
     match state {

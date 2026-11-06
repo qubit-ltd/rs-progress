@@ -25,6 +25,12 @@ use crate::metric::internal::metric_atomic_word::MetricAtomicWord;
 /// this description does not make any individual ordering interchangeable.
 /// Versions advance with wrapping arithmetic, so this protocol does not claim
 /// to prevent ABA after a complete version cycle.
+///
+/// # Type Parameters
+///
+/// * `G` is the atomic word used for the update gate.
+/// * `A` is the atomic word used for each counter; both types implement
+///   [`MetricAtomicWord`].
 #[must_use]
 pub(in crate::metric) struct MetricCounterState<G, A> {
     /// Even versions are stable; odd versions indicate an update in progress.
@@ -61,6 +67,18 @@ impl<G: MetricAtomicWord, A: MetricAtomicWord> MetricCounterState<G, A> {
     /// The counters are loaded with acquire ordering, and the snapshot is
     /// accepted only if the gate has the same even version before and after
     /// those loads. The supplied callback determines how a retry waits.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `W` is the callback invoked before each retry.
+    ///
+    /// # Parameters
+    ///
+    /// * `wait` receives the zero-based number of earlier waits.
+    ///
+    /// # Returns
+    ///
+    /// A consistent snapshot of all five counters.
     #[must_use]
     pub(super) fn snapshot_counts<W: FnMut(usize)>(&self, mut wait: W) -> MetricCounts {
         let mut attempts = 0;
@@ -91,6 +109,25 @@ impl<G: MetricAtomicWord, A: MetricAtomicWord> MetricCounterState<G, A> {
     /// with release ordering, including if `update` unwinds. Gate and counter
     /// atomics jointly implement the protocol; their orderings are not
     /// interchangeable. The supplied callback determines retry waiting.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `R` is the value returned by a successful update.
+    /// * `F` is the counter update callback.
+    /// * `W` is the callback invoked before each retry.
+    ///
+    /// # Parameters
+    ///
+    /// * `update` validates and edits the local counter copy.
+    /// * `wait` receives the zero-based number of earlier waits.
+    ///
+    /// # Returns
+    ///
+    /// The value returned by `update` when it succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error from `update` without publishing its counter changes.
     pub(super) fn with_update<R, F, W>(&self, mut update: F, mut wait: W) -> Result<R, MetricError>
     where
         F: FnMut(&mut MetricCounts) -> Result<R, MetricError>,
@@ -135,6 +172,10 @@ impl<G: MetricAtomicWord, A: MetricAtomicWord> MetricCounterState<G, A> {
     }
 
     /// Publishes the five validated counter values with release ordering.
+    ///
+    /// # Parameters
+    ///
+    /// * `counts` contains the validated values to publish.
     fn write_counts(&self, counts: &MetricCounts) {
         self.active.store(counts.active);
         self.completed_unclassified.store(counts.completed_unclassified);

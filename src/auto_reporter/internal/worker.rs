@@ -26,6 +26,12 @@ use crate::EmissionError;
 use crate::Progress;
 
 /// Spawns the worker for one enabled progress operation.
+///
+/// # Parameters
+///
+/// - `progress`: Mutable progress state owned by the operation and reported by
+///   the worker.
+/// - `scope`: Thread scope that bounds the worker's lifetime to the operation.
 pub(crate) fn spawn<'scope, 'env, 'reporter>(
     progress: &'scope mut Progress<'reporter>,
     scope: &'scope thread::Scope<'scope, 'env>,
@@ -78,6 +84,12 @@ where
 }
 
 /// Runs one background reporting loop until stopped or a report fails.
+///
+/// # Parameters
+///
+/// - `progress`: Mutable progress state that the loop reports.
+/// - `inner`: Shared reporter state used to observe notifications and shutdown.
+/// - `receiver`: Channel receiving worker wake signals.
 fn run(
     progress: &mut Progress<'_>,
     inner: Arc<AutoReporterInner>,
@@ -91,6 +103,12 @@ fn run(
 }
 
 /// Runs notification-driven reporting for a zero interval.
+///
+/// # Parameters
+///
+/// - `progress`: Mutable progress state reported after a pending notification.
+/// - `inner`: Reporter state containing notification and shutdown flags.
+/// - `receiver`: Channel whose signals trigger pending reports.
 fn run_notified(
     progress: &mut Progress<'_>,
     inner: &AutoReporterInner,
@@ -110,6 +128,12 @@ fn run_notified(
 }
 
 /// Runs deadline-based heartbeat reporting for a positive interval.
+///
+/// # Parameters
+///
+/// - `progress`: Mutable progress state reported when its deadline is due.
+/// - `inner`: Reporter state containing the shutdown flag.
+/// - `receiver`: Channel used to wake the worker when reporting stops.
 fn run_heartbeat(
     progress: &mut Progress<'_>,
     inner: &AutoReporterInner,
@@ -128,6 +152,11 @@ fn run_heartbeat(
 }
 
 /// Sends one coalesced wake signal without blocking a worker.
+///
+/// # Parameters
+///
+/// - `sender`: Bounded channel sender; a full channel already represents a
+///   pending wake, so sending never waits for the worker.
 pub(in crate::auto_reporter) fn wake(sender: &SyncSender<()>) {
     let _ = sender.try_send(());
 }

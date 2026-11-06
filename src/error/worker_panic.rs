@@ -37,6 +37,14 @@ pub struct WorkerPanic {
 
 impl WorkerPanic {
     /// Creates a structured panic from an unwound worker payload.
+    ///
+    /// # Parameters
+    ///
+    /// - `payload`: The panic payload captured from the worker thread.
+    ///
+    /// # Returns
+    ///
+    /// A [`WorkerPanic`] retaining the supplied payload.
     #[inline]
     pub(crate) fn new(payload: Box<dyn Any + Send + 'static>) -> Self {
         Self { payload }
@@ -82,6 +90,18 @@ impl WorkerPanic {
 impl fmt::Debug for WorkerPanic {
     /// Formats the payload without requiring the payload itself to implement
     /// `Debug`.
+    ///
+    /// # Parameters
+    ///
+    /// - `formatter`: The formatter that receives the debug representation.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` when formatting succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns the formatting error if writing to `formatter` fails.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("WorkerPanic")
@@ -92,6 +112,18 @@ impl fmt::Debug for WorkerPanic {
 
 impl fmt::Display for WorkerPanic {
     /// Formats the panic and includes its standard string message when known.
+    ///
+    /// # Parameters
+    ///
+    /// - `formatter`: The formatter that receives the display representation.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` when formatting succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns the formatting error if writing to `formatter` fails.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.message() {
             Some(message) => write!(formatter, "background reporter worker panicked: {message}"),

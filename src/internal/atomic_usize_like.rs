@@ -16,6 +16,10 @@ pub trait AtomicUsizeLike {
     /// Creates a counter initialized to `value`.
     ///
     /// The returned counter must be retained for later operations.
+    ///
+    /// # Parameters
+    ///
+    /// - `value` is the initial counter value.
     #[must_use]
     fn new(value: usize) -> Self;
 
@@ -29,17 +33,31 @@ pub trait AtomicUsizeLike {
     /// Adds `value` to the counter using sequentially consistent ordering.
     ///
     /// The operation updates shared state, so its return value is not needed.
+    ///
+    /// # Parameters
+    ///
+    /// - `self` is the counter to update.
+    /// - `value` is the amount to add.
     fn fetch_add(&self, value: usize);
 
     /// Subtracts `value` from the counter using sequentially consistent
     /// ordering.
     ///
     /// The operation updates shared state, so its return value is not needed.
+    ///
+    /// # Parameters
+    ///
+    /// - `self` is the counter to update.
+    /// - `value` is the amount to subtract.
     fn fetch_sub(&self, value: usize);
 }
 
 impl AtomicUsizeLike for AtomicUsize {
     /// Creates a standard atomic counter.
+    ///
+    /// # Parameters
+    ///
+    /// - `value` is the initial counter value.
     #[inline]
     fn new(value: usize) -> Self {
         Self::new(value)
@@ -52,12 +70,22 @@ impl AtomicUsizeLike for AtomicUsize {
     }
 
     /// Adds with sequentially consistent ordering.
+    ///
+    /// # Parameters
+    ///
+    /// - `self` is the counter to update.
+    /// - `value` is the amount to add.
     #[inline]
     fn fetch_add(&self, value: usize) {
         self.fetch_add(value, Ordering::SeqCst);
     }
 
     /// Subtracts with sequentially consistent ordering.
+    ///
+    /// # Parameters
+    ///
+    /// - `self` is the counter to update.
+    /// - `value` is the amount to subtract.
     #[inline]
     fn fetch_sub(&self, value: usize) {
         self.fetch_sub(value, Ordering::SeqCst);

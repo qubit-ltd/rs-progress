@@ -19,9 +19,15 @@ use crate::Reporter;
 ///   `'static`.
 pub(crate) enum ReporterHandle<'reporter> {
     /// Reporter borrowed for the operation lifetime.
-    Borrowed(&'reporter dyn Reporter),
+    Borrowed(
+        /// Reporter reference kept valid for the operation's borrow lifetime.
+        &'reporter dyn Reporter,
+    ),
     /// Shared reporter owned by the operation.
-    Owned(Arc<dyn Reporter>),
+    Owned(
+        /// Shared ownership keeps the reporter alive for the operation.
+        Arc<dyn Reporter>,
+    ),
 }
 
 impl ReporterHandle<'_> {

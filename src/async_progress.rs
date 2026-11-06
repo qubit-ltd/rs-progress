@@ -394,6 +394,12 @@ impl<'reporter> AsyncProgress<'reporter> {
 
     /// Delivers one complete event after reserving its delivery sequence.
     ///
+    /// # Parameters
+    ///
+    /// * `phase` - Lifecycle phase represented by the event.
+    /// * `metrics` - Metric snapshots captured for this delivery attempt.
+    /// * `elapsed` - Operation duration sampled for the event.
+    ///
     /// # Errors
     ///
     /// Returns [`EmissionError`] when event construction fails or the reporter
@@ -437,6 +443,10 @@ impl<'reporter> AsyncProgress<'reporter> {
     }
 
     /// Emits one terminal phase while retaining elapsed time on failure.
+    ///
+    /// # Parameters
+    ///
+    /// * `phase` - Terminal lifecycle phase to emit.
     async fn terminal(mut self, phase: Phase) -> Result<Duration, TerminalError> {
         let elapsed = self.elapsed();
         let finish_guard = self.operation_state.begin_finish();

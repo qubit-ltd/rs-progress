@@ -111,6 +111,10 @@ where
     /// `Ok(())` after the complete line has been accepted by the writer. This
     /// does not flush the writer.
     ///
+    /// # Parameters
+    ///
+    /// - `event`: The event whose formatted record is written as one line.
+    ///
     /// # Errors
     ///
     /// Returns a [`ReporterError`] if the writer is poisoned or writing the
@@ -131,6 +135,11 @@ where
 /// Produces one complete human-readable event record, preserving printable
 /// Unicode and escaping control characters in metadata so the record stays on
 /// one line.
+///
+/// # Parameters
+///
+/// - `event`: The event whose operation, timing, stage, and metric data are
+///   rendered into the record.
 fn format_event(event: &Event) -> String {
     let mut line = format!(
         "operation={} sequence={} phase={} elapsed={:?}",

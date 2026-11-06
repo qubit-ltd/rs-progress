@@ -17,6 +17,10 @@ pub trait AtomicU8Like {
     ///
     /// The returned value must be retained for subsequent atomic operations.
     ///
+    /// # Parameters
+    ///
+    /// * `value` - The initial byte state.
+    ///
     /// # Returns
     ///
     /// The newly initialized atomic value.
@@ -35,6 +39,11 @@ pub trait AtomicU8Like {
 
     /// Replaces `current` with `new` using sequentially consistent ordering.
     ///
+    /// # Parameters
+    ///
+    /// * `current` - The expected byte value.
+    /// * `new` - The byte value to store when the current value matches.
+    ///
     /// # Returns
     ///
     /// Returns `Ok(current)` when the stored value matched `current` and was
@@ -43,11 +52,19 @@ pub trait AtomicU8Like {
     fn compare_exchange(&self, current: u8, new: u8) -> Result<u8, u8>;
 
     /// Stores the value with sequentially consistent ordering.
+    ///
+    /// # Parameters
+    ///
+    /// * `value` - The byte value to store.
     fn store(&self, value: u8);
 }
 
 impl AtomicU8Like for AtomicU8 {
     /// Creates a standard atomic byte.
+    ///
+    /// # Parameters
+    ///
+    /// * `value` - The initial byte state.
     #[inline]
     fn new(value: u8) -> Self {
         Self::new(value)
@@ -60,12 +77,21 @@ impl AtomicU8Like for AtomicU8 {
     }
 
     /// Compares and exchanges with sequentially consistent ordering.
+    ///
+    /// # Parameters
+    ///
+    /// * `current` - The expected byte value.
+    /// * `new` - The byte value to store when the current value matches.
     #[inline]
     fn compare_exchange(&self, current: u8, new: u8) -> Result<u8, u8> {
         self.compare_exchange(current, new, Ordering::SeqCst, Ordering::SeqCst)
     }
 
     /// Stores the byte with sequentially consistent ordering.
+    ///
+    /// # Parameters
+    ///
+    /// * `value` - The byte value to store.
     #[inline]
     fn store(&self, value: u8) {
         self.store(value, Ordering::SeqCst);

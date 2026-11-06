@@ -49,6 +49,12 @@ pub struct MetricHandle {
 
 impl MetricHandle {
     /// Creates one live handle from validated metric metadata.
+    ///
+    /// # Parameters
+    ///
+    /// - `metric`: Validated metadata for the metric represented by this
+    ///   handle.
+    /// - `operation_state`: Lifecycle gate shared with the owning operation.
     pub(crate) fn new(metric: Metric, operation_state: Arc<OperationState>) -> Self {
         Self {
             inner: Arc::new(MetricInner::new(metric)),

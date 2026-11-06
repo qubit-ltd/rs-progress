@@ -37,6 +37,10 @@ impl Reporter for NoopReporter {
 
     /// Accepts events defensively when called outside [`crate::Progress`].
     ///
+    /// # Parameters
+    ///
+    /// - `_event`: The event is intentionally discarded by this reporter.
+    ///
     /// # Returns
     ///
     /// Always returns `Ok(())` because this reporter discards events.

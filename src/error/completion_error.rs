@@ -51,6 +51,10 @@ pub enum CompletionError {
 impl fmt::Display for CompletionError {
     /// Formats the first completion invariant that failed.
     ///
+    /// # Parameters
+    ///
+    /// - `formatter`: destination that receives the formatted error message.
+    ///
     /// # Returns
     ///
     /// The formatter result, including any formatting error.

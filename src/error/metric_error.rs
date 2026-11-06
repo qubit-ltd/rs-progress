@@ -68,6 +68,10 @@ pub enum MetricError {
 impl fmt::Display for MetricError {
     /// Formats the metric transition failure.
     ///
+    /// # Parameters
+    ///
+    /// - `formatter`: Destination that receives the formatted failure message.
+    ///
     /// # Returns
     ///
     /// Returns `Ok(())` when the formatter accepts the message, or an error

@@ -45,6 +45,10 @@ impl Reporter for LogReporter {
 
     /// Writes the event's debug representation through `log::info!`.
     ///
+    /// # Parameters
+    ///
+    /// - `event`: Complete immutable progress data to write to the log facade.
+    ///
     /// # Returns
     ///
     /// `Ok(())` after passing the event to the `log` facade.

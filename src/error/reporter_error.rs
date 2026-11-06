@@ -90,6 +90,10 @@ impl ReporterError {
 impl fmt::Display for ReporterError {
     /// Formats the original reporter error.
     ///
+    /// # Parameters
+    ///
+    /// - `formatter`: destination that receives the formatted error text.
+    ///
     /// # Returns
     ///
     /// `Ok(())` if formatting succeeds, or the formatter's error otherwise.

@@ -54,6 +54,11 @@ pub struct TerminalError {
 
 impl TerminalError {
     /// Pairs the attempted delivery time with its emission failure.
+    ///
+    /// # Parameters
+    ///
+    /// - `elapsed`: Time sampled at the beginning of the terminal attempt.
+    /// - `source`: Failure returned while delivering the terminal event.
     pub(crate) const fn new(elapsed: Duration, source: EmissionError) -> Self {
         Self { elapsed, source }
     }
@@ -104,6 +109,10 @@ impl TerminalError {
 
 impl fmt::Display for TerminalError {
     /// Formats terminal elapsed time and the nested failure.
+    ///
+    /// # Parameters
+    ///
+    /// - `formatter`: Destination that receives the formatted terminal error.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,

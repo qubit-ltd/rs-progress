@@ -50,12 +50,19 @@ use crate::error::ReporterError;
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct DeliveryError {
+    /// The complete event rejected by the reporter.
     event: Box<Event>,
+    /// The original failure returned by the reporter.
     source: ReporterError,
 }
 
 impl DeliveryError {
     /// Creates a delivery error retaining the failed Event and sink error.
+    ///
+    /// # Parameters
+    ///
+    /// * `event` - The complete event whose delivery failed.
+    /// * `source` - The original error returned by the reporter.
     ///
     /// # Returns
     ///
@@ -126,6 +133,10 @@ impl fmt::Display for DeliveryError {
     /// # Returns
     ///
     /// `Ok(())` if formatting succeeds, or the formatter's error otherwise.
+    ///
+    /// # Parameters
+    ///
+    /// * `formatter` - The destination formatter receiving the error message.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,

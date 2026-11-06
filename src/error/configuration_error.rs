@@ -73,6 +73,10 @@ pub enum ConfigurationError {
 impl fmt::Display for ConfigurationError {
     /// Formats a concise configuration explanation.
     ///
+    /// # Parameters
+    ///
+    /// - `formatter`: Receives the explanation written by this implementation.
+    ///
     /// # Returns
     ///
     /// Returns `Ok(())` when formatting succeeds, or the error returned by the

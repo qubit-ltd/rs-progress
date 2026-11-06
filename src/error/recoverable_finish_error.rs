@@ -48,7 +48,13 @@ pub enum RecoverableFinishError<'reporter> {
         source: CompletionError,
     },
     /// A terminal emission was attempted and failed permanently.
-    Terminal(TerminalError),
+    ///
+    /// The wrapped error records why delivery failed; the operation cannot
+    /// be reused because the event may have reached the reporter partially.
+    Terminal(
+        /// Failure explaining why terminal delivery did not complete.
+        TerminalError,
+    ),
 }
 
 impl<'reporter> RecoverableFinishError<'reporter> {
@@ -107,6 +113,10 @@ impl<'reporter> RecoverableFinishError<'reporter> {
 impl fmt::Debug for RecoverableFinishError<'_> {
     /// Formats the error without requiring the reporter to implement Debug.
     ///
+    /// # Parameters
+    ///
+    /// `formatter` receives the structured debug representation.
+    ///
     /// # Returns
     ///
     /// The formatter result, including any formatting error.
@@ -126,6 +136,11 @@ impl fmt::Debug for RecoverableFinishError<'_> {
 
 impl fmt::Display for RecoverableFinishError<'_> {
     /// Formats the completion or terminal failure.
+    ///
+    /// # Parameters
+    ///
+    /// `formatter` receives the display representation of the underlying
+    /// error.
     ///
     /// # Returns
     ///

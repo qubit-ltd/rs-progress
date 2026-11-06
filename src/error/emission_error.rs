@@ -33,11 +33,23 @@ pub enum EmissionError {
     /// The operation's event sequence space is exhausted.
     SequenceExhausted,
     /// A reporter rejected one complete event.
-    Delivery(DeliveryError),
+    Delivery(
+        /// The reporter's failure, retained for inspection and as the error
+        /// source.
+        DeliveryError,
+    ),
 }
 
 impl fmt::Display for EmissionError {
-    /// Formats the emission failure.
+    /// Formats the emission failure using the standard error display contract.
+    ///
+    /// # Parameters
+    ///
+    /// * `formatter` - Receives the formatted failure text.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when formatting succeeds, or the formatter's error otherwise.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::SequenceExhausted => formatter.write_str("progress event sequence is exhausted"),

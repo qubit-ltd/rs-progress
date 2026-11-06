@@ -540,6 +540,12 @@ impl<'reporter> Progress<'reporter> {
         auto_reporter::spawn(self, scope)
     }
     /// Delivers one complete event after reserving its delivery sequence.
+    ///
+    /// # Parameters
+    ///
+    /// - `phase`: Event phase to deliver.
+    /// - `metrics`: Complete metric snapshots captured for the event.
+    /// - `elapsed`: Operation time sampled for the event.
     pub(super) fn emit(
         &mut self,
         phase: Phase,
@@ -585,6 +591,10 @@ impl<'reporter> Progress<'reporter> {
         self.next_due_elapsed = self.elapsed().checked_add(self.interval);
     }
     /// Emits one terminal phase while retaining elapsed time on failure.
+    ///
+    /// # Parameters
+    ///
+    /// - `phase`: Terminal phase to deliver after closing metric updates.
     #[inline(never)]
     fn terminal(mut self, phase: Phase) -> Result<Duration, TerminalError> {
         let elapsed = self.elapsed();

@@ -68,6 +68,11 @@ pub struct MetricSnapshot {
 
 impl MetricSnapshot {
     /// Builds an immutable snapshot from one internally validated metric state.
+    ///
+    /// # Parameters
+    ///
+    /// - `metric`: Validated metric definition supplying the snapshot metadata.
+    /// - `counts`: Validated work-item counts for the metric.
     #[must_use]
     pub(super) fn from_counts(metric: &Metric, counts: MetricCounts) -> Self {
         Self {
@@ -198,6 +203,11 @@ impl MetricSnapshot {
 #[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for MetricSnapshot {
     /// Deserializes and validates one standalone metric snapshot.
+    ///
+    /// # Type Parameters
+    ///
+    /// - `'de`: Lifetime of the data borrowed from the deserializer.
+    /// - `D`: Deserializer that provides the serialized snapshot.
     ///
     /// # Parameters
     ///

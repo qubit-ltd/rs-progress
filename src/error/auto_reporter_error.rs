@@ -35,9 +35,15 @@ use crate::EmissionError;
 #[non_exhaustive]
 pub enum AutoReporterError {
     /// The worker returned a normal emission failure.
-    Emission(EmissionError),
+    Emission(
+        /// The emission failure returned by the worker.
+        EmissionError,
+    ),
     /// The worker panicked while reporting.
-    Panicked(WorkerPanic),
+    Panicked(
+        /// The panic payload retained from the worker thread.
+        WorkerPanic,
+    ),
 }
 
 impl From<EmissionError> for AutoReporterError {
