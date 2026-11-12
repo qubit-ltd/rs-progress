@@ -16,6 +16,12 @@ use qubit_progress::MetricHandle;
 use qubit_progress::NoopReporter;
 use qubit_progress::Progress;
 
+#[path = "metric_delta/reference_model.rs"]
+mod reference_model;
+
+use reference_model::ModelDelta;
+use reference_model::ModelState;
+
 /// Limits parser and state-machine work for one fuzz input.
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 /// Limits the number of metric transitions for one fuzz input.
@@ -66,55 +72,126 @@ fn create_metric(total: Option<u64>) -> (Progress<'static>, MetricHandle) {
     (progress, handle)
 }
 
+/// Maps one operation to a valid delta while preserving the configured limit.
+fn legal_delta(operation: &[u8], state: ModelState, total: Option<u64>) -> ModelDelta {
+    let limit = u128::from(u64::MAX);
+    let completed = state.unclassified + state.succeeded + state.failed + state.cancelled;
+    let occupied = state.active + completed;
+    let mut start_capacity = limit - occupied;
+    if let Some(total) = total {
+        start_capacity = start_capacity.min(u128::from(total) - occupied);
+    }
+    let started = bounded_counter(operation.get(1..9).unwrap_or_default(), start_capacity);
+    let available = state.active + u128::from(started);
+    let mut remaining = available;
+    let mut terminal = [0; 4];
+    for (index, value) in terminal.iter_mut().enumerate() {
+        *value = bounded_counter(
+            operation.get(9 + index * 8..17 + index * 8).unwrap_or_default(),
+            remaining,
+        );
+        remaining -= u128::from(*value);
+    }
+    ModelDelta {
+        started,
+        unclassified: terminal[0],
+        succeeded: terminal[1],
+        failed: terminal[2],
+        cancelled: terminal[3],
+    }
+}
+
+/// Selects a value within an inclusive u128 capacity without overflowing.
+fn bounded_counter(bytes: &[u8], capacity: u128) -> u64 {
+    let value = u128::from(read_u64(bytes));
+    (value % (capacity + 1)) as u64
+}
+
+/// Compares the entire public snapshot with a successfully predicted model
+/// state.
+fn assert_snapshot(metric: &MetricHandle, state: ModelState, total: Option<u64>) {
+    let snapshot = metric.snapshot();
+    assert_eq!(snapshot.total(), total);
+    assert_eq!(u128::from(snapshot.active()), state.active);
+    assert_eq!(u128::from(snapshot.unclassified()), state.unclassified);
+    assert_eq!(u128::from(snapshot.succeeded()), state.succeeded);
+    assert_eq!(u128::from(snapshot.failed()), state.failed);
+    assert_eq!(u128::from(snapshot.cancelled()), state.cancelled);
+    assert_eq!(
+        u128::from(snapshot.completed()),
+        state.unclassified + state.succeeded + state.failed + state.cancelled
+    );
+}
+
 fuzz_target!(|input: &[u8]| {
     if input.len() > MAX_INPUT_BYTES {
         return;
     }
 
-    let total = match input.first().copied().unwrap_or_default() % 4 {
+    let total = match input.first().copied().unwrap_or_default() % 5 {
         0 => None,
         1 => Some(0),
         2 => Some(1),
-        _ => Some(u64::MAX),
+        3 => Some(u64::MAX),
+        _ => Some(read_u64(input.get(1..).unwrap_or_default())),
     };
     let (progress, metric) = create_metric(total);
+    let mut model = ModelState::default();
+    let operation_start = if input.first().copied().unwrap_or_default() % 5 == 4 {
+        9
+    } else {
+        1
+    };
     for operation in input
-        .get(1..)
+        .get(operation_start..)
         .unwrap_or_default()
         .chunks(OPERATION_BYTES)
         .take(MAX_OPERATIONS)
     {
+        let legal = operation.first().copied().unwrap_or_default() % 2 == 1;
         let mut counters = [0; COUNTER_COUNT];
-        for (index, counter) in counters.iter_mut().enumerate() {
-            let start = 1 + index * COUNTER_BYTES;
-            *counter = read_counter(operation.get(start..).unwrap_or_default());
-        }
+        let delta = if legal {
+            let delta = legal_delta(operation, model, total);
+            counters = [
+                delta.started,
+                delta.unclassified,
+                delta.succeeded,
+                delta.failed,
+                delta.cancelled,
+            ];
+            delta
+        } else {
+            for (index, counter) in counters.iter_mut().enumerate() {
+                let start = 1 + index * COUNTER_BYTES;
+                *counter = read_counter(operation.get(start..).unwrap_or_default());
+            }
+            let [started, unclassified, succeeded, failed, cancelled] = counters;
+            ModelDelta {
+                started,
+                unclassified,
+                succeeded,
+                failed,
+                cancelled,
+            }
+        };
         let [started, unclassified, succeeded, failed, cancelled] = counters;
+        let expected = model.transition(delta, total);
         let delta = MetricDelta::new()
             .started(started)
             .unclassified(unclassified)
             .succeeded(succeeded)
             .failed(failed)
             .cancelled(cancelled);
-        let before = metric.snapshot();
         let result = metric.apply_delta(delta);
-        let after = metric.snapshot();
-        if result.is_err() {
-            assert_eq!(after, before, "failed delta must not partially commit");
-        } else {
-            assert_eq!(
-                after.active(),
-                before.active() + started - unclassified - succeeded - failed - cancelled
-            );
-            assert_eq!(after.unclassified(), before.unclassified() + unclassified);
-            assert_eq!(after.succeeded(), before.succeeded() + succeeded);
-            assert_eq!(after.failed(), before.failed() + failed);
-            assert_eq!(after.cancelled(), before.cancelled() + cancelled);
-            assert_eq!(
-                after.completed(),
-                after.unclassified() + after.succeeded() + after.failed() + after.cancelled()
-            );
+        assert_eq!(
+            result.is_ok(),
+            expected.is_some(),
+            "oracle and apply_delta acceptance must agree"
+        );
+        if let Some(next) = expected {
+            model = next;
         }
+        assert_snapshot(&metric, model, total);
     }
 
     progress.finish_unchecked().expect("disabled fuzz progress must finish");

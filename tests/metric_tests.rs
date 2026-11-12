@@ -79,6 +79,39 @@ fn test_metric_delta_rejects_without_partial_commit() {
     assert_eq!(snapshot.completed(), 0);
 }
 
+/// Verifies valid compound updates remain usable around a rejected update.
+#[test]
+fn test_metric_delta_valid_invalid_valid_sequence_preserves_state() {
+    let reporter = NoopReporter;
+    let progress = Progress::builder(&reporter)
+        .metric(Metric::new("tasks", "Tasks").total(5))
+        .start()
+        .expect("progress must start");
+    let tasks = progress.metric("tasks").expect("metric must exist");
+
+    tasks
+        .apply_delta(MetricDelta::new().started(3).succeeded(1))
+        .expect("first compound update must succeed");
+    let before_invalid = tasks.snapshot();
+    assert!(matches!(
+        tasks.apply_delta(MetricDelta::new().started(1).failed(4)),
+        Err(MetricError::InsufficientActive { .. })
+    ));
+    assert_eq!(tasks.snapshot(), before_invalid);
+    tasks
+        .apply_delta(MetricDelta::new().started(2).unclassified(1).cancelled(1))
+        .expect("a valid update must still succeed after rejection");
+
+    let snapshot = tasks.snapshot();
+    assert_eq!(snapshot.active(), 2);
+    assert_eq!(snapshot.completed(), 3);
+    assert_eq!(snapshot.unclassified(), 1);
+    assert_eq!(snapshot.succeeded(), 1);
+    assert_eq!(snapshot.failed(), 0);
+    assert_eq!(snapshot.cancelled(), 1);
+    assert_eq!(snapshot.active() + snapshot.completed(), 5);
+}
+
 /// Verifies metric metadata and every public forward transition.
 #[test]
 fn test_metric_metadata_and_forward_transitions() {
