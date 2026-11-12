@@ -25,6 +25,7 @@ use qubit_progress::Event;
 use qubit_progress::Metric;
 use qubit_progress::Phase;
 use qubit_progress::ReportFuture;
+use qubit_progress::ReporterError;
 
 #[derive(Default)]
 struct RecordingSink(Mutex<Vec<Event>>);
@@ -34,6 +35,40 @@ impl AsyncReporter for RecordingSink {
         Box::pin(async move {
             self.0.lock().expect("recording lock must work").push(event.clone());
             Ok(())
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RejectPhases {
+    running: bool,
+    succeeded: bool,
+}
+
+struct FailingSink {
+    rejected: RejectPhases,
+    attempts: Mutex<Vec<Phase>>,
+}
+
+impl FailingSink {
+    fn new(rejected: RejectPhases) -> Self {
+        Self {
+            rejected,
+            attempts: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl AsyncReporter for FailingSink {
+    fn report<'a>(&'a self, event: &'a Event) -> ReportFuture<'a> {
+        Box::pin(async move {
+            let phase = event.phase();
+            self.attempts.lock().expect("attempt lock must work").push(phase);
+            match phase {
+                Phase::Running if self.rejected.running => Err(ReporterError::message("running rejected")),
+                Phase::Succeeded if self.rejected.succeeded => Err(ReporterError::message("succeeded rejected")),
+                _ => Ok(()),
+            }
         })
     }
 }
@@ -84,12 +119,60 @@ async fn run_batch(reporter: &dyn AsyncReporter, fail_work: bool) -> Result<(), 
     }
 
     items.succeed(1)?;
-    progress.report_if_due_async().await?;
-    progress.finish_async().await?;
+    let running_result = progress.report_if_due_async().await;
+    let terminal_result = progress.finish_async().await;
+    if let Err(error) = running_result {
+        if let Err(terminal_error) = terminal_result {
+            eprintln!("terminal reporting also failed: {terminal_error}");
+        }
+        return Err(Box::new(error));
+    }
+    terminal_result?;
     Ok(())
 }
 
+fn assert_success_case(rejected: RejectPhases, expected: Result<(), &str>) {
+    let sink = FailingSink::new(rejected);
+    let result = block_on(run_batch(&sink, false));
+    let attempts = sink.attempts.lock().expect("attempt lock must work");
+    assert_eq!(*attempts, vec![Phase::Started, Phase::Running, Phase::Succeeded]);
+    match (result, expected) {
+        (Ok(()), Ok(())) => {}
+        (Err(error), Err(message)) => assert!(error.to_string().contains(message), "unexpected error: {error}"),
+        (result, expected) => panic!("result {result:?} did not match {expected:?}"),
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    assert_success_case(
+        RejectPhases {
+            running: false,
+            succeeded: false,
+        },
+        Ok(()),
+    );
+    assert_success_case(
+        RejectPhases {
+            running: false,
+            succeeded: true,
+        },
+        Err("succeeded rejected"),
+    );
+    assert_success_case(
+        RejectPhases {
+            running: true,
+            succeeded: false,
+        },
+        Err("running rejected"),
+    );
+    assert_success_case(
+        RejectPhases {
+            running: true,
+            succeeded: true,
+        },
+        Err("running rejected"),
+    );
+
     let sink = RecordingSink::default();
     block_on(run_batch(&sink, false))?;
     {

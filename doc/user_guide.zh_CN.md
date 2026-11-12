@@ -347,8 +347,15 @@ async fn run_batch(reporter: &dyn AsyncReporter, fail_work: bool) -> Result<(), 
     }
 
     items.succeed(1)?;
-    progress.report_if_due_async().await?;
-    progress.finish_async().await?;
+    let running_result = progress.report_if_due_async().await;
+    let terminal_result = progress.finish_async().await;
+    if let Err(error) = running_result {
+        if let Err(terminal_error) = terminal_result {
+            eprintln!("terminal reporting also failed: {terminal_error}");
+        }
+        return Err(Box::new(error));
+    }
+    terminal_result?;
     Ok(())
 }
 ```
@@ -382,9 +389,12 @@ success: Started -> Running -> Succeeded; work error: Started -> Failed
 示例使用默认零间隔，因此 `report_if_due_async().await` 会立即上报。正间隔下，应用应由
 自己的运行时周期调用 `AsyncProgress::report_if_due_async().await`。同步对应方法是
 `Progress::report_if_due()`，无需 `.await`。`RecordingSink` 只在内存中记录事件，不是持久化
-存储。实际 sink 应 await 存储操作，并用 `ReporterError::new` 映射存储错误，使成功路径的
-错误通过 `?` 传播。业务失败路径保留并返回业务错误，同时单独记录终态投递错误。普通的
-提前返回不会自动发送终态事件；在业务结果明确处安排 `fail_async()` 或 `cancel_async()`。
+存储。实际 sink 应 await 存储操作，并用 `ReporterError::new` 映射存储错误。业务成功后，
+应保存 `Running` 的结果，并继续尝试 `finish_async()`：若两次上报都失败，返回原始
+`Running` 错误并单独记录终态错误；若只有终态上报失败，则返回该错误。若 sink 持续失败、
+发生 panic 或异步操作被取消，不保证终态一定送达。业务失败路径保留并返回业务错误，同时
+单独记录终态投递错误。普通的提前返回不会自动发送终态事件；在业务结果明确处安排
+`fail_async()` 或 `cancel_async()`。
 指标校验失败和投递失败是不同情况：完成校验可以在尝试终态投递前失败；终态投递错误则表示
 操作已被消费且投递已经尝试。
 

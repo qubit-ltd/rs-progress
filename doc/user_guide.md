@@ -378,8 +378,15 @@ async fn run_batch(reporter: &dyn AsyncReporter, fail_work: bool) -> Result<(), 
     }
 
     items.succeed(1)?;
-    progress.report_if_due_async().await?;
-    progress.finish_async().await?;
+    let running_result = progress.report_if_due_async().await;
+    let terminal_result = progress.finish_async().await;
+    if let Err(error) = running_result {
+        if let Err(terminal_error) = terminal_result {
+            eprintln!("terminal reporting also failed: {terminal_error}");
+        }
+        return Err(Box::new(error));
+    }
+    terminal_result?;
     Ok(())
 }
 ```
@@ -420,11 +427,15 @@ reports immediately. With a positive interval, call
 schedule. The synchronous counterpart is `Progress::report_if_due()` and does
 not use `.await`. `RecordingSink` only records events in memory; it is not a
 persistent store. A real sink should await its storage operation and map its
-error with `ReporterError::new`, allowing successful-path errors to propagate
-through the `?` operators. The business-failure path retains and returns the
-business error while recording a separate terminal reporting error. Ordinary
-early returns do not automatically emit a terminal event; arrange `fail_async()`
-or `cancel_async()` at the point where the outcome is known. Metric validation
+error with `ReporterError::new`. After business success, save the `Running` result and
+attempt `finish_async()` regardless. If both reports fail, return the original
+`Running` error and record the terminal error; if only the terminal report fails,
+return that error. This does not guarantee terminal delivery when a sink keeps
+failing, panics, or the async operation is cancelled. The business-failure path
+retains and returns the business error while recording a separate terminal
+reporting error. Ordinary early returns do not automatically emit a terminal
+event; arrange `fail_async()` or `cancel_async()` at the point where the outcome
+is known. Metric validation
 failures and delivery failures are distinct: completion validation can fail
 before terminal delivery is attempted, while a terminal delivery error means
 the operation was consumed and its delivery was attempted.
