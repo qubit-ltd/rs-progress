@@ -41,8 +41,8 @@ pub(super) use event_wire::EventWire;
 pub(super) use event_wire_ref::EventWireRef;
 pub use phase_module::Phase;
 
-#[doc(hidden)]
 /// Exercises serde entry points from the instrumented library build.
+#[doc(hidden)]
 #[cfg(all(feature = "json-lines", coverage))]
 pub fn __coverage_event_serde() {
     let mut value = json!({
